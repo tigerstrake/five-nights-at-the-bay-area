@@ -122,3 +122,23 @@ approach's door into the HQ.
 
 Foundation consumes these exports exactly as declared. Owners may add exports but must not break
 the declared ones.
+
+## Wave 2 ownership (supersedes the table above where they overlap)
+
+| Agent | Owns | Dev ports (server/client) |
+|---|---|---|
+| AI (Codex) | `server/src/ai/**` | none (sandboxed) |
+| Cameras | `server/src/cameras/**`, `client/src/feeds/**`, camera wiring in `server/src/index.ts`, camera vars in `.env.example`, adapter section of `docs/CAMERAS.md` | 3205 / 5205 |
+| Maps | `client/src/map/**` | 3201 / 5201 |
+| Defender UI | `client/src/screens/DefenderScreen.tsx`, `client/src/screens/defender/**` | 3202 / 5202 |
+| Monster UI | `client/src/screens/MonsterScreen.tsx`, `client/src/screens/monster/**` | 3203 / 5203 |
+| Shell | `client/src/App.tsx`, `TitleScreen`, `LobbyScreen`, `LoadingScreen`, `ResultsScreen`, `client/src/screens/hud.tsx`, `client/src/screens/shell/**`, `client/src/ui/**`, `client/src/index.css` | 3204 / 5204 |
+
+Shared contracts (`shared/**`), engine, visibility, rooms, net and `client/src/state/**` are shared ground:
+only small **additive** changes (new optional fields, new events), made with a fresh read right before
+the edit, and listed in your final report. Never rename or remove existing fields.
+
+Running servers in wave 2: do NOT use `tsx watch` (other agents' edits would restart your server).
+Run `PORT=<p> CAMERA_MODE=simulation npx tsx server/src/index.ts` from the repo root and
+`API_PORT=<p> npx vite --port <c> --strictPort` from `client/`. Restart yourself after server edits.
+Keep every existing `data-testid` working (e2e depends on them); add new ones for new controls.
