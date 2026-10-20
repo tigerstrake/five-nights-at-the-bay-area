@@ -1,14 +1,70 @@
 {
   "images": [
-    { "file": "freeway-night-01.png", "tags": ["freeway"] },
-    { "file": "freeway-night-02.png", "tags": ["freeway"] },
-    { "file": "freeway-night-03.png", "tags": ["freeway"] },
-    { "file": "bridge-night-01.png", "tags": ["bridge", "fog"] },
-    { "file": "bridge-night-02.png", "tags": ["bridge", "fog"] },
-    { "file": "tunnel-01.png", "tags": ["tunnel"] },
-    { "file": "interchange-01.png", "tags": ["interchange", "freeway"] },
-    { "file": "interchange-02.png", "tags": ["interchange", "freeway"] },
-    { "file": "downtown-01.png", "tags": ["downtown", "freeway"] },
-    { "file": "foggy-01.png", "tags": ["fog", "freeway"] }
+    {
+      "file": "freeway-night-01.jpg",
+      "tags": [
+        "freeway"
+      ]
+    },
+    {
+      "file": "freeway-night-02.jpg",
+      "tags": [
+        "freeway"
+      ]
+    },
+    {
+      "file": "freeway-night-03.jpg",
+      "tags": [
+        "freeway"
+      ]
+    },
+    {
+      "file": "bridge-night-01.jpg",
+      "tags": [
+        "bridge",
+        "fog"
+      ]
+    },
+    {
+      "file": "bridge-night-02.jpg",
+      "tags": [
+        "bridge",
+        "fog"
+      ]
+    },
+    {
+      "file": "tunnel-01.jpg",
+      "tags": [
+        "tunnel"
+      ]
+    },
+    {
+      "file": "interchange-01.jpg",
+      "tags": [
+        "interchange",
+        "freeway"
+      ]
+    },
+    {
+      "file": "interchange-02.jpg",
+      "tags": [
+        "interchange",
+        "freeway"
+      ]
+    },
+    {
+      "file": "downtown-01.jpg",
+      "tags": [
+        "downtown",
+        "freeway"
+      ]
+    },
+    {
+      "file": "foggy-01.jpg",
+      "tags": [
+        "fog",
+        "freeway"
+      ]
+    }
   ]
 }
