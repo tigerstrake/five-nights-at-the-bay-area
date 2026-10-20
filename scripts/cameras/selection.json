@@ -1,0 +1,1071 @@
+{
+  "version": 1,
+  "comment": "Curated Caltrans D4 cameras. Select by Caltrans location code (the 'TVxxx' prefix of locationName; stable across feed re-indexing). 'name' overrides the feed name. 'placement' = normalized boxes (x,y,w,h in 0..1, top-left origin) where a figure could plausibly stand; scale = figure height / frame height there. NB the bottom ~8% of every frame is Caltrans' burned-in timestamp bar: keep boxes above y=0.9.",
+  "defaultPlacement": [
+    {
+      "x": 0.3,
+      "y": 0.5,
+      "w": 0.4,
+      "h": 0.4,
+      "scale": 0.25
+    }
+  ],
+  "cameras": [
+    {
+      "code": "TV136",
+      "name": "SR-37 : Sonoma Raceway (SR-121)",
+      "tags": [
+        "freeway",
+        "causeway",
+        "north-bay"
+      ],
+      "placement": [
+        {
+          "x": 0.08,
+          "y": 0.66,
+          "w": 0.5,
+          "h": 0.22,
+          "scale": 0.3
+        },
+        {
+          "x": 0.55,
+          "y": 0.5,
+          "w": 0.3,
+          "h": 0.08,
+          "scale": 0.1
+        }
+      ],
+      "notes": "grey, hazy marsh view; wide open ground"
+    },
+    {
+      "code": "TVE83",
+      "name": "US-101 : San Rafael / I-580",
+      "tags": [
+        "freeway",
+        "interchange",
+        "north-bay"
+      ],
+      "placement": [
+        {
+          "x": 0.6,
+          "y": 0.62,
+          "w": 0.3,
+          "h": 0.2,
+          "scale": 0.22
+        },
+        {
+          "x": 0.3,
+          "y": 0.5,
+          "w": 0.25,
+          "h": 0.12,
+          "scale": 0.14
+        },
+        {
+          "x": 0,
+          "y": 0.72,
+          "w": 0.12,
+          "h": 0.15,
+          "scale": 0.3
+        }
+      ],
+      "notes": "sharp, daylight; looks along US-101 toward Mt. Tamalpais"
+    },
+    {
+      "code": "TVE74",
+      "name": "US-101 : Marin City",
+      "tags": [
+        "freeway",
+        "north-bay"
+      ],
+      "placement": [
+        {
+          "x": 0.2,
+          "y": 0.7,
+          "w": 0.25,
+          "h": 0.18,
+          "scale": 0.35
+        },
+        {
+          "x": 0.55,
+          "y": 0.5,
+          "w": 0.3,
+          "h": 0.12,
+          "scale": 0.15
+        },
+        {
+          "x": 0.19,
+          "y": 0.15,
+          "w": 0.1,
+          "h": 0.08,
+          "scale": 0.09
+        }
+      ],
+      "notes": "sharp; Waldo Tunnel mouth visible top-left"
+    },
+    {
+      "code": "TVE73",
+      "name": "US-101 : Spencer Avenue (Waldo Grade)",
+      "tags": [
+        "freeway",
+        "tunnel-approach",
+        "north-bay"
+      ],
+      "placement": [
+        {
+          "x": 0.62,
+          "y": 0.72,
+          "w": 0.33,
+          "h": 0.16,
+          "scale": 0.3
+        },
+        {
+          "x": 0.1,
+          "y": 0.55,
+          "w": 0.25,
+          "h": 0.2,
+          "scale": 0.2
+        },
+        {
+          "x": 0.5,
+          "y": 0.38,
+          "w": 0.3,
+          "h": 0.07,
+          "scale": 0.13
+        }
+      ],
+      "notes": "sharp; overpass deck across the top"
+    },
+    {
+      "code": "TVE70",
+      "name": "US-101 : Golden Gate Bridge North (Vista Point)",
+      "tags": [
+        "bridge",
+        "landmark",
+        "north-bay"
+      ],
+      "placement": [
+        {
+          "x": 0,
+          "y": 0.5,
+          "w": 0.15,
+          "h": 0.2,
+          "scale": 0.24
+        },
+        {
+          "x": 0.35,
+          "y": 0.5,
+          "w": 0.2,
+          "h": 0.12,
+          "scale": 0.14
+        },
+        {
+          "x": 0.78,
+          "y": 0.45,
+          "w": 0.18,
+          "h": 0.12,
+          "scale": 0.1
+        }
+      ],
+      "notes": "Golden Gate Bridge deck/towers and SF skyline visible; small file (8 KB) but clear"
+    },
+    {
+      "code": "TVR03",
+      "name": "I-580 : Richmond-San Rafael Bridge Truss",
+      "tags": [
+        "bridge",
+        "north-bay"
+      ],
+      "placement": [
+        {
+          "x": 0.4,
+          "y": 0.6,
+          "w": 0.1,
+          "h": 0.28,
+          "scale": 0.15
+        },
+        {
+          "x": 0.42,
+          "y": 0.25,
+          "w": 0.06,
+          "h": 0.2,
+          "scale": 0.06
+        }
+      ],
+      "notes": "high-angle view along the RSR bridge deck over the water"
+    },
+    {
+      "code": "TV962",
+      "name": "I-80 : Vallejo (Redwood Pkwy)",
+      "tags": [
+        "freeway",
+        "interchange",
+        "north-bay"
+      ],
+      "placement": [
+        {
+          "x": 0.4,
+          "y": 0.62,
+          "w": 0.22,
+          "h": 0.24,
+          "scale": 0.28
+        },
+        {
+          "x": 0.6,
+          "y": 0.42,
+          "w": 0.1,
+          "h": 0.1,
+          "scale": 0.08
+        },
+        {
+          "x": 0.7,
+          "y": 0.6,
+          "w": 0.1,
+          "h": 0.25,
+          "scale": 0.3
+        }
+      ],
+      "notes": "clear freeway view looking west; replaced TV939 (sky only)"
+    },
+    {
+      "code": "TV972",
+      "name": "I-80 : Carquinez Bridge (west approach)",
+      "tags": [
+        "bridge",
+        "north-bay"
+      ],
+      "placement": [
+        {
+          "x": 0.55,
+          "y": 0.66,
+          "w": 0.25,
+          "h": 0.22,
+          "scale": 0.24
+        },
+        {
+          "x": 0.45,
+          "y": 0.48,
+          "w": 0.1,
+          "h": 0.1,
+          "scale": 0.07
+        }
+      ],
+      "notes": "symmetric freeway between two hills; grey"
+    },
+    {
+      "code": "TV815",
+      "name": "I-780 : Benicia / I-680 Split",
+      "tags": [
+        "freeway",
+        "interchange",
+        "north-bay"
+      ],
+      "placement": [
+        {
+          "x": 0.5,
+          "y": 0.62,
+          "w": 0.4,
+          "h": 0.26,
+          "scale": 0.3
+        },
+        {
+          "x": 0.55,
+          "y": 0.48,
+          "w": 0.25,
+          "h": 0.1,
+          "scale": 0.12
+        }
+      ],
+      "notes": "dry grass verge right of the road; sparse traffic"
+    },
+    {
+      "code": "TV301",
+      "name": "US-101 : Octavia St (Central Freeway)",
+      "tags": [
+        "freeway",
+        "downtown",
+        "sf"
+      ],
+      "placement": [
+        {
+          "x": 0.3,
+          "y": 0.45,
+          "w": 0.3,
+          "h": 0.15,
+          "scale": 0.2
+        },
+        {
+          "x": 0.75,
+          "y": 0.5,
+          "w": 0.2,
+          "h": 0.12,
+          "scale": 0.15
+        }
+      ],
+      "notes": "slightly out of focus; overhead Bay Bridge signs"
+    },
+    {
+      "code": "TV304",
+      "name": "I-80 : SoMa / US-101 Split",
+      "tags": [
+        "freeway",
+        "interchange",
+        "downtown",
+        "sf"
+      ],
+      "placement": [
+        {
+          "x": 0.35,
+          "y": 0.55,
+          "w": 0.25,
+          "h": 0.15,
+          "scale": 0.16
+        },
+        {
+          "x": 0.65,
+          "y": 0.7,
+          "w": 0.3,
+          "h": 0.15,
+          "scale": 0.3
+        }
+      ],
+      "notes": "washed out / low contrast; dense SoMa traffic"
+    },
+    {
+      "code": "TVD01",
+      "name": "I-80 : Bay Bridge West Approach (Fremont St)",
+      "tags": [
+        "bridge",
+        "downtown",
+        "sf"
+      ],
+      "placement": [
+        {
+          "x": 0.7,
+          "y": 0.65,
+          "w": 0.25,
+          "h": 0.2,
+          "scale": 0.35
+        },
+        {
+          "x": 0.3,
+          "y": 0.55,
+          "w": 0.2,
+          "h": 0.15,
+          "scale": 0.22
+        },
+        {
+          "x": 0.4,
+          "y": 0.4,
+          "w": 0.2,
+          "h": 0.1,
+          "scale": 0.1
+        }
+      ],
+      "notes": "clear, gantry over Bay Bridge approach"
+    },
+    {
+      "code": "TV308",
+      "name": "US-101 : Alemany / I-280",
+      "tags": [
+        "freeway",
+        "interchange",
+        "sf"
+      ],
+      "placement": [
+        {
+          "x": 0.05,
+          "y": 0.5,
+          "w": 0.25,
+          "h": 0.35,
+          "scale": 0.4
+        },
+        {
+          "x": 0.35,
+          "y": 0.65,
+          "w": 0.2,
+          "h": 0.15,
+          "scale": 0.3
+        },
+        {
+          "x": 0.55,
+          "y": 0.3,
+          "w": 0.2,
+          "h": 0.1,
+          "scale": 0.1
+        }
+      ],
+      "notes": "sharp; shrubs on the left"
+    },
+    {
+      "code": "TVD33",
+      "name": "I-80 : Bay Bridge SAS Tower West",
+      "tags": [
+        "bridge",
+        "landmark"
+      ],
+      "placement": [
+        {
+          "x": 0.52,
+          "y": 0.55,
+          "w": 0.14,
+          "h": 0.2,
+          "scale": 0.1
+        },
+        {
+          "x": 0.72,
+          "y": 0.5,
+          "w": 0.1,
+          "h": 0.18,
+          "scale": 0.1
+        }
+      ],
+      "notes": "looks through the SAS tower steelwork; SF skyline far"
+    },
+    {
+      "code": "TVD35",
+      "name": "I-80 : Bay Bridge East Span Skyway",
+      "tags": [
+        "bridge",
+        "landmark"
+      ],
+      "placement": [
+        {
+          "x": 0.5,
+          "y": 0.6,
+          "w": 0.3,
+          "h": 0.25,
+          "scale": 0.3
+        },
+        {
+          "x": 0.5,
+          "y": 0.42,
+          "w": 0.15,
+          "h": 0.1,
+          "scale": 0.1
+        }
+      ],
+      "notes": "bridge deck + steel suspension cables, clear"
+    },
+    {
+      "code": "TVA71",
+      "name": "I-580 : MacArthur Maze (I-80 junction)",
+      "tags": [
+        "interchange",
+        "maze",
+        "oakland"
+      ],
+      "placement": [
+        {
+          "x": 0.3,
+          "y": 0.72,
+          "w": 0.3,
+          "h": 0.15,
+          "scale": 0.35
+        },
+        {
+          "x": 0.35,
+          "y": 0.45,
+          "w": 0.15,
+          "h": 0.1,
+          "scale": 0.12
+        },
+        {
+          "x": 0.5,
+          "y": 0.3,
+          "w": 0.3,
+          "h": 0.05,
+          "scale": 0.07
+        }
+      ],
+      "notes": "excellent: wide interchange, ramps, ramp curve, hills"
+    },
+    {
+      "code": "TV121",
+      "name": "I-80 : Ashby Avenue (Berkeley)",
+      "tags": [
+        "freeway",
+        "east-bay"
+      ],
+      "placement": [
+        {
+          "x": 0.62,
+          "y": 0.6,
+          "w": 0.22,
+          "h": 0.25,
+          "scale": 0.3
+        },
+        {
+          "x": 0.05,
+          "y": 0.55,
+          "w": 0.2,
+          "h": 0.15,
+          "scale": 0.22
+        },
+        {
+          "x": 0.55,
+          "y": 0.35,
+          "w": 0.15,
+          "h": 0.1,
+          "scale": 0.1
+        }
+      ],
+      "notes": "dense traffic; small file (9 KB) but clear"
+    },
+    {
+      "code": "TV510",
+      "name": "I-80 : San Pablo / El Portal",
+      "tags": [
+        "freeway",
+        "east-bay"
+      ],
+      "placement": [
+        {
+          "x": 0.62,
+          "y": 0.62,
+          "w": 0.3,
+          "h": 0.22,
+          "scale": 0.28
+        },
+        {
+          "x": 0.1,
+          "y": 0.42,
+          "w": 0.25,
+          "h": 0.2,
+          "scale": 0.2
+        }
+      ],
+      "notes": "dense traffic, concrete gore areas"
+    },
+    {
+      "code": "TV521",
+      "name": "I-580 : Richmond Cutting Blvd",
+      "tags": [
+        "freeway",
+        "east-bay"
+      ],
+      "placement": [
+        {
+          "x": 0.3,
+          "y": 0.6,
+          "w": 0.3,
+          "h": 0.25,
+          "scale": 0.35
+        },
+        {
+          "x": 0.55,
+          "y": 0.5,
+          "w": 0.2,
+          "h": 0.1,
+          "scale": 0.12
+        }
+      ],
+      "notes": "nearly empty wide roadway; hazy (5 KB)"
+    },
+    {
+      "code": "TV103",
+      "name": "SR-24 : I-980 Junction (Oakland)",
+      "tags": [
+        "freeway",
+        "interchange",
+        "oakland"
+      ],
+      "placement": [
+        {
+          "x": 0.65,
+          "y": 0.5,
+          "w": 0.3,
+          "h": 0.35,
+          "scale": 0.3
+        },
+        {
+          "x": 0.35,
+          "y": 0.7,
+          "w": 0.2,
+          "h": 0.15,
+          "scale": 0.3
+        },
+        {
+          "x": 0.1,
+          "y": 0.45,
+          "w": 0.3,
+          "h": 0.15,
+          "scale": 0.12
+        }
+      ],
+      "notes": "Oakland skyline, BART tracks, empty flyover; small file but clear"
+    },
+    {
+      "code": "TV111",
+      "name": "I-880 : Broadway (Oakland)",
+      "tags": [
+        "freeway",
+        "downtown",
+        "oakland"
+      ],
+      "placement": [
+        {
+          "x": 0.1,
+          "y": 0.6,
+          "w": 0.3,
+          "h": 0.25,
+          "scale": 0.33
+        },
+        {
+          "x": 0.25,
+          "y": 0.35,
+          "w": 0.15,
+          "h": 0.12,
+          "scale": 0.12
+        },
+        {
+          "x": 0.72,
+          "y": 0.5,
+          "w": 0.15,
+          "h": 0.3,
+          "scale": 0.22
+        }
+      ],
+      "notes": "wide freeway + curved elevated ramp"
+    },
+    {
+      "code": "TV606",
+      "name": "SR-24 : Caldecott Tunnel East (Gateway Blvd)",
+      "tags": [
+        "tunnel",
+        "freeway",
+        "east-bay"
+      ],
+      "placement": [
+        {
+          "x": 0.1,
+          "y": 0.72,
+          "w": 0.35,
+          "h": 0.14,
+          "scale": 0.2
+        },
+        {
+          "x": 0.55,
+          "y": 0.52,
+          "w": 0.15,
+          "h": 0.08,
+          "scale": 0.07
+        }
+      ],
+      "notes": "Caldecott east portal gap between hills; far away"
+    },
+    {
+      "code": "TV208",
+      "name": "I-680 : Mt Diablo Blvd (Walnut Creek)",
+      "tags": [
+        "freeway",
+        "east-bay"
+      ],
+      "placement": [
+        {
+          "x": 0.1,
+          "y": 0.65,
+          "w": 0.3,
+          "h": 0.2,
+          "scale": 0.3
+        },
+        {
+          "x": 0.1,
+          "y": 0.45,
+          "w": 0.3,
+          "h": 0.08,
+          "scale": 0.1
+        }
+      ],
+      "notes": "overpasses and ramps; hazy"
+    },
+    {
+      "code": "TVB17",
+      "name": "I-880 : Hayward / SR-238",
+      "tags": [
+        "freeway",
+        "east-bay"
+      ],
+      "placement": [
+        {
+          "x": 0.7,
+          "y": 0.6,
+          "w": 0.25,
+          "h": 0.12,
+          "scale": 0.2
+        },
+        {
+          "x": 0,
+          "y": 0.7,
+          "w": 0.18,
+          "h": 0.18,
+          "scale": 0.35
+        },
+        {
+          "x": 0.45,
+          "y": 0.45,
+          "w": 0.15,
+          "h": 0.08,
+          "scale": 0.08
+        }
+      ],
+      "notes": "view from an overpass; houses and trees at left"
+    },
+    {
+      "code": "TVB11",
+      "name": "I-880 : Fremont / SR-84",
+      "tags": [
+        "freeway",
+        "interchange",
+        "east-bay"
+      ],
+      "placement": [
+        {
+          "x": 0.3,
+          "y": 0.75,
+          "w": 0.15,
+          "h": 0.13,
+          "scale": 0.3
+        },
+        {
+          "x": 0.05,
+          "y": 0.5,
+          "w": 0.25,
+          "h": 0.25,
+          "scale": 0.25
+        },
+        {
+          "x": 0.55,
+          "y": 0.5,
+          "w": 0.12,
+          "h": 0.08,
+          "scale": 0.08
+        }
+      ],
+      "notes": "wide freeway, gore area; small file (7 KB) but clear"
+    },
+    {
+      "code": "TVE04",
+      "name": "SR-92 : San Mateo Bridge (east-bound span)",
+      "tags": [
+        "bridge",
+        "peninsula"
+      ],
+      "placement": [
+        {
+          "x": 0.05,
+          "y": 0.72,
+          "w": 0.35,
+          "h": 0.16,
+          "scale": 0.24
+        },
+        {
+          "x": 0.35,
+          "y": 0.5,
+          "w": 0.2,
+          "h": 0.12,
+          "scale": 0.12
+        },
+        {
+          "x": 0.62,
+          "y": 0.32,
+          "w": 0.12,
+          "h": 0.1,
+          "scale": 0.06
+        }
+      ],
+      "notes": "clear view of the bridge deck over the water, greyscale"
+    },
+    {
+      "code": "TV425",
+      "name": "US-101 : San Mateo / Hillsdale",
+      "tags": [
+        "freeway",
+        "peninsula"
+      ],
+      "placement": [
+        {
+          "x": 0.72,
+          "y": 0.75,
+          "w": 0.22,
+          "h": 0.12,
+          "scale": 0.22
+        },
+        {
+          "x": 0.2,
+          "y": 0.55,
+          "w": 0.15,
+          "h": 0.1,
+          "scale": 0.12
+        }
+      ],
+      "notes": "freeway with marsh/water on the right; a big tree blocks part of the view"
+    },
+    {
+      "code": "TV446",
+      "name": "I-280 : Canada Road (Woodside)",
+      "tags": [
+        "freeway",
+        "peninsula"
+      ],
+      "placement": [
+        {
+          "x": 0.72,
+          "y": 0.62,
+          "w": 0.18,
+          "h": 0.22,
+          "scale": 0.3
+        },
+        {
+          "x": 0.38,
+          "y": 0.6,
+          "w": 0.22,
+          "h": 0.15,
+          "scale": 0.2
+        },
+        {
+          "x": 0.6,
+          "y": 0.42,
+          "w": 0.12,
+          "h": 0.06,
+          "scale": 0.06
+        }
+      ],
+      "notes": "grassy median, hills; clear"
+    },
+    {
+      "code": "TV433",
+      "name": "US-101 : Willow Road (Menlo Park)",
+      "tags": [
+        "freeway",
+        "peninsula"
+      ],
+      "placement": [
+        {
+          "x": 0.7,
+          "y": 0.72,
+          "w": 0.15,
+          "h": 0.16,
+          "scale": 0.3
+        },
+        {
+          "x": 0.05,
+          "y": 0.6,
+          "w": 0.25,
+          "h": 0.15,
+          "scale": 0.25
+        },
+        {
+          "x": 0.35,
+          "y": 0.5,
+          "w": 0.1,
+          "h": 0.06,
+          "scale": 0.07
+        }
+      ],
+      "notes": "lens scratch across the sky; freeway + street"
+    },
+    {
+      "code": "TV957",
+      "name": "SR-84 : Dumbarton Bridge Mid-Span",
+      "tags": [
+        "bridge",
+        "peninsula"
+      ],
+      "placement": [
+        {
+          "x": 0.1,
+          "y": 0.45,
+          "w": 0.5,
+          "h": 0.4,
+          "scale": 0.3
+        },
+        {
+          "x": 0.55,
+          "y": 0.25,
+          "w": 0.15,
+          "h": 0.1,
+          "scale": 0.12
+        }
+      ],
+      "notes": "very dark (night-vision look), deck only barely visible"
+    },
+    {
+      "code": "TV949",
+      "name": "SR-84 : University Ave (East Palo Alto)",
+      "tags": [
+        "freeway",
+        "stanford",
+        "peninsula"
+      ],
+      "placement": [
+        {
+          "x": 0.42,
+          "y": 0.62,
+          "w": 0.12,
+          "h": 0.26,
+          "scale": 0.3
+        },
+        {
+          "x": 0.65,
+          "y": 0.65,
+          "w": 0.3,
+          "h": 0.2,
+          "scale": 0.22
+        },
+        {
+          "x": 0.7,
+          "y": 0.42,
+          "w": 0.08,
+          "h": 0.06,
+          "scale": 0.06
+        }
+      ],
+      "notes": "flat marsh, bike trail, Dumbarton Bridge on the horizon"
+    },
+    {
+      "code": "TV437",
+      "name": "US-101 : Embarcadero Road (Palo Alto)",
+      "tags": [
+        "freeway",
+        "stanford",
+        "peninsula"
+      ],
+      "placement": [
+        {
+          "x": 0.15,
+          "y": 0.72,
+          "w": 0.3,
+          "h": 0.15,
+          "scale": 0.3
+        },
+        {
+          "x": 0.6,
+          "y": 0.5,
+          "w": 0.3,
+          "h": 0.1,
+          "scale": 0.13
+        },
+        {
+          "x": 0.02,
+          "y": 0.62,
+          "w": 0.15,
+          "h": 0.22,
+          "scale": 0.3
+        }
+      ],
+      "notes": "sharp, heavy traffic, Embarcadero overpass; replaced TVC31 (foliage)"
+    },
+    {
+      "code": "T028N",
+      "name": "SR-82 : El Camino Real @ Embarcadero (Stanford)",
+      "tags": [
+        "surface",
+        "stanford",
+        "peninsula"
+      ],
+      "placement": [
+        {
+          "x": 0.2,
+          "y": 0.62,
+          "w": 0.4,
+          "h": 0.26,
+          "scale": 0.35
+        },
+        {
+          "x": 0.55,
+          "y": 0.35,
+          "w": 0.35,
+          "h": 0.1,
+          "scale": 0.14
+        }
+      ],
+      "notes": "oak grove across El Camino Real, crosswalk; Stanford-adjacent"
+    },
+    {
+      "code": "TVC62",
+      "name": "US-101 : I-880 Junction (San Jose)",
+      "tags": [
+        "freeway",
+        "interchange",
+        "downtown",
+        "south-bay"
+      ],
+      "placement": [
+        {
+          "x": 0.55,
+          "y": 0.55,
+          "w": 0.3,
+          "h": 0.15,
+          "scale": 0.25
+        },
+        {
+          "x": 0.3,
+          "y": 0.35,
+          "w": 0.4,
+          "h": 0.08,
+          "scale": 0.1
+        }
+      ],
+      "notes": "wide sharp freeway, trucks"
+    },
+    {
+      "code": "TVB76",
+      "name": "I-880 : The Alameda (San Jose)",
+      "tags": [
+        "freeway",
+        "downtown",
+        "south-bay"
+      ],
+      "placement": [
+        {
+          "x": 0.15,
+          "y": 0.55,
+          "w": 0.35,
+          "h": 0.15,
+          "scale": 0.22
+        },
+        {
+          "x": 0.02,
+          "y": 0.72,
+          "w": 0.35,
+          "h": 0.15,
+          "scale": 0.35
+        },
+        {
+          "x": 0.5,
+          "y": 0.35,
+          "w": 0.2,
+          "h": 0.08,
+          "scale": 0.08
+        }
+      ],
+      "notes": "dry dirt lot and ramps; clear"
+    },
+    {
+      "code": "TVC42",
+      "name": "I-280 : I-880 / SR-17 Junction (San Jose)",
+      "tags": [
+        "freeway",
+        "interchange",
+        "south-bay"
+      ],
+      "placement": [
+        {
+          "x": 0.55,
+          "y": 0.75,
+          "w": 0.35,
+          "h": 0.12,
+          "scale": 0.25
+        },
+        {
+          "x": 0.3,
+          "y": 0.55,
+          "w": 0.3,
+          "h": 0.1,
+          "scale": 0.08
+        }
+      ],
+      "notes": "sun glare / lens flare over a distant interchange"
+    }
+  ]
+}

@@ -1,0 +1,1088 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "n-sr37",
+      "cameraId": "d4-tv136",
+      "name": "SR-37 Sonoma Marsh",
+      "lat": 38.1469,
+      "lon": -122.45495,
+      "region": "north-bay",
+      "tags": [
+        "freeway",
+        "causeway"
+      ],
+      "tactical": {
+        "x": 330,
+        "y": 45
+      }
+    },
+    {
+      "id": "n-vallejo",
+      "cameraId": "d4-tv962",
+      "name": "Vallejo / SR-37 Jct",
+      "lat": 38.11911,
+      "lon": -122.23051,
+      "region": "north-bay",
+      "tags": [
+        "freeway",
+        "interchange"
+      ],
+      "tactical": {
+        "x": 520,
+        "y": 45
+      }
+    },
+    {
+      "id": "n-carquinez",
+      "cameraId": "d4-tv972",
+      "name": "Carquinez Bridge",
+      "lat": 38.05044,
+      "lon": -122.231204,
+      "region": "north-bay",
+      "tags": [
+        "bridge"
+      ],
+      "tactical": {
+        "x": 575,
+        "y": 150
+      }
+    },
+    {
+      "id": "n-benicia",
+      "cameraId": "d4-tv815",
+      "name": "Benicia Split",
+      "lat": 38.049966,
+      "lon": -122.138641,
+      "region": "north-bay",
+      "tags": [
+        "freeway",
+        "interchange"
+      ],
+      "tactical": {
+        "x": 700,
+        "y": 140
+      }
+    },
+    {
+      "id": "n-san-rafael",
+      "cameraId": "d4-tve83",
+      "name": "San Rafael Interchange",
+      "lat": 37.96194,
+      "lon": -122.50975,
+      "region": "north-bay",
+      "tags": [
+        "freeway",
+        "interchange"
+      ],
+      "tactical": {
+        "x": 150,
+        "y": 175
+      }
+    },
+    {
+      "id": "n-rsr-bridge",
+      "cameraId": "d4-tvr03",
+      "name": "Richmond-San Rafael Bridge",
+      "lat": 37.933877,
+      "lon": -122.425199,
+      "region": "north-bay",
+      "tags": [
+        "bridge"
+      ],
+      "tactical": {
+        "x": 265,
+        "y": 270
+      }
+    },
+    {
+      "id": "n-marin-city",
+      "cameraId": "d4-tve74",
+      "name": "Marin City",
+      "lat": 37.8732,
+      "lon": -122.5075,
+      "region": "north-bay",
+      "tags": [
+        "freeway"
+      ],
+      "tactical": {
+        "x": 105,
+        "y": 275
+      }
+    },
+    {
+      "id": "n-spencer",
+      "cameraId": "d4-tve73",
+      "name": "Waldo Grade",
+      "lat": 37.85081,
+      "lon": -122.48975,
+      "region": "north-bay",
+      "tags": [
+        "freeway",
+        "tunnel-approach"
+      ],
+      "tactical": {
+        "x": 115,
+        "y": 365
+      }
+    },
+    {
+      "id": "n-gg-north",
+      "cameraId": "d4-tve70",
+      "name": "Golden Gate North",
+      "lat": 37.83313,
+      "lon": -122.48142,
+      "region": "north-bay",
+      "tags": [
+        "bridge",
+        "landmark"
+      ],
+      "tactical": {
+        "x": 145,
+        "y": 445
+      }
+    },
+    {
+      "id": "n-richmond-580",
+      "cameraId": "d4-tv521",
+      "name": "Richmond I-580",
+      "lat": 37.925115,
+      "lon": -122.362044,
+      "region": "east-bay",
+      "tags": [
+        "freeway"
+      ],
+      "tactical": {
+        "x": 385,
+        "y": 285
+      }
+    },
+    {
+      "id": "n-san-pablo",
+      "cameraId": "d4-tv510",
+      "name": "San Pablo I-80",
+      "lat": 37.964586,
+      "lon": -122.32496,
+      "region": "east-bay",
+      "tags": [
+        "freeway"
+      ],
+      "tactical": {
+        "x": 480,
+        "y": 270
+      }
+    },
+    {
+      "id": "n-ashby",
+      "cameraId": "d4-tv121",
+      "name": "Ashby / Berkeley",
+      "lat": 37.85214,
+      "lon": -122.29996,
+      "region": "east-bay",
+      "tags": [
+        "freeway"
+      ],
+      "tactical": {
+        "x": 470,
+        "y": 375
+      }
+    },
+    {
+      "id": "n-maze",
+      "cameraId": "d4-tva71",
+      "name": "MacArthur Maze",
+      "lat": 37.82632,
+      "lon": -122.29765,
+      "region": "east-bay",
+      "tags": [
+        "interchange",
+        "maze",
+        "oakland"
+      ],
+      "tactical": {
+        "x": 470,
+        "y": 475
+      }
+    },
+    {
+      "id": "n-oak-980",
+      "cameraId": "d4-tv103",
+      "name": "SR-24 / I-980",
+      "lat": 37.82904,
+      "lon": -122.26748,
+      "region": "east-bay",
+      "tags": [
+        "freeway",
+        "interchange",
+        "oakland"
+      ],
+      "tactical": {
+        "x": 555,
+        "y": 440
+      }
+    },
+    {
+      "id": "n-oak-880",
+      "cameraId": "d4-tv111",
+      "name": "Oakland I-880 Broadway",
+      "lat": 37.798402,
+      "lon": -122.275393,
+      "region": "east-bay",
+      "tags": [
+        "freeway",
+        "downtown",
+        "oakland"
+      ],
+      "tactical": {
+        "x": 520,
+        "y": 545
+      }
+    },
+    {
+      "id": "n-caldecott",
+      "cameraId": "d4-tv606",
+      "name": "Caldecott Tunnel East",
+      "lat": 37.867084,
+      "lon": -122.197759,
+      "region": "east-bay",
+      "tags": [
+        "tunnel",
+        "freeway"
+      ],
+      "tactical": {
+        "x": 635,
+        "y": 395
+      }
+    },
+    {
+      "id": "n-walnut-creek",
+      "cameraId": "d4-tv208",
+      "name": "Walnut Creek I-680",
+      "lat": 37.89613,
+      "lon": -122.07021,
+      "region": "east-bay",
+      "tags": [
+        "freeway"
+      ],
+      "tactical": {
+        "x": 715,
+        "y": 320
+      }
+    },
+    {
+      "id": "n-hayward-238",
+      "cameraId": "d4-tvb17",
+      "name": "Hayward / SR-238",
+      "lat": 37.69428,
+      "lon": -122.1437,
+      "region": "east-bay",
+      "tags": [
+        "freeway"
+      ],
+      "tactical": {
+        "x": 575,
+        "y": 650
+      }
+    },
+    {
+      "id": "n-fremont-84",
+      "cameraId": "d4-tvb11",
+      "name": "Fremont I-880 / SR-84",
+      "lat": 37.56423,
+      "lon": -122.03965,
+      "region": "east-bay",
+      "tags": [
+        "freeway",
+        "interchange"
+      ],
+      "tactical": {
+        "x": 685,
+        "y": 760
+      }
+    },
+    {
+      "id": "n-bay-bridge-east",
+      "cameraId": "d4-tvd35",
+      "name": "Bay Bridge East Span",
+      "lat": 37.820596,
+      "lon": -122.33935,
+      "region": "east-bay",
+      "tags": [
+        "bridge",
+        "landmark"
+      ],
+      "tactical": {
+        "x": 390,
+        "y": 490
+      }
+    },
+    {
+      "id": "n-bay-bridge-west",
+      "cameraId": "d4-tvd33",
+      "name": "Bay Bridge West Span",
+      "lat": 37.81525,
+      "lon": -122.35858,
+      "region": "sf",
+      "tags": [
+        "bridge",
+        "landmark"
+      ],
+      "tactical": {
+        "x": 320,
+        "y": 525
+      }
+    },
+    {
+      "id": "n-bay-bridge-sf",
+      "cameraId": "d4-tvd01",
+      "name": "Bay Bridge West Approach",
+      "lat": 37.78537,
+      "lon": -122.39244,
+      "region": "sf",
+      "tags": [
+        "bridge",
+        "downtown"
+      ],
+      "tactical": {
+        "x": 258,
+        "y": 555
+      }
+    },
+    {
+      "id": "n-octavia",
+      "cameraId": "d4-tv301",
+      "name": "Octavia / Van Ness",
+      "lat": 37.77146,
+      "lon": -122.42323,
+      "region": "sf",
+      "tags": [
+        "freeway",
+        "downtown"
+      ],
+      "tactical": {
+        "x": 165,
+        "y": 575
+      }
+    },
+    {
+      "id": "n-soma-split",
+      "cameraId": "d4-tv304",
+      "name": "SoMa I-80 / US-101",
+      "lat": 37.77025,
+      "lon": -122.40554,
+      "region": "sf",
+      "tags": [
+        "freeway",
+        "interchange",
+        "downtown"
+      ],
+      "tactical": {
+        "x": 215,
+        "y": 610
+      }
+    },
+    {
+      "id": "n-us101-alemany",
+      "cameraId": "d4-tv308",
+      "name": "Alemany Interchange",
+      "lat": 37.73839,
+      "lon": -122.40828,
+      "region": "sf",
+      "tags": [
+        "freeway",
+        "interchange"
+      ],
+      "tactical": {
+        "x": 200,
+        "y": 700
+      }
+    },
+    {
+      "id": "n-sm-bridge",
+      "cameraId": "d4-tve04",
+      "name": "San Mateo Bridge",
+      "lat": 37.591866,
+      "lon": -122.238776,
+      "region": "peninsula",
+      "tags": [
+        "bridge"
+      ],
+      "tactical": {
+        "x": 435,
+        "y": 690
+      }
+    },
+    {
+      "id": "n-hillsdale",
+      "cameraId": "d4-tv425",
+      "name": "San Mateo Hillsdale",
+      "lat": 37.53354,
+      "lon": -122.27736,
+      "region": "peninsula",
+      "tags": [
+        "freeway"
+      ],
+      "tactical": {
+        "x": 320,
+        "y": 740
+      }
+    },
+    {
+      "id": "n-280-canada",
+      "cameraId": "d4-tv446",
+      "name": "I-280 Canada Road",
+      "lat": 37.55658,
+      "lon": -122.38045,
+      "region": "peninsula",
+      "tags": [
+        "freeway",
+        "stanford"
+      ],
+      "tactical": {
+        "x": 110,
+        "y": 800
+      }
+    },
+    {
+      "id": "n-willow-101",
+      "cameraId": "d4-tv433",
+      "name": "Willow Road",
+      "lat": 37.47568,
+      "lon": -122.16635,
+      "region": "peninsula",
+      "tags": [
+        "freeway"
+      ],
+      "tactical": {
+        "x": 385,
+        "y": 790
+      }
+    },
+    {
+      "id": "n-dumbarton",
+      "cameraId": "d4-tv957",
+      "name": "Dumbarton Bridge",
+      "lat": 37.51066,
+      "lon": -122.11188,
+      "region": "peninsula",
+      "tags": [
+        "bridge"
+      ],
+      "tactical": {
+        "x": 585,
+        "y": 775
+      }
+    },
+    {
+      "id": "n-univ-84",
+      "cameraId": "d4-tv949",
+      "name": "University Ave / SR-84",
+      "lat": 37.486653,
+      "lon": -122.142,
+      "region": "peninsula",
+      "tags": [
+        "freeway",
+        "stanford"
+      ],
+      "tactical": {
+        "x": 495,
+        "y": 805
+      }
+    },
+    {
+      "id": "n-embarcadero-101",
+      "cameraId": "d4-tv437",
+      "name": "Embarcadero Road 101",
+      "lat": 37.45269,
+      "lon": -122.12811,
+      "region": "peninsula",
+      "tags": [
+        "freeway",
+        "stanford"
+      ],
+      "tactical": {
+        "x": 445,
+        "y": 865
+      }
+    },
+    {
+      "id": "n-el-camino-emb",
+      "cameraId": "d4-t028n",
+      "name": "El Camino at Embarcadero",
+      "lat": 37.4375,
+      "lon": -122.16,
+      "region": "peninsula",
+      "tags": [
+        "surface",
+        "stanford"
+      ],
+      "tactical": {
+        "x": 325,
+        "y": 875
+      }
+    },
+    {
+      "id": "n-sj-880-101",
+      "cameraId": "d4-tvc62",
+      "name": "San Jose US-101 / I-880",
+      "lat": 37.36367,
+      "lon": -121.90242,
+      "region": "south-bay",
+      "tags": [
+        "freeway",
+        "interchange",
+        "downtown"
+      ],
+      "tactical": {
+        "x": 690,
+        "y": 890
+      }
+    },
+    {
+      "id": "n-sj-alameda",
+      "cameraId": "d4-tvb76",
+      "name": "The Alameda",
+      "lat": 37.342878,
+      "lon": -121.926239,
+      "region": "south-bay",
+      "tags": [
+        "freeway",
+        "downtown"
+      ],
+      "tactical": {
+        "x": 420,
+        "y": 960
+      }
+    },
+    {
+      "id": "n-sj-i280",
+      "cameraId": "d4-tvc42",
+      "name": "San Jose I-280 / I-880",
+      "lat": 37.3177,
+      "lon": -121.9387,
+      "region": "south-bay",
+      "tags": [
+        "freeway",
+        "interchange"
+      ],
+      "tactical": {
+        "x": 215,
+        "y": 965
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-sr37--vallejo",
+      "a": "n-sr37",
+      "b": "n-vallejo",
+      "kind": "freeway",
+      "route": "SR-37",
+      "lengthKm": 23.8
+    },
+    {
+      "id": "e-sr37--san-rafael",
+      "a": "n-sr37",
+      "b": "n-san-rafael",
+      "kind": "freeway",
+      "route": "SR-37 / US-101",
+      "lengthKm": 25.3
+    },
+    {
+      "id": "e-san-rafael--marin-city",
+      "a": "n-san-rafael",
+      "b": "n-marin-city",
+      "kind": "freeway",
+      "route": "US-101",
+      "lengthKm": 11.8
+    },
+    {
+      "id": "e-marin-city--spencer",
+      "a": "n-marin-city",
+      "b": "n-spencer",
+      "kind": "tunnel",
+      "route": "US-101 (Waldo Tunnel)",
+      "lengthKm": 3.5
+    },
+    {
+      "id": "e-spencer--gg-north",
+      "a": "n-spencer",
+      "b": "n-gg-north",
+      "kind": "freeway",
+      "route": "US-101",
+      "lengthKm": 2.5
+    },
+    {
+      "id": "e-gg-north--octavia",
+      "a": "n-gg-north",
+      "b": "n-octavia",
+      "kind": "bridge",
+      "route": "Golden Gate Bridge (US-101)",
+      "lengthKm": 10.3
+    },
+    {
+      "id": "e-san-rafael--rsr-bridge",
+      "a": "n-san-rafael",
+      "b": "n-rsr-bridge",
+      "kind": "bridge",
+      "route": "Richmond-San Rafael Bridge (I-580)",
+      "lengthKm": 9.7
+    },
+    {
+      "id": "e-rsr-bridge--richmond-580",
+      "a": "n-rsr-bridge",
+      "b": "n-richmond-580",
+      "kind": "bridge",
+      "route": "Richmond-San Rafael Bridge (I-580)",
+      "lengthKm": 6.7
+    },
+    {
+      "id": "e-richmond-580--san-pablo",
+      "a": "n-richmond-580",
+      "b": "n-san-pablo",
+      "kind": "freeway",
+      "route": "I-580 / I-80",
+      "lengthKm": 6.6
+    },
+    {
+      "id": "e-san-pablo--carquinez",
+      "a": "n-san-pablo",
+      "b": "n-carquinez",
+      "kind": "freeway",
+      "route": "I-80",
+      "lengthKm": 15.1
+    },
+    {
+      "id": "e-carquinez--vallejo",
+      "a": "n-carquinez",
+      "b": "n-vallejo",
+      "kind": "bridge",
+      "route": "Carquinez Bridge (I-80)",
+      "lengthKm": 9.2
+    },
+    {
+      "id": "e-vallejo--benicia",
+      "a": "n-vallejo",
+      "b": "n-benicia",
+      "kind": "freeway",
+      "route": "I-780",
+      "lengthKm": 13.3
+    },
+    {
+      "id": "e-benicia--walnut-creek",
+      "a": "n-benicia",
+      "b": "n-walnut-creek",
+      "kind": "bridge",
+      "route": "Benicia-Martinez Bridge (I-680)",
+      "lengthKm": 21.8
+    },
+    {
+      "id": "e-san-pablo--ashby",
+      "a": "n-san-pablo",
+      "b": "n-ashby",
+      "kind": "freeway",
+      "route": "I-80",
+      "lengthKm": 15.2
+    },
+    {
+      "id": "e-ashby--maze",
+      "a": "n-ashby",
+      "b": "n-maze",
+      "kind": "freeway",
+      "route": "I-80",
+      "lengthKm": 3.5
+    },
+    {
+      "id": "e-maze--bay-bridge-east",
+      "a": "n-maze",
+      "b": "n-bay-bridge-east",
+      "kind": "bridge",
+      "route": "San Francisco-Oakland Bay Bridge (I-80)",
+      "lengthKm": 4.5
+    },
+    {
+      "id": "e-bay-bridge-east--bay-bridge-west",
+      "a": "n-bay-bridge-east",
+      "b": "n-bay-bridge-west",
+      "kind": "bridge",
+      "route": "San Francisco-Oakland Bay Bridge (I-80)",
+      "lengthKm": 2.1
+    },
+    {
+      "id": "e-bay-bridge-west--bay-bridge-sf",
+      "a": "n-bay-bridge-west",
+      "b": "n-bay-bridge-sf",
+      "kind": "bridge",
+      "route": "San Francisco-Oakland Bay Bridge (I-80)",
+      "lengthKm": 5.4
+    },
+    {
+      "id": "e-bay-bridge-sf--soma-split",
+      "a": "n-bay-bridge-sf",
+      "b": "n-soma-split",
+      "kind": "freeway",
+      "route": "I-80",
+      "lengthKm": 2.4
+    },
+    {
+      "id": "e-bay-bridge-sf--octavia",
+      "a": "n-bay-bridge-sf",
+      "b": "n-octavia",
+      "kind": "surface",
+      "route": "Market Street",
+      "lengthKm": 3.7
+    },
+    {
+      "id": "e-octavia--soma-split",
+      "a": "n-octavia",
+      "b": "n-soma-split",
+      "kind": "freeway",
+      "route": "US-101 (Central Freeway)",
+      "lengthKm": 1.9
+    },
+    {
+      "id": "e-soma-split--us101-alemany",
+      "a": "n-soma-split",
+      "b": "n-us101-alemany",
+      "kind": "freeway",
+      "route": "US-101",
+      "lengthKm": 4.3
+    },
+    {
+      "id": "e-us101-alemany--hillsdale",
+      "a": "n-us101-alemany",
+      "b": "n-hillsdale",
+      "kind": "freeway",
+      "route": "US-101",
+      "lengthKm": 30.6
+    },
+    {
+      "id": "e-us101-alemany--280-canada",
+      "a": "n-us101-alemany",
+      "b": "n-280-canada",
+      "kind": "freeway",
+      "route": "I-280",
+      "lengthKm": 24.4
+    },
+    {
+      "id": "e-maze--oak-980",
+      "a": "n-maze",
+      "b": "n-oak-980",
+      "kind": "freeway",
+      "route": "I-980 / SR-24",
+      "lengthKm": 3.2
+    },
+    {
+      "id": "e-maze--oak-880",
+      "a": "n-maze",
+      "b": "n-oak-880",
+      "kind": "freeway",
+      "route": "I-880",
+      "lengthKm": 4.4
+    },
+    {
+      "id": "e-oak-980--oak-880",
+      "a": "n-oak-980",
+      "b": "n-oak-880",
+      "kind": "freeway",
+      "route": "I-980",
+      "lengthKm": 4.2
+    },
+    {
+      "id": "e-oak-980--caldecott",
+      "a": "n-oak-980",
+      "b": "n-caldecott",
+      "kind": "tunnel",
+      "route": "Caldecott Tunnel (SR-24)",
+      "lengthKm": 8.9
+    },
+    {
+      "id": "e-caldecott--walnut-creek",
+      "a": "n-caldecott",
+      "b": "n-walnut-creek",
+      "kind": "freeway",
+      "route": "SR-24",
+      "lengthKm": 14
+    },
+    {
+      "id": "e-walnut-creek--fremont-84",
+      "a": "n-walnut-creek",
+      "b": "n-fremont-84",
+      "kind": "freeway",
+      "route": "I-680",
+      "lengthKm": 44.4
+    },
+    {
+      "id": "e-oak-880--hayward-238",
+      "a": "n-oak-880",
+      "b": "n-hayward-238",
+      "kind": "freeway",
+      "route": "I-880",
+      "lengthKm": 19.6
+    },
+    {
+      "id": "e-hayward-238--fremont-84",
+      "a": "n-hayward-238",
+      "b": "n-fremont-84",
+      "kind": "freeway",
+      "route": "I-880",
+      "lengthKm": 20.5
+    },
+    {
+      "id": "e-hayward-238--sm-bridge",
+      "a": "n-hayward-238",
+      "b": "n-sm-bridge",
+      "kind": "bridge",
+      "route": "San Mateo Bridge (SR-92)",
+      "lengthKm": 17
+    },
+    {
+      "id": "e-sm-bridge--hillsdale",
+      "a": "n-sm-bridge",
+      "b": "n-hillsdale",
+      "kind": "bridge",
+      "route": "San Mateo Bridge (SR-92)",
+      "lengthKm": 8.8
+    },
+    {
+      "id": "e-fremont-84--dumbarton",
+      "a": "n-fremont-84",
+      "b": "n-dumbarton",
+      "kind": "bridge",
+      "route": "Dumbarton Bridge (SR-84)",
+      "lengthKm": 10.5
+    },
+    {
+      "id": "e-dumbarton--univ-84",
+      "a": "n-dumbarton",
+      "b": "n-univ-84",
+      "kind": "bridge",
+      "route": "Dumbarton Bridge (SR-84)",
+      "lengthKm": 4.5
+    },
+    {
+      "id": "e-univ-84--willow-101",
+      "a": "n-univ-84",
+      "b": "n-willow-101",
+      "kind": "surface",
+      "route": "University Avenue / SR-84",
+      "lengthKm": 3
+    },
+    {
+      "id": "e-hillsdale--willow-101",
+      "a": "n-hillsdale",
+      "b": "n-willow-101",
+      "kind": "freeway",
+      "route": "US-101",
+      "lengthKm": 14.1
+    },
+    {
+      "id": "e-hillsdale--280-canada",
+      "a": "n-hillsdale",
+      "b": "n-280-canada",
+      "kind": "freeway",
+      "route": "SR-92 / I-280",
+      "lengthKm": 11.3
+    },
+    {
+      "id": "e-willow-101--embarcadero-101",
+      "a": "n-willow-101",
+      "b": "n-embarcadero-101",
+      "kind": "freeway",
+      "route": "US-101",
+      "lengthKm": 5.1
+    },
+    {
+      "id": "e-embarcadero-101--el-camino-emb",
+      "a": "n-embarcadero-101",
+      "b": "n-el-camino-emb",
+      "kind": "surface",
+      "route": "Embarcadero Road",
+      "lengthKm": 3.9
+    },
+    {
+      "id": "e-280-canada--el-camino-emb",
+      "a": "n-280-canada",
+      "b": "n-el-camino-emb",
+      "kind": "surface",
+      "route": "Sand Hill Road",
+      "lengthKm": 28.2
+    },
+    {
+      "id": "e-280-canada--sj-i280",
+      "a": "n-280-canada",
+      "b": "n-sj-i280",
+      "kind": "freeway",
+      "route": "I-280",
+      "lengthKm": 56.6
+    },
+    {
+      "id": "e-el-camino-emb--sj-alameda",
+      "a": "n-el-camino-emb",
+      "b": "n-sj-alameda",
+      "kind": "surface",
+      "route": "El Camino Real / The Alameda",
+      "lengthKm": 27.8
+    },
+    {
+      "id": "e-embarcadero-101--sj-880-101",
+      "a": "n-embarcadero-101",
+      "b": "n-sj-880-101",
+      "kind": "freeway",
+      "route": "US-101",
+      "lengthKm": 26.7
+    },
+    {
+      "id": "e-fremont-84--sj-880-101",
+      "a": "n-fremont-84",
+      "b": "n-sj-880-101",
+      "kind": "freeway",
+      "route": "I-880",
+      "lengthKm": 30.5
+    },
+    {
+      "id": "e-sj-880-101--sj-alameda",
+      "a": "n-sj-880-101",
+      "b": "n-sj-alameda",
+      "kind": "freeway",
+      "route": "I-880",
+      "lengthKm": 3.8
+    },
+    {
+      "id": "e-sj-alameda--sj-i280",
+      "a": "n-sj-alameda",
+      "b": "n-sj-i280",
+      "kind": "freeway",
+      "route": "I-280 / I-880",
+      "lengthKm": 3.6
+    }
+  ],
+  "headquarters": [
+    {
+      "id": "hq-stanford",
+      "name": "Stanford Research Park Annex",
+      "lat": 37.4275,
+      "lon": -122.1697,
+      "tactical": {
+        "x": 310,
+        "y": 810
+      },
+      "approaches": [
+        {
+          "id": "stanford-palm",
+          "label": "Palm Drive Approach",
+          "fromNode": "n-el-camino-emb",
+          "door": "Palm Drive Main Gate"
+        },
+        {
+          "id": "stanford-bayfront",
+          "label": "Bayfront Approach (SR-84)",
+          "fromNode": "n-univ-84",
+          "door": "Bayfront Loading Dock"
+        },
+        {
+          "id": "stanford-sandhill",
+          "label": "Sand Hill Approach (I-280)",
+          "fromNode": "n-280-canada",
+          "door": "Sand Hill Service Gate"
+        }
+      ]
+    },
+    {
+      "id": "hq-sf",
+      "name": "Downtown San Francisco Operations Center",
+      "lat": 37.7879,
+      "lon": -122.4075,
+      "tactical": {
+        "x": 105,
+        "y": 655
+      },
+      "approaches": [
+        {
+          "id": "sf-embarcadero",
+          "label": "Embarcadero Approach",
+          "fromNode": "n-bay-bridge-sf",
+          "door": "Embarcadero Freight Dock"
+        },
+        {
+          "id": "sf-division",
+          "label": "Division Street Approach",
+          "fromNode": "n-soma-split",
+          "door": "Division Street Roll-Up Door"
+        },
+        {
+          "id": "sf-van-ness",
+          "label": "Van Ness Approach",
+          "fromNode": "n-octavia",
+          "door": "Van Ness North Gate"
+        }
+      ]
+    },
+    {
+      "id": "hq-oakland",
+      "name": "Oakland Port Command",
+      "lat": 37.8044,
+      "lon": -122.2712,
+      "tactical": {
+        "x": 615,
+        "y": 530
+      },
+      "approaches": [
+        {
+          "id": "oakland-maze",
+          "label": "Maze Approach",
+          "fromNode": "n-maze",
+          "door": "Maze Loading Bay"
+        },
+        {
+          "id": "oakland-telegraph",
+          "label": "Telegraph Approach",
+          "fromNode": "n-oak-980",
+          "door": "Telegraph Service Gate"
+        },
+        {
+          "id": "oakland-jacklondon",
+          "label": "Jack London Approach",
+          "fromNode": "n-oak-880",
+          "door": "Jack London Dock Door"
+        }
+      ]
+    },
+    {
+      "id": "hq-sanjose",
+      "name": "San Jose Data Vault",
+      "lat": 37.3382,
+      "lon": -121.8863,
+      "tactical": {
+        "x": 440,
+        "y": 915
+      },
+      "approaches": [
+        {
+          "id": "sanjose-first",
+          "label": "North First Approach",
+          "fromNode": "n-sj-880-101",
+          "door": "North First Street Gate"
+        },
+        {
+          "id": "sanjose-alameda",
+          "label": "Alameda Approach",
+          "fromNode": "n-sj-alameda",
+          "door": "The Alameda Side Door"
+        },
+        {
+          "id": "sanjose-stevens",
+          "label": "Stevens Creek Approach",
+          "fromNode": "n-sj-i280",
+          "door": "Stevens Creek Service Entrance"
+        }
+      ]
+    }
+  ],
+  "spawnNodes": [
+    "n-sr37",
+    "n-vallejo",
+    "n-san-rafael",
+    "n-rsr-bridge"
+  ]
+}

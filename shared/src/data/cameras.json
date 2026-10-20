@@ -1,0 +1,1778 @@
+[
+  {
+    "id": "d4-tv136",
+    "caltransIndex": "404",
+    "name": "SR-37 : Sonoma Raceway (SR-121)",
+    "route": "SR-37",
+    "direction": "West",
+    "county": "Sonoma",
+    "nearbyPlace": "Sonoma",
+    "lat": 38.1469,
+    "lon": -122.45495,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tv136sr37sr121/tv136sr37sr121.jpg",
+    "streamUrl": "https://wzmedia.dot.ca.gov/D4/W37_JEO_JCT_121.stream/playlist.m3u8",
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": 200,
+      "imageCors": true,
+      "streamCors": true,
+      "imageBytes": 47286,
+      "imageIsPlaceholder": false,
+      "streamPlayable": true
+    },
+    "placement": [
+      {
+        "x": 0.08,
+        "y": 0.66,
+        "w": 0.5,
+        "h": 0.22,
+        "scale": 0.3
+      },
+      {
+        "x": 0.55,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.08,
+        "scale": 0.1
+      }
+    ],
+    "tags": [
+      "freeway",
+      "causeway",
+      "north-bay"
+    ]
+  },
+  {
+    "id": "d4-tve83",
+    "caltransIndex": "31",
+    "name": "US-101 : San Rafael / I-580",
+    "route": "US-101",
+    "direction": "East",
+    "county": "Marin",
+    "nearbyPlace": "San Rafael",
+    "lat": 37.96194,
+    "lon": -122.50975,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tve83us101i580/tve83us101i580.jpg",
+    "streamUrl": "https://wzmedia.dot.ca.gov/D4/N101_at_580.stream/playlist.m3u8",
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": 404,
+      "imageCors": true,
+      "streamCors": false,
+      "imageBytes": 58438,
+      "imageIsPlaceholder": false,
+      "streamPlayable": false
+    },
+    "placement": [
+      {
+        "x": 0.6,
+        "y": 0.62,
+        "w": 0.3,
+        "h": 0.2,
+        "scale": 0.22
+      },
+      {
+        "x": 0.3,
+        "y": 0.5,
+        "w": 0.25,
+        "h": 0.12,
+        "scale": 0.14
+      },
+      {
+        "x": 0,
+        "y": 0.72,
+        "w": 0.12,
+        "h": 0.15,
+        "scale": 0.3
+      }
+    ],
+    "tags": [
+      "freeway",
+      "interchange",
+      "north-bay"
+    ]
+  },
+  {
+    "id": "d4-tve74",
+    "caltransIndex": "766",
+    "name": "US-101 : Marin City",
+    "route": "US-101",
+    "direction": "North",
+    "county": "Marin",
+    "nearbyPlace": "Sausalito",
+    "lat": 37.8732,
+    "lon": -122.5075,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tve74us101atmarincityofr/tve74us101atmarincityofr.jpg",
+    "streamUrl": null,
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": null,
+      "imageCors": true,
+      "streamCors": null,
+      "imageBytes": 34253,
+      "imageIsPlaceholder": false,
+      "streamPlayable": null
+    },
+    "placement": [
+      {
+        "x": 0.2,
+        "y": 0.7,
+        "w": 0.25,
+        "h": 0.18,
+        "scale": 0.35
+      },
+      {
+        "x": 0.55,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.12,
+        "scale": 0.15
+      },
+      {
+        "x": 0.19,
+        "y": 0.15,
+        "w": 0.1,
+        "h": 0.08,
+        "scale": 0.09
+      }
+    ],
+    "tags": [
+      "freeway",
+      "north-bay"
+    ]
+  },
+  {
+    "id": "d4-tve73",
+    "caltransIndex": "30",
+    "name": "US-101 : Spencer Avenue (Waldo Grade)",
+    "route": "US-101",
+    "direction": "North",
+    "county": "Marin",
+    "nearbyPlace": "Sausalito",
+    "lat": 37.85081,
+    "lon": -122.48975,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tve73us101spenceravenue/tve73us101spenceravenue.jpg",
+    "streamUrl": "https://wzmedia.dot.ca.gov/D4/N101_at_Spencer_Av.stream/playlist.m3u8",
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": 404,
+      "imageCors": true,
+      "streamCors": false,
+      "imageBytes": 29116,
+      "imageIsPlaceholder": false,
+      "streamPlayable": false
+    },
+    "placement": [
+      {
+        "x": 0.62,
+        "y": 0.72,
+        "w": 0.33,
+        "h": 0.16,
+        "scale": 0.3
+      },
+      {
+        "x": 0.1,
+        "y": 0.55,
+        "w": 0.25,
+        "h": 0.2,
+        "scale": 0.2
+      },
+      {
+        "x": 0.5,
+        "y": 0.38,
+        "w": 0.3,
+        "h": 0.07,
+        "scale": 0.13
+      }
+    ],
+    "tags": [
+      "freeway",
+      "tunnel-approach",
+      "north-bay"
+    ]
+  },
+  {
+    "id": "d4-tve70",
+    "caltransIndex": "560",
+    "name": "US-101 : Golden Gate Bridge North (Vista Point)",
+    "route": "US-101",
+    "direction": "North",
+    "county": "Marin",
+    "nearbyPlace": "Sausalito",
+    "lat": 37.83313,
+    "lon": -122.48142,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tve70us101atbowersvistapoint/tve70us101atbowersvistapoint.jpg",
+    "streamUrl": null,
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": null,
+      "imageCors": true,
+      "streamCors": null,
+      "imageBytes": 7859,
+      "imageIsPlaceholder": false,
+      "streamPlayable": null
+    },
+    "placement": [
+      {
+        "x": 0,
+        "y": 0.5,
+        "w": 0.15,
+        "h": 0.2,
+        "scale": 0.24
+      },
+      {
+        "x": 0.35,
+        "y": 0.5,
+        "w": 0.2,
+        "h": 0.12,
+        "scale": 0.14
+      },
+      {
+        "x": 0.78,
+        "y": 0.45,
+        "w": 0.18,
+        "h": 0.12,
+        "scale": 0.1
+      }
+    ],
+    "tags": [
+      "bridge",
+      "landmark",
+      "north-bay"
+    ]
+  },
+  {
+    "id": "d4-tvr03",
+    "caltransIndex": "301",
+    "name": "I-580 : Richmond-San Rafael Bridge Truss",
+    "route": "I-580",
+    "direction": "West",
+    "county": "Contra Costa",
+    "nearbyPlace": "San Quentin",
+    "lat": 37.933877,
+    "lon": -122.425199,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tvr03i580upperdecktrusstowerpier48/tvr03i580upperdecktrusstowerpier48.jpg",
+    "streamUrl": "https://wzmedia.dot.ca.gov/D4/W580_Upper_Deck_Truss_Tower_Pier_48.stream/playlist.m3u8",
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": 200,
+      "imageCors": true,
+      "streamCors": true,
+      "imageBytes": 25265,
+      "imageIsPlaceholder": false,
+      "streamPlayable": true
+    },
+    "placement": [
+      {
+        "x": 0.4,
+        "y": 0.6,
+        "w": 0.1,
+        "h": 0.28,
+        "scale": 0.15
+      },
+      {
+        "x": 0.42,
+        "y": 0.25,
+        "w": 0.06,
+        "h": 0.2,
+        "scale": 0.06
+      }
+    ],
+    "tags": [
+      "bridge",
+      "north-bay"
+    ]
+  },
+  {
+    "id": "d4-tv962",
+    "caltransIndex": "608",
+    "name": "I-80 : Vallejo (Redwood Pkwy)",
+    "route": "I-80",
+    "direction": "West",
+    "county": "Solano",
+    "nearbyPlace": "Vallejo",
+    "lat": 38.11911,
+    "lon": -122.23051,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tv962i80atjworedwoodpkwy/tv962i80atjworedwoodpkwy.jpg",
+    "streamUrl": null,
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": null,
+      "imageCors": true,
+      "streamCors": null,
+      "imageBytes": 42063,
+      "imageIsPlaceholder": false,
+      "streamPlayable": null
+    },
+    "placement": [
+      {
+        "x": 0.4,
+        "y": 0.62,
+        "w": 0.22,
+        "h": 0.24,
+        "scale": 0.28
+      },
+      {
+        "x": 0.6,
+        "y": 0.42,
+        "w": 0.1,
+        "h": 0.1,
+        "scale": 0.08
+      },
+      {
+        "x": 0.7,
+        "y": 0.6,
+        "w": 0.1,
+        "h": 0.25,
+        "scale": 0.3
+      }
+    ],
+    "tags": [
+      "freeway",
+      "interchange",
+      "north-bay"
+    ]
+  },
+  {
+    "id": "d4-tv972",
+    "caltransIndex": "140",
+    "name": "I-80 : Carquinez Bridge (west approach)",
+    "route": "I-80",
+    "direction": "West",
+    "county": "Contra Costa",
+    "nearbyPlace": "Crockett",
+    "lat": 38.05044,
+    "lon": -122.231204,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tv972i80justwestofcarquinezbrdg/tv972i80justwestofcarquinezbrdg.jpg",
+    "streamUrl": null,
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": null,
+      "imageCors": true,
+      "streamCors": null,
+      "imageBytes": 41673,
+      "imageIsPlaceholder": false,
+      "streamPlayable": null
+    },
+    "placement": [
+      {
+        "x": 0.55,
+        "y": 0.66,
+        "w": 0.25,
+        "h": 0.22,
+        "scale": 0.24
+      },
+      {
+        "x": 0.45,
+        "y": 0.48,
+        "w": 0.1,
+        "h": 0.1,
+        "scale": 0.07
+      }
+    ],
+    "tags": [
+      "bridge",
+      "north-bay"
+    ]
+  },
+  {
+    "id": "d4-tv815",
+    "caltransIndex": "366",
+    "name": "I-780 : Benicia / I-680 Split",
+    "route": "I-780",
+    "direction": "East",
+    "county": "Solano",
+    "nearbyPlace": "Benicia",
+    "lat": 38.049966,
+    "lon": -122.138641,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tv815i780i680split/tv815i780i680split.jpg",
+    "streamUrl": "https://wzmedia.dot.ca.gov/D4/N680_Before_N680_W780_Split.stream/playlist.m3u8",
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": 200,
+      "imageCors": true,
+      "streamCors": true,
+      "imageBytes": 46443,
+      "imageIsPlaceholder": false,
+      "streamPlayable": true
+    },
+    "placement": [
+      {
+        "x": 0.5,
+        "y": 0.62,
+        "w": 0.4,
+        "h": 0.26,
+        "scale": 0.3
+      },
+      {
+        "x": 0.55,
+        "y": 0.48,
+        "w": 0.25,
+        "h": 0.1,
+        "scale": 0.12
+      }
+    ],
+    "tags": [
+      "freeway",
+      "interchange",
+      "north-bay"
+    ]
+  },
+  {
+    "id": "d4-tv301",
+    "caltransIndex": "492",
+    "name": "US-101 : Octavia St (Central Freeway)",
+    "route": "US-101",
+    "direction": "South",
+    "county": "San Francisco",
+    "nearbyPlace": "San Francisco",
+    "lat": 37.77146,
+    "lon": -122.42323,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tv301us101atoctaviast/tv301us101atoctaviast.jpg",
+    "streamUrl": "https://wzmedia.dot.ca.gov/D4/S101_at_Octavia_St.stream/playlist.m3u8",
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": 200,
+      "imageCors": true,
+      "streamCors": true,
+      "imageBytes": 52055,
+      "imageIsPlaceholder": false,
+      "streamPlayable": true
+    },
+    "placement": [
+      {
+        "x": 0.3,
+        "y": 0.45,
+        "w": 0.3,
+        "h": 0.15,
+        "scale": 0.2
+      },
+      {
+        "x": 0.75,
+        "y": 0.5,
+        "w": 0.2,
+        "h": 0.12,
+        "scale": 0.15
+      }
+    ],
+    "tags": [
+      "freeway",
+      "downtown",
+      "sf"
+    ]
+  },
+  {
+    "id": "d4-tv304",
+    "caltransIndex": "36",
+    "name": "I-80 : SoMa / US-101 Split",
+    "route": "I-80",
+    "direction": "East",
+    "county": "San Francisco",
+    "nearbyPlace": "San Francisco",
+    "lat": 37.77025,
+    "lon": -122.40554,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tv304i80us101/tv304i80us101.jpg",
+    "streamUrl": "https://wzmedia.dot.ca.gov/D4/E80_at_JCT_101.stream/playlist.m3u8",
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": 200,
+      "imageCors": true,
+      "streamCors": true,
+      "imageBytes": 41697,
+      "imageIsPlaceholder": false,
+      "streamPlayable": true
+    },
+    "placement": [
+      {
+        "x": 0.35,
+        "y": 0.55,
+        "w": 0.25,
+        "h": 0.15,
+        "scale": 0.16
+      },
+      {
+        "x": 0.65,
+        "y": 0.7,
+        "w": 0.3,
+        "h": 0.15,
+        "scale": 0.3
+      }
+    ],
+    "tags": [
+      "freeway",
+      "interchange",
+      "downtown",
+      "sf"
+    ]
+  },
+  {
+    "id": "d4-tvd01",
+    "caltransIndex": "49",
+    "name": "I-80 : Bay Bridge West Approach (Fremont St)",
+    "route": "I-80",
+    "direction": "West",
+    "county": "San Francisco",
+    "nearbyPlace": "San Francisco",
+    "lat": 37.78537,
+    "lon": -122.39244,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tvd01i80fremont/tvd01i80fremont.jpg",
+    "streamUrl": "https://wzmedia.dot.ca.gov/D4/W80_at_Fremont_St_Ofr.stream/playlist.m3u8",
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": 200,
+      "imageCors": true,
+      "streamCors": true,
+      "imageBytes": 48104,
+      "imageIsPlaceholder": false,
+      "streamPlayable": true
+    },
+    "placement": [
+      {
+        "x": 0.7,
+        "y": 0.65,
+        "w": 0.25,
+        "h": 0.2,
+        "scale": 0.35
+      },
+      {
+        "x": 0.3,
+        "y": 0.55,
+        "w": 0.2,
+        "h": 0.15,
+        "scale": 0.22
+      },
+      {
+        "x": 0.4,
+        "y": 0.4,
+        "w": 0.2,
+        "h": 0.1,
+        "scale": 0.1
+      }
+    ],
+    "tags": [
+      "bridge",
+      "downtown",
+      "sf"
+    ]
+  },
+  {
+    "id": "d4-tv308",
+    "caltransIndex": "476",
+    "name": "US-101 : Alemany / I-280",
+    "route": "US-101",
+    "direction": "South",
+    "county": "San Francisco",
+    "nearbyPlace": "San Francisco",
+    "lat": 37.73839,
+    "lon": -122.40828,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tv308us101atalemanybl/tv308us101atalemanybl.jpg",
+    "streamUrl": "https://wzmedia.dot.ca.gov/D4/S101_at_Alemany_Bl.stream/playlist.m3u8",
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": 200,
+      "imageCors": true,
+      "streamCors": true,
+      "imageBytes": 53250,
+      "imageIsPlaceholder": false,
+      "streamPlayable": true
+    },
+    "placement": [
+      {
+        "x": 0.05,
+        "y": 0.5,
+        "w": 0.25,
+        "h": 0.35,
+        "scale": 0.4
+      },
+      {
+        "x": 0.35,
+        "y": 0.65,
+        "w": 0.2,
+        "h": 0.15,
+        "scale": 0.3
+      },
+      {
+        "x": 0.55,
+        "y": 0.3,
+        "w": 0.2,
+        "h": 0.1,
+        "scale": 0.1
+      }
+    ],
+    "tags": [
+      "freeway",
+      "interchange",
+      "sf"
+    ]
+  },
+  {
+    "id": "d4-tvd33",
+    "caltransIndex": "53",
+    "name": "I-80 : Bay Bridge SAS Tower West",
+    "route": "I-80",
+    "direction": "Median",
+    "county": "San Francisco",
+    "nearbyPlace": "San Francisco",
+    "lat": 37.81525,
+    "lon": -122.35858,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tvd33i80baybridgesastowerwest/tvd33i80baybridgesastowerwest.jpg",
+    "streamUrl": "https://wzmedia.dot.ca.gov/D4/E80_at_SAS_Tower.stream/playlist.m3u8",
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": 200,
+      "imageCors": true,
+      "streamCors": true,
+      "imageBytes": 48144,
+      "imageIsPlaceholder": false,
+      "streamPlayable": true
+    },
+    "placement": [
+      {
+        "x": 0.52,
+        "y": 0.55,
+        "w": 0.14,
+        "h": 0.2,
+        "scale": 0.1
+      },
+      {
+        "x": 0.72,
+        "y": 0.5,
+        "w": 0.1,
+        "h": 0.18,
+        "scale": 0.1
+      }
+    ],
+    "tags": [
+      "bridge",
+      "landmark"
+    ]
+  },
+  {
+    "id": "d4-tvd35",
+    "caltransIndex": "91",
+    "name": "I-80 : Bay Bridge East Span Skyway",
+    "route": "I-80",
+    "direction": "West",
+    "county": "Alameda",
+    "nearbyPlace": "San Francisco",
+    "lat": 37.820596,
+    "lon": -122.33935,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tvd35i80midskyway/tvd35i80midskyway.jpg",
+    "streamUrl": null,
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": null,
+      "imageCors": true,
+      "streamCors": null,
+      "imageBytes": 45108,
+      "imageIsPlaceholder": false,
+      "streamPlayable": null
+    },
+    "placement": [
+      {
+        "x": 0.5,
+        "y": 0.6,
+        "w": 0.3,
+        "h": 0.25,
+        "scale": 0.3
+      },
+      {
+        "x": 0.5,
+        "y": 0.42,
+        "w": 0.15,
+        "h": 0.1,
+        "scale": 0.1
+      }
+    ],
+    "tags": [
+      "bridge",
+      "landmark"
+    ]
+  },
+  {
+    "id": "d4-tva71",
+    "caltransIndex": "686",
+    "name": "I-580 : MacArthur Maze (I-80 junction)",
+    "route": "I-580",
+    "direction": "East",
+    "county": "Alameda",
+    "nearbyPlace": "Oakland",
+    "lat": 37.82632,
+    "lon": -122.29765,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tva71i580atjeo80jct/tva71i580atjeo80jct.jpg",
+    "streamUrl": null,
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": null,
+      "imageCors": true,
+      "streamCors": null,
+      "imageBytes": 37222,
+      "imageIsPlaceholder": false,
+      "streamPlayable": null
+    },
+    "placement": [
+      {
+        "x": 0.3,
+        "y": 0.72,
+        "w": 0.3,
+        "h": 0.15,
+        "scale": 0.35
+      },
+      {
+        "x": 0.35,
+        "y": 0.45,
+        "w": 0.15,
+        "h": 0.1,
+        "scale": 0.12
+      },
+      {
+        "x": 0.5,
+        "y": 0.3,
+        "w": 0.3,
+        "h": 0.05,
+        "scale": 0.07
+      }
+    ],
+    "tags": [
+      "interchange",
+      "maze",
+      "oakland"
+    ]
+  },
+  {
+    "id": "d4-tv121",
+    "caltransIndex": "51",
+    "name": "I-80 : Ashby Avenue (Berkeley)",
+    "route": "I-80",
+    "direction": "West",
+    "county": "Alameda",
+    "nearbyPlace": "Berkeley",
+    "lat": 37.85214,
+    "lon": -122.29996,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tv121i80ashby/tv121i80ashby.jpg",
+    "streamUrl": "https://wzmedia.dot.ca.gov/D4/W80_at_Ashby.stream/playlist.m3u8",
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": 200,
+      "imageCors": true,
+      "streamCors": true,
+      "imageBytes": 9016,
+      "imageIsPlaceholder": false,
+      "streamPlayable": true
+    },
+    "placement": [
+      {
+        "x": 0.62,
+        "y": 0.6,
+        "w": 0.22,
+        "h": 0.25,
+        "scale": 0.3
+      },
+      {
+        "x": 0.05,
+        "y": 0.55,
+        "w": 0.2,
+        "h": 0.15,
+        "scale": 0.22
+      },
+      {
+        "x": 0.55,
+        "y": 0.35,
+        "w": 0.15,
+        "h": 0.1,
+        "scale": 0.1
+      }
+    ],
+    "tags": [
+      "freeway",
+      "east-bay"
+    ]
+  },
+  {
+    "id": "d4-tv510",
+    "caltransIndex": "121",
+    "name": "I-80 : San Pablo / El Portal",
+    "route": "I-80",
+    "direction": "East",
+    "county": "Contra Costa",
+    "nearbyPlace": "El Sobrante",
+    "lat": 37.964586,
+    "lon": -122.32496,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tv510i80justeastofelportaldrive/tv510i80justeastofelportaldrive.jpg",
+    "streamUrl": null,
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": null,
+      "imageCors": true,
+      "streamCors": null,
+      "imageBytes": 62600,
+      "imageIsPlaceholder": false,
+      "streamPlayable": null
+    },
+    "placement": [
+      {
+        "x": 0.62,
+        "y": 0.62,
+        "w": 0.3,
+        "h": 0.22,
+        "scale": 0.28
+      },
+      {
+        "x": 0.1,
+        "y": 0.42,
+        "w": 0.25,
+        "h": 0.2,
+        "scale": 0.2
+      }
+    ],
+    "tags": [
+      "freeway",
+      "east-bay"
+    ]
+  },
+  {
+    "id": "d4-tv521",
+    "caltransIndex": "289",
+    "name": "I-580 : Richmond Cutting Blvd",
+    "route": "I-580",
+    "direction": "West",
+    "county": "Contra Costa",
+    "nearbyPlace": "Richmond",
+    "lat": 37.925115,
+    "lon": -122.362044,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tv521i580cuttingblvd/tv521i580cuttingblvd.jpg",
+    "streamUrl": "https://wzmedia.dot.ca.gov/D4/W580_at_Cutting_Bl.stream/playlist.m3u8",
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": 200,
+      "imageCors": true,
+      "streamCors": true,
+      "imageBytes": 4810,
+      "imageIsPlaceholder": false,
+      "streamPlayable": true
+    },
+    "placement": [
+      {
+        "x": 0.3,
+        "y": 0.6,
+        "w": 0.3,
+        "h": 0.25,
+        "scale": 0.35
+      },
+      {
+        "x": 0.55,
+        "y": 0.5,
+        "w": 0.2,
+        "h": 0.1,
+        "scale": 0.12
+      }
+    ],
+    "tags": [
+      "freeway",
+      "east-bay"
+    ]
+  },
+  {
+    "id": "d4-tv103",
+    "caltransIndex": "432",
+    "name": "SR-24 : I-980 Junction (Oakland)",
+    "route": "SR-24",
+    "direction": "West",
+    "county": "Alameda",
+    "nearbyPlace": "Oakland",
+    "lat": 37.82904,
+    "lon": -122.26748,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tv103sr24w24jeojct980/tv103sr24w24jeojct980.jpg",
+    "streamUrl": "https://wzmedia.dot.ca.gov/D4/W24_JEO_JCT_980.stream/playlist.m3u8",
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": 200,
+      "imageCors": true,
+      "streamCors": true,
+      "imageBytes": 8206,
+      "imageIsPlaceholder": false,
+      "streamPlayable": true
+    },
+    "placement": [
+      {
+        "x": 0.65,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.35,
+        "scale": 0.3
+      },
+      {
+        "x": 0.35,
+        "y": 0.7,
+        "w": 0.2,
+        "h": 0.15,
+        "scale": 0.3
+      },
+      {
+        "x": 0.1,
+        "y": 0.45,
+        "w": 0.3,
+        "h": 0.15,
+        "scale": 0.12
+      }
+    ],
+    "tags": [
+      "freeway",
+      "interchange",
+      "oakland"
+    ]
+  },
+  {
+    "id": "d4-tv111",
+    "caltransIndex": "376",
+    "name": "I-880 : Broadway (Oakland)",
+    "route": "I-880",
+    "direction": "South",
+    "county": "Alameda",
+    "nearbyPlace": "Oakland",
+    "lat": 37.798402,
+    "lon": -122.275393,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tv111i880broadway/tv111i880broadway.jpg",
+    "streamUrl": null,
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": null,
+      "imageCors": true,
+      "streamCors": null,
+      "imageBytes": 58487,
+      "imageIsPlaceholder": false,
+      "streamPlayable": null
+    },
+    "placement": [
+      {
+        "x": 0.1,
+        "y": 0.6,
+        "w": 0.3,
+        "h": 0.25,
+        "scale": 0.33
+      },
+      {
+        "x": 0.25,
+        "y": 0.35,
+        "w": 0.15,
+        "h": 0.12,
+        "scale": 0.12
+      },
+      {
+        "x": 0.72,
+        "y": 0.5,
+        "w": 0.15,
+        "h": 0.3,
+        "scale": 0.22
+      }
+    ],
+    "tags": [
+      "freeway",
+      "downtown",
+      "oakland"
+    ]
+  },
+  {
+    "id": "d4-tv606",
+    "caltransIndex": "85",
+    "name": "SR-24 : Caldecott Tunnel East (Gateway Blvd)",
+    "route": "SR-24",
+    "direction": "East",
+    "county": "Contra Costa",
+    "nearbyPlace": "Orinda",
+    "lat": 37.867084,
+    "lon": -122.197759,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tv606sr24gatewayblvd/tv606sr24gatewayblvd.jpg",
+    "streamUrl": null,
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": null,
+      "imageCors": true,
+      "streamCors": null,
+      "imageBytes": 49652,
+      "imageIsPlaceholder": false,
+      "streamPlayable": null
+    },
+    "placement": [
+      {
+        "x": 0.1,
+        "y": 0.72,
+        "w": 0.35,
+        "h": 0.14,
+        "scale": 0.2
+      },
+      {
+        "x": 0.55,
+        "y": 0.52,
+        "w": 0.15,
+        "h": 0.08,
+        "scale": 0.07
+      }
+    ],
+    "tags": [
+      "tunnel",
+      "freeway",
+      "east-bay"
+    ]
+  },
+  {
+    "id": "d4-tv208",
+    "caltransIndex": "788",
+    "name": "I-680 : Mt Diablo Blvd (Walnut Creek)",
+    "route": "I-680",
+    "direction": "North",
+    "county": "Contra Costa",
+    "nearbyPlace": "Walnut Creek",
+    "lat": 37.89613,
+    "lon": -122.07021,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tv208i680atmtdiablobl/tv208i680atmtdiablobl.jpg",
+    "streamUrl": null,
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": null,
+      "imageCors": true,
+      "streamCors": null,
+      "imageBytes": 49732,
+      "imageIsPlaceholder": false,
+      "streamPlayable": null
+    },
+    "placement": [
+      {
+        "x": 0.1,
+        "y": 0.65,
+        "w": 0.3,
+        "h": 0.2,
+        "scale": 0.3
+      },
+      {
+        "x": 0.1,
+        "y": 0.45,
+        "w": 0.3,
+        "h": 0.08,
+        "scale": 0.1
+      }
+    ],
+    "tags": [
+      "freeway",
+      "east-bay"
+    ]
+  },
+  {
+    "id": "d4-tvb17",
+    "caltransIndex": "32",
+    "name": "I-880 : Hayward / SR-238",
+    "route": "I-880",
+    "direction": "South",
+    "county": "Alameda",
+    "nearbyPlace": "San Leandro",
+    "lat": 37.69428,
+    "lon": -122.1437,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tvb17i880justnorthofsr238/tvb17i880justnorthofsr238.jpg",
+    "streamUrl": "https://wzmedia.dot.ca.gov/D4/S880_JNO_JCT_238.stream/playlist.m3u8",
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": 200,
+      "imageCors": true,
+      "streamCors": true,
+      "imageBytes": 23295,
+      "imageIsPlaceholder": false,
+      "streamPlayable": true
+    },
+    "placement": [
+      {
+        "x": 0.7,
+        "y": 0.6,
+        "w": 0.25,
+        "h": 0.12,
+        "scale": 0.2
+      },
+      {
+        "x": 0,
+        "y": 0.7,
+        "w": 0.18,
+        "h": 0.18,
+        "scale": 0.35
+      },
+      {
+        "x": 0.45,
+        "y": 0.45,
+        "w": 0.15,
+        "h": 0.08,
+        "scale": 0.08
+      }
+    ],
+    "tags": [
+      "freeway",
+      "east-bay"
+    ]
+  },
+  {
+    "id": "d4-tvb11",
+    "caltransIndex": "29",
+    "name": "I-880 : Fremont / SR-84",
+    "route": "I-880",
+    "direction": "South",
+    "county": "Alameda",
+    "nearbyPlace": "Fremont",
+    "lat": 37.56423,
+    "lon": -122.03965,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tvb11i880atjct84/tvb11i880atjct84.jpg",
+    "streamUrl": "https://wzmedia.dot.ca.gov/D4/S880_at_JCT_84.stream/playlist.m3u8",
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": 404,
+      "imageCors": true,
+      "streamCors": false,
+      "imageBytes": 7067,
+      "imageIsPlaceholder": false,
+      "streamPlayable": false
+    },
+    "placement": [
+      {
+        "x": 0.3,
+        "y": 0.75,
+        "w": 0.15,
+        "h": 0.13,
+        "scale": 0.3
+      },
+      {
+        "x": 0.05,
+        "y": 0.5,
+        "w": 0.25,
+        "h": 0.25,
+        "scale": 0.25
+      },
+      {
+        "x": 0.55,
+        "y": 0.5,
+        "w": 0.12,
+        "h": 0.08,
+        "scale": 0.08
+      }
+    ],
+    "tags": [
+      "freeway",
+      "interchange",
+      "east-bay"
+    ]
+  },
+  {
+    "id": "d4-tve04",
+    "caltransIndex": "167",
+    "name": "SR-92 : San Mateo Bridge (east-bound span)",
+    "route": "SR-92",
+    "direction": "East",
+    "county": "San Mateo",
+    "nearbyPlace": "San Mateo",
+    "lat": 37.591866,
+    "lon": -122.238776,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tve04sr92sanmateobridgesubstation3/tve04sr92sanmateobridgesubstation3.jpg",
+    "streamUrl": null,
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": null,
+      "imageCors": true,
+      "streamCors": null,
+      "imageBytes": 14208,
+      "imageIsPlaceholder": false,
+      "streamPlayable": null
+    },
+    "placement": [
+      {
+        "x": 0.05,
+        "y": 0.72,
+        "w": 0.35,
+        "h": 0.16,
+        "scale": 0.24
+      },
+      {
+        "x": 0.35,
+        "y": 0.5,
+        "w": 0.2,
+        "h": 0.12,
+        "scale": 0.12
+      },
+      {
+        "x": 0.62,
+        "y": 0.32,
+        "w": 0.12,
+        "h": 0.1,
+        "scale": 0.06
+      }
+    ],
+    "tags": [
+      "bridge",
+      "peninsula"
+    ]
+  },
+  {
+    "id": "d4-tv425",
+    "caltransIndex": "15",
+    "name": "US-101 : San Mateo / Hillsdale",
+    "route": "US-101",
+    "direction": "North",
+    "county": "San Mateo",
+    "nearbyPlace": "San Mateo",
+    "lat": 37.53354,
+    "lon": -122.27736,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tv425us101justsouthofeasthillsdaleblvd/tv425us101justsouthofeasthillsdaleblvd.jpg",
+    "streamUrl": "https://wzmedia.dot.ca.gov/D4/N101_JSO_E_Hilldale_Bl.stream/playlist.m3u8",
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": 404,
+      "imageCors": true,
+      "streamCors": false,
+      "imageBytes": 26791,
+      "imageIsPlaceholder": false,
+      "streamPlayable": false
+    },
+    "placement": [
+      {
+        "x": 0.72,
+        "y": 0.75,
+        "w": 0.22,
+        "h": 0.12,
+        "scale": 0.22
+      },
+      {
+        "x": 0.2,
+        "y": 0.55,
+        "w": 0.15,
+        "h": 0.1,
+        "scale": 0.12
+      }
+    ],
+    "tags": [
+      "freeway",
+      "peninsula"
+    ]
+  },
+  {
+    "id": "d4-tv446",
+    "caltransIndex": "765",
+    "name": "I-280 : Canada Road (Woodside)",
+    "route": "I-280",
+    "direction": "North",
+    "county": "San Mateo",
+    "nearbyPlace": "Burlingame",
+    "lat": 37.55658,
+    "lon": -122.38045,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tv446i280atsofcanadard/tv446i280atsofcanadard.jpg",
+    "streamUrl": null,
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": null,
+      "imageCors": true,
+      "streamCors": null,
+      "imageBytes": 29360,
+      "imageIsPlaceholder": false,
+      "streamPlayable": null
+    },
+    "placement": [
+      {
+        "x": 0.72,
+        "y": 0.62,
+        "w": 0.18,
+        "h": 0.22,
+        "scale": 0.3
+      },
+      {
+        "x": 0.38,
+        "y": 0.6,
+        "w": 0.22,
+        "h": 0.15,
+        "scale": 0.2
+      },
+      {
+        "x": 0.6,
+        "y": 0.42,
+        "w": 0.12,
+        "h": 0.06,
+        "scale": 0.06
+      }
+    ],
+    "tags": [
+      "freeway",
+      "peninsula"
+    ]
+  },
+  {
+    "id": "d4-tv433",
+    "caltransIndex": "383",
+    "name": "US-101 : Willow Road (Menlo Park)",
+    "route": "US-101",
+    "direction": "North",
+    "county": "San Mateo",
+    "nearbyPlace": "Menlo Park",
+    "lat": 37.47568,
+    "lon": -122.16635,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tv433us101northofwillowroad/tv433us101northofwillowroad.jpg",
+    "streamUrl": "https://wzmedia.dot.ca.gov/D4/N101_NOF_Willow_Rd.stream/playlist.m3u8",
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": 404,
+      "imageCors": true,
+      "streamCors": false,
+      "imageBytes": 24134,
+      "imageIsPlaceholder": false,
+      "streamPlayable": false
+    },
+    "placement": [
+      {
+        "x": 0.7,
+        "y": 0.72,
+        "w": 0.15,
+        "h": 0.16,
+        "scale": 0.3
+      },
+      {
+        "x": 0.05,
+        "y": 0.6,
+        "w": 0.25,
+        "h": 0.15,
+        "scale": 0.25
+      },
+      {
+        "x": 0.35,
+        "y": 0.5,
+        "w": 0.1,
+        "h": 0.06,
+        "scale": 0.07
+      }
+    ],
+    "tags": [
+      "freeway",
+      "peninsula"
+    ]
+  },
+  {
+    "id": "d4-tv957",
+    "caltransIndex": "605",
+    "name": "SR-84 : Dumbarton Bridge Mid-Span",
+    "route": "SR-84",
+    "direction": null,
+    "county": "Alameda",
+    "nearbyPlace": "Fremont",
+    "lat": 37.51066,
+    "lon": -122.11188,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tv957sr84w84atmidspansub23/tv957sr84w84atmidspansub23.jpg",
+    "streamUrl": null,
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": null,
+      "imageCors": true,
+      "streamCors": null,
+      "imageBytes": 38824,
+      "imageIsPlaceholder": false,
+      "streamPlayable": null
+    },
+    "placement": [
+      {
+        "x": 0.1,
+        "y": 0.45,
+        "w": 0.5,
+        "h": 0.4,
+        "scale": 0.3
+      },
+      {
+        "x": 0.55,
+        "y": 0.25,
+        "w": 0.15,
+        "h": 0.1,
+        "scale": 0.12
+      }
+    ],
+    "tags": [
+      "bridge",
+      "peninsula"
+    ]
+  },
+  {
+    "id": "d4-tv949",
+    "caltransIndex": "155",
+    "name": "SR-84 : University Ave (East Palo Alto)",
+    "route": "SR-84",
+    "direction": "North",
+    "county": "San Mateo",
+    "nearbyPlace": "Menlo Park",
+    "lat": 37.486653,
+    "lon": -122.142,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tv949sr84universityavenue/tv949sr84universityavenue.jpg",
+    "streamUrl": "https://wzmedia.dot.ca.gov/D4/N84_at_Univeristy_Av.stream/playlist.m3u8",
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": 200,
+      "imageCors": true,
+      "streamCors": true,
+      "imageBytes": 56099,
+      "imageIsPlaceholder": false,
+      "streamPlayable": true
+    },
+    "placement": [
+      {
+        "x": 0.42,
+        "y": 0.62,
+        "w": 0.12,
+        "h": 0.26,
+        "scale": 0.3
+      },
+      {
+        "x": 0.65,
+        "y": 0.65,
+        "w": 0.3,
+        "h": 0.2,
+        "scale": 0.22
+      },
+      {
+        "x": 0.7,
+        "y": 0.42,
+        "w": 0.08,
+        "h": 0.06,
+        "scale": 0.06
+      }
+    ],
+    "tags": [
+      "freeway",
+      "stanford",
+      "peninsula"
+    ]
+  },
+  {
+    "id": "d4-tv437",
+    "caltransIndex": "741",
+    "name": "US-101 : Embarcadero Road (Palo Alto)",
+    "route": "US-101",
+    "direction": "South",
+    "county": "San Mateo",
+    "nearbyPlace": "Palo Alto",
+    "lat": 37.45269,
+    "lon": -122.12811,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tv437us101atjnoembarcaderord/tv437us101atjnoembarcaderord.jpg",
+    "streamUrl": null,
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": null,
+      "imageCors": true,
+      "streamCors": null,
+      "imageBytes": 71275,
+      "imageIsPlaceholder": false,
+      "streamPlayable": null
+    },
+    "placement": [
+      {
+        "x": 0.15,
+        "y": 0.72,
+        "w": 0.3,
+        "h": 0.15,
+        "scale": 0.3
+      },
+      {
+        "x": 0.6,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.1,
+        "scale": 0.13
+      },
+      {
+        "x": 0.02,
+        "y": 0.62,
+        "w": 0.15,
+        "h": 0.22,
+        "scale": 0.3
+      }
+    ],
+    "tags": [
+      "freeway",
+      "stanford",
+      "peninsula"
+    ]
+  },
+  {
+    "id": "d4-t028n",
+    "caltransIndex": "521",
+    "name": "SR-82 : El Camino Real @ Embarcadero (Stanford)",
+    "route": "SR-82",
+    "direction": "North",
+    "county": "Santa Clara",
+    "nearbyPlace": "Palo Alto",
+    "lat": 37.4375,
+    "lon": -122.16,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/t028nsr82embarcadero/t028nsr82embarcadero.jpg",
+    "streamUrl": null,
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": null,
+      "imageCors": true,
+      "streamCors": null,
+      "imageBytes": 64175,
+      "imageIsPlaceholder": false,
+      "streamPlayable": null
+    },
+    "placement": [
+      {
+        "x": 0.2,
+        "y": 0.62,
+        "w": 0.4,
+        "h": 0.26,
+        "scale": 0.35
+      },
+      {
+        "x": 0.55,
+        "y": 0.35,
+        "w": 0.35,
+        "h": 0.1,
+        "scale": 0.14
+      }
+    ],
+    "tags": [
+      "surface",
+      "stanford",
+      "peninsula"
+    ]
+  },
+  {
+    "id": "d4-tvc62",
+    "caltransIndex": "461",
+    "name": "US-101 : I-880 Junction (San Jose)",
+    "route": "I-880",
+    "direction": "South",
+    "county": "Santa Clara",
+    "nearbyPlace": "San Jose",
+    "lat": 37.36367,
+    "lon": -121.90242,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tvc62us101s101atjct880/tvc62us101s101atjct880.jpg",
+    "streamUrl": null,
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": null,
+      "imageCors": true,
+      "streamCors": null,
+      "imageBytes": 69619,
+      "imageIsPlaceholder": false,
+      "streamPlayable": null
+    },
+    "placement": [
+      {
+        "x": 0.55,
+        "y": 0.55,
+        "w": 0.3,
+        "h": 0.15,
+        "scale": 0.25
+      },
+      {
+        "x": 0.3,
+        "y": 0.35,
+        "w": 0.4,
+        "h": 0.08,
+        "scale": 0.1
+      }
+    ],
+    "tags": [
+      "freeway",
+      "interchange",
+      "downtown",
+      "south-bay"
+    ]
+  },
+  {
+    "id": "d4-tvb76",
+    "caltransIndex": "154",
+    "name": "I-880 : The Alameda (San Jose)",
+    "route": "I-880",
+    "direction": "South",
+    "county": "Santa Clara",
+    "nearbyPlace": "San Jose",
+    "lat": 37.342878,
+    "lon": -121.926239,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tvb76i880thealameda/tvb76i880thealameda.jpg",
+    "streamUrl": "https://wzmedia.dot.ca.gov/D4/S880_at_The_Alameda_OFR.stream/playlist.m3u8",
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": 200,
+      "imageCors": true,
+      "streamCors": true,
+      "imageBytes": 71798,
+      "imageIsPlaceholder": false,
+      "streamPlayable": true
+    },
+    "placement": [
+      {
+        "x": 0.15,
+        "y": 0.55,
+        "w": 0.35,
+        "h": 0.15,
+        "scale": 0.22
+      },
+      {
+        "x": 0.02,
+        "y": 0.72,
+        "w": 0.35,
+        "h": 0.15,
+        "scale": 0.35
+      },
+      {
+        "x": 0.5,
+        "y": 0.35,
+        "w": 0.2,
+        "h": 0.08,
+        "scale": 0.08
+      }
+    ],
+    "tags": [
+      "freeway",
+      "downtown",
+      "south-bay"
+    ]
+  },
+  {
+    "id": "d4-tvc42",
+    "caltransIndex": "694",
+    "name": "I-280 : I-880 / SR-17 Junction (San Jose)",
+    "route": "I-280",
+    "direction": "North",
+    "county": "Santa Clara",
+    "nearbyPlace": "San Jose",
+    "lat": 37.3177,
+    "lon": -121.9387,
+    "imageUrl": "https://cwwp2.dot.ca.gov/data/d4/cctv/image/tvc42i280atjct88017/tvc42i280atjct88017.jpg",
+    "streamUrl": null,
+    "imageUpdateFrequencyMin": 5,
+    "inService": true,
+    "verified": {
+      "checkedAt": "2026-10-20T23:14:50.742Z",
+      "imageHttp": 200,
+      "streamHttp": null,
+      "imageCors": true,
+      "streamCors": null,
+      "imageBytes": 38721,
+      "imageIsPlaceholder": false,
+      "streamPlayable": null
+    },
+    "placement": [
+      {
+        "x": 0.55,
+        "y": 0.75,
+        "w": 0.35,
+        "h": 0.12,
+        "scale": 0.25
+      },
+      {
+        "x": 0.3,
+        "y": 0.55,
+        "w": 0.3,
+        "h": 0.1,
+        "scale": 0.08
+      }
+    ],
+    "tags": [
+      "freeway",
+      "interchange",
+      "south-bay"
+    ]
+  }
+]

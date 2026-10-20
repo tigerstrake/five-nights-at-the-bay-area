@@ -1,0 +1,13 @@
+{
+  "sprites": [
+    { "file": "shadow-01.png", "kind": "shadow", "anchor": { "x": 0.5, "y": 1 }, "heightPx": 1024 },
+    { "file": "shadow-02.png", "kind": "shadow", "anchor": { "x": 0.5, "y": 1 }, "heightPx": 1024 },
+    { "file": "silhouette-01.png", "kind": "silhouette", "anchor": { "x": 0.5, "y": 1 }, "heightPx": 1024 },
+    { "file": "silhouette-02.png", "kind": "silhouette", "anchor": { "x": 0.5, "y": 1 }, "heightPx": 1024 },
+    { "file": "silhouette-03.png", "kind": "silhouette", "anchor": { "x": 0.5, "y": 1 }, "heightPx": 1024 },
+    { "file": "figure-01.png", "kind": "figure", "anchor": { "x": 0.5, "y": 1 }, "heightPx": 1024 },
+    { "file": "figure-02.png", "kind": "figure", "anchor": { "x": 0.5, "y": 1 }, "heightPx": 1024 },
+    { "file": "closeup-01.png", "kind": "closeup", "anchor": { "x": 0.5, "y": 0.5 }, "heightPx": 1024 },
+    { "file": "closeup-02.png", "kind": "closeup", "anchor": { "x": 0.5, "y": 0.5 }, "heightPx": 1024 }
+  ]
+}

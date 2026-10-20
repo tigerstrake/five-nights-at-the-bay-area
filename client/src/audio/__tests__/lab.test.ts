@@ -1,0 +1,55 @@
+// @vitest-environment jsdom
+import { afterEach, expect, it, vi } from 'vitest';
+import html from '../../../audiolab.html?raw';
+import { SFX_NAMES, STINGER_KINDS } from '../types';
+import { FakeAudioContext } from './fake-context';
+
+let dispose = (): void => {};
+afterEach(() => { dispose(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+it('exposes every sound and wires unlock, settings, room, tension and pan', async () => {
+  vi.useFakeTimers();
+  const context = new FakeAudioContext();
+  vi.stubGlobal('AudioContext', function () { return context.asContext(); });
+  vi.stubGlobal('fetch', undefined);
+  document.body.innerHTML = html.match(/<body>([\s\S]*?)<\/body>/)?.[1] ?? '';
+  const { audio } = await import('../index');
+  dispose = () => audio.dispose();
+  const play = vi.spyOn(audio, 'play');
+  const stinger = vi.spyOn(audio, 'playStinger');
+  const room = vi.spyOn(audio, 'setAmbience');
+  const threat = vi.spyOn(audio, 'setTension');
+  await import('../lab/main');
+  const buttons = [...document.querySelectorAll<HTMLButtonElement>('button.sound')];
+  const names = buttons.map(button => button.firstElementChild?.textContent);
+  expect(names.sort()).toEqual([...SFX_NAMES, ...STINGER_KINDS].sort());
+  expect(buttons.every(button => button.disabled)).toBe(true);
+  document.getElementById('unlock')?.click();
+  await vi.waitFor(() => expect(audio.isUnlocked()).toBe(true));
+  await vi.waitFor(() => expect(buttons.every(button => !button.disabled)).toBe(true));
+  expect(room).toHaveBeenCalledWith('defender');
+  const pan = document.getElementById('pan') as HTMLInputElement;
+  pan.value = '-0.5';
+  pan.dispatchEvent(new Event('input'));
+  buttons.find(button => button.firstElementChild?.textContent === 'cameraSwitch')?.click();
+  expect(play).toHaveBeenCalledWith('cameraSwitch', { pan: -0.5 });
+  buttons.find(button => button.firstElementChild?.textContent === 'victory')?.click();
+  expect(stinger).toHaveBeenCalledWith('victory');
+  const volume = document.getElementById('volume') as HTMLInputElement;
+  volume.value = '0.23';
+  volume.dispatchEvent(new Event('input'));
+  expect(audio.getMasterVolume()).toBe(0.23);
+  expect(document.getElementById('volume-value')?.textContent).toBe('23%');
+  const muted = document.getElementById('muted') as HTMLInputElement;
+  muted.checked = true;
+  muted.dispatchEvent(new Event('change'));
+  expect(audio.isMuted()).toBe(true);
+  const tension = document.getElementById('tension') as HTMLInputElement;
+  tension.value = '0.75';
+  tension.dispatchEvent(new Event('input'));
+  expect(threat).toHaveBeenCalledWith(0.75);
+  const ambience = document.getElementById('ambience') as HTMLSelectElement;
+  ambience.value = 'none';
+  ambience.dispatchEvent(new Event('change'));
+  expect(room).toHaveBeenCalledWith('none');
+});

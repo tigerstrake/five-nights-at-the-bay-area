@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FNAB / Audio lab</title>
+  <style>
+    :root { color-scheme: dark; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; background: #080c0e; color: #c6d3d6; accent-color: #80c3b6; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: radial-gradient(ellipse at 75% 0, #152123 0, transparent 55%); min-height: 100vh; }
+    main { max-width: 1120px; padding: 48px 28px 60px; margin: auto; }
+    header { border-bottom: 1px solid #2b3c40; padding-bottom: 28px; margin-bottom: 26px; }
+    .eyebrow { color: #80c3b6; letter-spacing: .22em; font-size: 11px; text-transform: uppercase; }
+    h1 { font-family: system-ui, sans-serif; font-size: clamp(28px, 5vw, 46px); font-weight: 500; letter-spacing: -.04em; margin: 12px 0; color: #e0e9e9; }
+    p { color: #8e9fa4; font-size: 13px; line-height: 1.7; max-width: 760px; }
+    .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 24px; padding: 24px; background: #10181bcc; border: 1px solid #2b3c40; }
+    .control { display: flex; flex-direction: column; gap: 12px; font-size: 12px; }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+    label { color: #a8babb; }
+    input[type=range] { width: 100%; margin: 5px 0; }
+    input[type=checkbox] { width: 16px; height: 16px; margin: 0; }
+    output { color: #80c3b6; font-variant-numeric: tabular-nums; }
+    select, button { font: inherit; color: inherit; background: #121d21; border: 1px solid #344a50; padding: 12px; border-radius: 3px; }
+    select { width: 100%; }
+    button { cursor: pointer; text-align: left; transition: border-color .15s, background .15s; }
+    button:hover:enabled { border-color: #80c3b6; background: #1a2a2e; }
+    button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid #80c3b6; outline-offset: 4px; }
+    button:disabled { cursor: default; opacity: .38; }
+    #unlock { color: #a0e4d5; border-color: #528c80; }
+    #unlock[data-ready=true] { color: #8e9fa4; border-color: #344a50; }
+    #status { min-height: 22px; font-size: 11px; margin: 16px 0 0; }
+    section { margin-top: 34px; }
+    h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .16em; font-weight: 500; color: #8e9fa4; margin-bottom: 16px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+    .sound { min-height: 74px; display: flex; flex-direction: column; gap: 9px; }
+    .sound span:first-child { font-size: 12px; color: #d3e1e1; }
+    .sound span:last-child { font-size: 10px; line-height: 1.5; color: #81959b; }
+    .stingers .sound { border-color: #5a3c3e; background: #1c171b; }
+    footer { border-top: 1px solid #2b3c40; margin-top: 36px; padding-top: 12px; color: #687b81; font-size: 11px; line-height: 1.8; }
+    @media (prefers-reduced-motion: reduce) { button { transition: none; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">Five Nights at the Bay Area / Development</div>
+    <h1>Signal &amp; interference.</h1>
+    <p>A procedural sound desk for the surveillance room and the thing outside it. Unlock audio, select a room, then raise tension to hear the threat approach.</p>
+  </header>
+  <div class="controls">
+    <div class="control">
+      <label for="unlock">Audio context</label>
+      <button id="unlock" type="button">Unlock audio</button>
+      <label class="row" for="muted">Mute master <input id="muted" type="checkbox" /></label>
+    </div>
+    <div class="control">
+      <label class="row" for="volume">Master volume <output id="volume-value" for="volume"></output></label>
+      <input id="volume" type="range" min="0" max="1" step="0.01" />
+      <label class="row" for="tension">Tension <output id="tension-value" for="tension">0%</output></label>
+      <input id="tension" type="range" min="0" max="1" value="0" step="0.01" />
+    </div>
+    <div class="control">
+      <label for="ambience">Room ambience</label>
+      <select id="ambience">
+        <option value="none">None / fade out</option>
+        <option value="lobby">Lobby / ominous pad</option>
+        <option value="defender" selected>Defender / control room</option>
+        <option value="monster">Monster / predatory breath</option>
+      </select>
+      <label class="row" for="pan">Effect pan <output id="pan-value" for="pan">Center</output></label>
+      <input id="pan" type="range" min="-1" max="1" value="0" step="0.05" />
+    </div>
+  </div>
+  <p id="status" role="status" aria-live="polite">Audio locked. Effects become available after unlock.</p>
+  <div id="sounds"></div>
+  <section class="stingers" aria-labelledby="stingers-title">
+    <h2 id="stingers-title">Cinematic stingers</h2>
+    <div class="grid" id="stingers"></div>
+  </section>
+  <footer>Fully synthesized locally with Web Audio. Volume and mute persist on this browser. Optional manifest overrides are loaded after unlock; pending or missing files use synthesis.</footer>
+</main>
+<script type="module" src="/src/audio/lab/main.ts"></script>
+</body>
+</html>
