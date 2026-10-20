@@ -1,0 +1,33 @@
+{
+  "name": "fnab",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n server,client -c red,cyan \"npm run dev -w @fnab/server\" \"npm run dev -w @fnab/client\"",
+    "build": "npm run build -w @fnab/client && npm run build -w @fnab/server",
+    "start": "npm run start -w @fnab/server",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "npm run typecheck -w @fnab/shared && npm run typecheck -w @fnab/server && npm run typecheck -w @fnab/client",
+    "test:e2e": "playwright test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "concurrently": "^10.0.6",
+    "jsdom": "^29.1.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

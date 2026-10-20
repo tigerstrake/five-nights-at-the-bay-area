@@ -1,0 +1,39 @@
+@import 'tailwindcss';
+
+/* Design tokens (spec §14): near-black, muted gray panels, restrained red, green/cyan status. */
+@theme {
+  --color-void: #050607;
+  --color-ink: #0a0c0e;
+  --color-panel: #111417;
+  --color-panel-2: #171b1f;
+  --color-edge: #252b31;
+  --color-edge-hi: #36404a;
+  --color-dim: #5d6670;
+  --color-mute: #8b949e;
+  --color-text: #d4d9de;
+  --color-bright: #f1f4f6;
+  --color-alert: #c8323a;
+  --color-alert-dim: #5a1a1e;
+  --color-warn: #d49a2a;
+  --color-ok: #3ec47a;
+  --color-ok-dim: #17402b;
+  --color-cyan: #3bc6d6;
+  --color-cyan-dim: #12434a;
+  --color-monster: #a3243a;
+  --color-monster-hi: #e04a62;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  margin: 0;
+  background: var(--color-void);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}

@@ -1,0 +1,130 @@
+// Drives the audio engine from game state: ambience per screen, sfx per new events, tension, stingers.
+import { useEffect, useRef } from 'react';
+import type { GameEventKind, PlayerView } from '@fnab/shared';
+import { audio, type SfxName } from '../audio';
+import { useGame } from '../state/store';
+
+const EVENT_SFX: Partial<Record<GameEventKind, SfxName>> = {
+  sighting: 'monsterDistant',
+  sensorPing: 'sensorPing',
+  scan: 'scanPing',
+  scanClear: 'scanPing',
+  trapArmed: 'trapArm',
+  trapTriggered: 'trapTrigger',
+  containmentStart: 'alarm',
+  containmentBroken: 'monsterScreech',
+  doorClosed: 'doorClose',
+  doorOpened: 'doorOpen',
+  doorJammed: 'doorBlocked',
+  doorBattered: 'doorBlocked',
+  breachStart: 'alarm',
+  sabotage: 'staticBurst',
+  cameraFailure: 'staticBurst',
+  repairStart: 'repairStart',
+  repairDone: 'repairDone',
+  powerLow: 'powerLow',
+  powerOut: 'powerOut',
+  phase: 'phaseChange',
+  spawn: 'monsterNear',
+  exposed: 'staticBurst',
+  ability: 'commandIssued',
+  disturbance: 'alarm',
+  struggle: 'monsterScreech',
+  freed: 'monsterNear',
+};
+
+function tensionOf(v: PlayerView): number {
+  if (v.role === 'monster') {
+    const base = { preparation: 0.1, infiltration: 0.25, escalation: 0.5, final: 0.75 }[v.phase];
+    return Math.min(1, base + (v.breach ? 0.25 : 0) + (v.self.held ? 0.2 : 0));
+  }
+  return Math.min(1, v.threat + (v.breach ? 0.3 : 0));
+}
+
+export function useGameAudio() {
+  const room = useGame((s) => s.room);
+  const view = useGame((s) => s.view);
+  const result = useGame((s) => s.result);
+  const lastEvent = useRef(0);
+  const lastResultKey = useRef<string | null>(null);
+  const lastCountdown = useRef<number | null>(null);
+
+  // unlock on first gesture
+  useEffect(() => {
+    const unlock = () => {
+      void audio.unlock();
+    };
+    window.addEventListener('pointerdown', unlock, { once: true });
+    window.addEventListener('keydown', unlock, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+  }, []);
+
+  // ambience
+  const stage = room?.stage ?? 'title';
+  const role = view?.role;
+  useEffect(() => {
+    if (stage === 'playing' && role) audio.setAmbience(role === 'monster' ? 'monster' : 'defender');
+    else if (stage === 'results') audio.setAmbience('none');
+    else audio.setAmbience('lobby');
+    if (stage !== 'playing') audio.setTension(stage === 'countdown' ? 0.2 : 0);
+  }, [stage, role]);
+
+  // countdown ticks
+  useEffect(() => {
+    if (room?.stage !== 'countdown' || !room.countdownEndsAt) {
+      lastCountdown.current = null;
+      return;
+    }
+    const id = setInterval(() => {
+      const left = Math.ceil((room.countdownEndsAt! - (Date.now() + useGame.getState().clockOffset)) / 1000);
+      if (left !== lastCountdown.current && left >= 0) {
+        lastCountdown.current = left;
+        audio.play(left === 0 ? 'matchStart' : 'countdownTick');
+      }
+    }, 100);
+    return () => clearInterval(id);
+  }, [room?.stage, room?.countdownEndsAt]);
+
+  // events + tension
+  useEffect(() => {
+    if (!view) {
+      lastEvent.current = 0;
+      return;
+    }
+    audio.setTension(tensionOf(view));
+    const fresh = view.events.filter((e) => e.id > lastEvent.current);
+    if (lastEvent.current === 0) {
+      // first view after (re)join: don't replay history
+      lastEvent.current = view.events.at(-1)?.id ?? 0;
+      return;
+    }
+    let played = 0;
+    for (const e of fresh) {
+      const sfx = e.kind === 'sighting' && view.role !== 'monster' && view.threat >= 0.6 ? 'monsterNear' : EVENT_SFX[e.kind];
+      if (sfx && played < 3) {
+        audio.play(sfx);
+        played++;
+      }
+    }
+    lastEvent.current = Math.max(lastEvent.current, view.events.at(-1)?.id ?? 0);
+  }, [view]);
+
+  // stingers
+  useEffect(() => {
+    if (!result || !room) return;
+    const key = `${room.code}:${result.endedAtT}:${result.reason}`;
+    if (lastResultKey.current === key) return;
+    lastResultKey.current = key;
+    const me = room.players.find((p) => p.id === room.youId);
+    const myTeam = me?.role === 'monster' ? 'monster' : 'defenders';
+    if (result.reason === 'breach') audio.playStinger('breach');
+    else if (result.reason === 'capture') audio.playStinger('contained');
+    setTimeout(
+      () => audio.playStinger(result.winner === myTeam || me?.role === 'spectator' ? 'victory' : 'defeat'),
+      result.reason === 'breach' ? 3500 : 1200,
+    );
+  }, [result, room]);
+}

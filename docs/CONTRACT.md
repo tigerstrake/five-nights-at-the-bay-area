@@ -12,7 +12,7 @@ ownership, and cross-module interfaces so work composes. The product spec is `do
   Anyone else needing a dependency: say so in your final report instead of installing it. Wave 2+ agents
   may install with `npm install <pkg> -w <workspace>`, never concurrently with another install.
 - **Ports** (avoid collisions between agents running servers at the same time):
-  Foundation: server 3001, client 5173 · FX: 5180 · Maps/UI agents: told per task · e2e: 3101/5199.
+  Foundation: server 3001, client 5175 (5173 belongs to another project — never use or kill it) · FX: 5180 · Maps/UI agents: told per task · e2e: 3101/5199.
   Kill every server you start before finishing.
 - No magic numbers in game logic: tunables live in `shared/src/config.ts`.
 - Never present simulated imagery as live. Never fabricate API responses or claim an integration works
