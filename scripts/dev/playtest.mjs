@@ -1,0 +1,53 @@
+// Two-browser scripted playtest: BASE=http://localhost:<clientPort> SHOTS=<dir> node scripts/dev/playtest.mjs
+import { createRequire } from 'node:module';
+const require = createRequire(new URL('../../package.json', import.meta.url));
+const { chromium } = require('playwright');
+const BASE = process.env.BASE ?? 'http://localhost:5175';
+const SHOTS = process.env.SHOTS ?? 'playtest-shots';
+import { mkdirSync } from 'node:fs';
+mkdirSync(SHOTS, { recursive: true });
+const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
+const browser = await chromium.launch();
+const mk = async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => console.log('PAGEERROR', e.message));
+  return page;
+};
+const A = await mk(), B = await mk();
+const st = (p, fn) => p.evaluate(fn);
+const shot = (p, n) => p.screenshot({ path: `${SHOTS}/${n}.png` });
+await A.goto(BASE); await A.fill('#name', 'Mon'); await A.click('text=Create room');
+await A.waitForSelector('[data-testid=room-code]');
+const code = (await A.textContent('[data-testid=room-code]')).trim();
+await B.goto(BASE); await B.fill('#name', 'Def'); await B.fill('input[aria-label="Room code"]', code); await B.click('button:has-text("Join")');
+await B.waitForSelector('[data-testid=room-code]');
+await B.click('[data-testid=hq-hq-sf]');
+await A.click('[data-testid=ready]'); await B.click('[data-testid=ready]');
+await B.waitForSelector('[data-testid=defender-screen]', { timeout: 15000 });
+await A.waitForSelector('[data-testid=monster-screen]', { timeout: 15000 });
+const v0 = await st(B, () => window.__fnab.getState().view);
+const approaches = { 'hq-sf': ['n-bay-bridge-sf', 'n-soma-split', 'n-octavia'] }[v0.hqId];
+await B.click('[data-testid=tool-trap]');
+for (const n of approaches) { await B.click(`[data-node="${n}"]`, { force: true }); await B.waitForTimeout(150); }
+await B.click('[data-testid=tool-inspect]');
+log('traps', (await st(B, () => window.__fnab.getState().view.traps.length)));
+const sp = await st(A, () => window.__fnab.getState().view.spawnOptions[0]); await A.click(`[data-node="${sp}"]`, { force: true });
+await A.click('[data-testid=cmd-ATTACK]');
+// reconnect test: reload defender tab mid-prep
+await B.reload();
+await B.waitForSelector('[data-testid=defender-screen]', { timeout: 15000 });
+log('defender resumed after reload; traps still', (await st(B, () => window.__fnab.getState().view.traps.length)));
+await B.waitForFunction(() => !!window.__fnab.getState().view?.held, null, { timeout: 180000 });
+log('held at', await st(B, () => window.__fnab.getState().view.held.nodeId));
+await shot(B, '20-defender-held');
+await B.click('[data-testid=contain]');
+await B.waitForTimeout(1500);
+await shot(B, '21-defender-containment');
+await shot(A, '22-monster-contained');
+await B.waitForSelector('[data-testid=results-screen]', { timeout: 30000 });
+await A.waitForSelector('[data-testid=results-screen]', { timeout: 30000 });
+const ra = await st(A, () => window.__fnab.getState().result), rb = await st(B, () => window.__fnab.getState().result);
+log('RESULT', ra.winner, ra.reason, rb.winner, rb.reason);
+await shot(A, '23-results-monster');
+await browser.close();

@@ -6,3 +6,4 @@ test-results/
 playwright-report/
 scripts/cameras/out/
 .DS_Store
+playtest-shots/
