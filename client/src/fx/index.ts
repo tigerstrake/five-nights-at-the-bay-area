@@ -1,5 +1,6 @@
 // Public interface of the FX module (owner: FX agent). Foundation consumes these exports as declared.
-// Stub implementations live in ./FeedFx.tsx until the FX agent replaces them.
+// Implementations: ./overlay (feed effects + monster compositing), ./sim (simulated feed),
+// ./cinematic (breach / containment / transitions), ./core (noise, scheduler, settings).
 
 /** Real-world availability of the source camera, from the camera adapter. Never game-driven. */
 export type FeedSourceMode = 'live' | 'snapshot' | 'simulated' | 'offline';
@@ -40,3 +41,14 @@ export interface FeedFxParams {
 
 export { FeedFxOverlay, SimulatedFeed, BreachSequence } from './FeedFx';
 export type { FeedFxOverlayProps, SimulatedFeedProps, BreachSequenceProps } from './FeedFx';
+
+// --- additive exports -------------------------------------------------------------------------
+export { ContainmentSequence, SignalLostTransition, BREACH_DURATION_MS, CONTAINMENT_DURATION_MS } from './FeedFx';
+export type { ContainmentSequenceProps, SignalLostTransitionProps } from './FeedFx';
+/** Placement regions that fit a SimulatedFeed scene (use instead of the real camera's while simulated). */
+export { getSimulatedPlacement } from './sim/layout';
+/** Force reduced motion (true/false) or follow the OS preference (null). */
+export { setFxReducedMotion, isReducedMotion } from './core/settings';
+/** Lightweight perf counters for all FX surfaces on the page. */
+export { getFxPerfStats, resetFxPerfStats } from './core/scheduler';
+export type { FxPerfStats } from './core/scheduler';
