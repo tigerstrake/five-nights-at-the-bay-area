@@ -26,6 +26,65 @@ does not pause a team with another defender online. Spectators do not keep eithe
 Repeated disconnect callbacks cannot extend grace. Pauses and discarded catch-up backlog shift `t0Epoch`
 to remain aligned with authoritative `t`.
 
+## Solo play
+
+**Play solo** on the title screen opens a role/difficulty chooser and creates an ordinary room. A human
+defender gets an AI monster and may add 0–2 AI teammates; a human monster gets one AI defender and can add
+more in the lobby. A blank solo name defaults to Nightwatch. Pick an HQ, set the night length, and ready up
+as usual. The host can pick HQ even when every defender is AI. Invite codes, spectators, results and restarts
+work through the same room lifecycle as multiplayer.
+
+AI players occupy real seats (up to the normal room capacity), display names such as `Unit-1 (AI)`, carry an
+AI tag/difficulty, and count toward defender scaling. They are always connected and automatically ready,
+including after a restart. Only the human host can add/remove AI or change an individual AI's difficulty in
+the lobby. Changes cancel the countdown. Joining humans replace an AI defender before adding another seat;
+in a full lobby they may replace an available AI monster instead. Selecting the monster role replaces its
+AI occupant; changing to defender replaces one AI defender. Humans never replace another human. Running
+matches keep their roster/roles fixed, so late arrivals spectate until the next lobby.
+
+The seat controller reuses the balance harness policies in `server/src/players/policies.ts` (the original
+`balance/bots.ts` exports remain compatible). It receives only its own role's projection and submits at most
+one action per observation through `RoomManager.action()`, using the same role, phase, resource, cooldown
+and target validation as humans. Each seat has its own seeded policy RNG, separate from simulation RNG.
+Defenders observe every 300 ms, with a small initial stagger. Each AI seat represents one operator, with
+the measured novice/competent/expert defender policy; collective harness attention is not multiplied a
+second time by team size:
+
+| Difficulty | Defender reaction | Defender action cadence | Adaptive monster decision interval |
+| --- | --- | --- | --- |
+| Novice | 3–6 s | about 2.4 s | 3–6 s |
+| Competent | 1.2–3.6 s | about 1.1 s | 1.2–3.6 s |
+| Expert | 0.35–1 s | about 0.65 s | 0.35–1 s |
+
+Defender cadence varies by ±20%. Camera attention is limited: unwatched camera reports are noticed with
+18% / 65% / 95% probability, once per report. Sensor/trap/breach alerts remain explicit and still require
+reaction time. The monster uses the `adaptive` commander (stances, sabotage, decoys, escape), sampled at
+the skill interval above; existing policy delays and the engine's command gap also apply. It drives the same
+tactical movement brain as a human commander and never sees undiscovered defenses. Tunables for seat
+observation/stagger/monster intervals live in `AI_PLAYER_CONFIG` in `shared/src/config.ts`; existing defender
+policy tuning remains shared with the balance harness. These are skill policies, without a human win-rate claim.
+
+AI has no socket or resumable token. Disconnect/leave callbacks cannot disconnect an AI, and AI never
+causes a reconnect pause or forfeit. A connected AI teammate keeps its defender team online when a human
+drops; a team consisting of an offline human still uses the normal reconnect rules. AI cannot become host
+or keep an abandoned room alive: cleanup considers human connections, and a room with no human members
+is deleted on the next housekeeping tick. The guarded E2E fast-forward runs the same AI decisions as live ticks.
+
+New protocol payloads (zod validated and charged to the existing socket/IP token buckets):
+
+```ts
+'room:createSolo': { name: string; token?: string; role: 'defender' | 'monster';
+  difficulty: 'novice' | 'competent' | 'expert'; teammates?: number }; // integer 0–2
+'lobby:addAi': { role: 'defender' | 'monster'; difficulty: AiDifficulty };
+'lobby:removeAi': { playerId: string };
+'lobby:setAiDifficulty': { playerId: string; difficulty: AiDifficulty };
+```
+
+`room:createSolo` uses the usual `JoinResult` acknowledgement and join budget; the lobby events use
+`ActionResult`. `LobbyPlayer.ai?: {difficulty: AiDifficulty}` is absent for humans. `MatchResult.players?`
+contains the match-start roster (`id`, `name`, `role`, optional `ai`), retaining AI/human names for results and
+timeline attribution even when a participant leaves. No AI configuration adds hidden information to views.
+
 ## Monster
 
 Position is always a node or a point along one edge. Travel time for an edge:

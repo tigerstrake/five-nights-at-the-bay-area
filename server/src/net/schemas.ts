@@ -1,5 +1,6 @@
 // zod validation for every client → server payload. Never trust the client.
 import { z } from 'zod';
+import { AI_PLAYER_CONFIG } from '@fnab/shared';
 
 const id = z.string().min(1).max(64);
 export const nameSchema = z.string().max(40);
@@ -11,6 +12,13 @@ export const codeSchema = z
   .regex(/^[A-Za-z]+$/);
 
 export const createSchema = z.object({ name: nameSchema, token: tokenSchema.optional() });
+const aiDifficulty = z.enum(['novice', 'competent', 'expert']);
+const aiRole = z.enum(['monster', 'defender']);
+export const createSoloSchema = createSchema.extend({ role: aiRole, difficulty: aiDifficulty,
+  teammates: z.number().int().min(0).max(AI_PLAYER_CONFIG.soloMaxTeammates).optional() });
+export const addAiSchema = z.object({ role: aiRole, difficulty: aiDifficulty });
+export const removeAiSchema = z.object({ playerId: id });
+export const aiDifficultySchema = removeAiSchema.extend({ difficulty: aiDifficulty });
 export const joinSchema = z.object({ code: codeSchema, name: nameSchema, token: tokenSchema.optional() });
 export const resumeSchema = z.object({ code: codeSchema, token: tokenSchema });
 export const setNameSchema = z.object({ name: nameSchema });

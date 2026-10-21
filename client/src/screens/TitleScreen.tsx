@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { createRoom, joinRoom, savedName } from '../net/socket';
+import type { SoloOptions } from '@fnab/shared';
+import { createRoom, createSoloRoom, joinRoom, savedName } from '../net/socket';
 import { useGame } from '../state/store';
 import { Button } from '../ui/kit';
 import { AudioUnlockPrompt, ConnectionBadge, SettingsMenu } from '../ui/chrome';
@@ -7,6 +8,7 @@ import { useUiAssets } from '../ui/assets';
 import { NETWORK } from '../lib/data';
 import { TitleSign } from './shell/Brand';
 import { HowToPlay } from './shell/HowToPlay';
+import { SoloSetup } from './shell/AiSetup';
 
 /** Server errors in the interface's own words: what happened, and what to do. */
 function explain(error: string, code: string): string {
@@ -24,7 +26,8 @@ export function TitleScreen() {
       .replace(/[^A-Z]/g, '')
       .slice(0, 4),
   );
-  const [busy, setBusy] = useState<'create' | 'join' | null>(null);
+  const [busy, setBusy] = useState<'create' | 'join' | 'solo' | null>(null);
+  const [solo, setSolo] = useState(false);
   const [help, setHelp] = useState(false);
   const toast = useGame((s) => s.toast);
   const connection = useGame((s) => s.connection);
@@ -37,6 +40,12 @@ export function TitleScreen() {
     if (kind === 'join' && code.trim().length < 4) return toast('Room codes are 4 letters', 'warn');
     setBusy(kind);
     const res = kind === 'create' ? await createRoom(name.trim()) : await joinRoom(code.trim(), name.trim());
+    setBusy(null);
+    if (!res.ok) toast(explain(res.error, code), 'error');
+  };
+  const goSolo = async (options: SoloOptions) => {
+    setBusy('solo');
+    const res = await createSoloRoom(name.trim() || 'Nightwatch', options);
     setBusy(null);
     if (!res.ok) toast(explain(res.error, code), 'error');
   };
@@ -136,6 +145,9 @@ export function TitleScreen() {
               </div>
             </div>
           </div>
+          <Button tone="cyan" size="lg" className="mt-4 w-full" disabled={!!busy || offline} onClick={() => setSolo(true)} data-testid="play-solo">
+            Play solo
+          </Button>
           {offline && <p className="mt-3 text-[12px] text-warn">Waiting for the game server. Buttons unlock when the link is up.</p>}
         </section>
 
@@ -153,6 +165,7 @@ export function TitleScreen() {
         <AudioUnlockPrompt />
       </div>
       <HowToPlay open={help} onClose={() => setHelp(false)} />
+      {solo && <SoloSetup busy={busy === 'solo'} disabled={offline} onStart={options => void goSolo(options)} onClose={() => setSolo(false)} />}
     </div>
   );
 }

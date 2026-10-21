@@ -257,6 +257,10 @@ export function TimelineList({
     activeRef.current?.scrollIntoView({ block: 'nearest' });
   }, [activeId]);
   return (
+    <>
+    {result.players && <p className="border-b border-edge px-3 py-2 text-[11px] text-mute" data-testid="result-players">
+      {result.players.map(p => p.name).join(' · ')}
+    </p>}
     <ol className="font-mono text-[11px]" data-testid="timeline">
       {list.map((e) => {
         const decoy = e.text.includes('[DECOY]');
@@ -288,13 +292,14 @@ export function TimelineList({
                         : 'text-text',
               )}
             >
-              {e.text}
+              {e.by && <span className="text-dim">{result.players?.find(p => p.id === e.by)?.name ?? 'Operator'} · </span>}{e.text}
             </span>
           </li>
         );
       })}
       {!list.length && <li className="px-3 py-2 text-dim">Nothing happened. Somehow.</li>}
     </ol>
+    </>
   );
 }
 

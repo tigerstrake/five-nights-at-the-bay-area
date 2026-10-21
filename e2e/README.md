@@ -23,6 +23,7 @@ The e2e client servers use `e2e/vite.e2e.config.ts` (the app's config plus a pri
 | Spec | Scenarios |
 | --- | --- |
 | `lobby.spec.ts` | players join by code and by invite link; creator is host and the only monster; others are defenders; a spectator joins; a defender picks the HQ and everyone sees it; ready states; every client sees the same countdown end; one shared match clock; unknown room code; late joiner spectates read-only and cannot act |
+| `solo.spec.ts` | title → Play solo → role/difficulty → lobby/HQ/ready with a single human; defender observes AI monster sightings and the revealed graph walk; monster manages AI defender difficulty/add/remove, plays against their actions and sees their names in results |
 | `monster-ai.spec.ts` | monster picks a spawn and opening stance in the UI; the AI walks it along real graph edges (checked live and against the revealed route); commands, the global command gap, per-command cooldowns, team gating and validation |
 | `defense.spec.ts` | SABOTAGE a camera, the defender sees "feed tampered", repairs it (status transitions, power spent, repair crew limits), ability cooldown; trap springs, containment, 15 s capture win (all participants); trap alone does not win; interrupting containment frees the monster; door power drain; scan/lure cooldowns and rejection while cooling; full power outage and recovery |
 | `visibility.spec.ts` | captures every Socket.IO frame each context receives. Defenders/spectators never get the monster's position, stance, cooldowns, spawn, knowledge, decoy flags or monster-only events; the monster never gets traps, sensors it has not discovered, sightings, exact power or defender-only events. The post-match result then reveals the route and `[DECOY]` flags identically to everyone |
@@ -36,6 +37,14 @@ UI is driven where it is reliable (create/join, roles, HQ, ready, spawn, stances
 doors, containment, restart). Precise or time-critical actions go through the app's own socket module
 (`import('/src/net/socket.ts')` in the page, the same code path the UI uses). State is read from `window.__fnab`
 (the store; enabled by the `?e2e` query flag). Balance numbers always come from `shared/src/config.ts`.
+
+Solo spec selectors: `#name`; `data-testid="title-screen"`, `play-solo`, `solo-setup`,
+`solo-role-defender`, `solo-role-monster`, `solo-difficulty-competent`, `solo-difficulty-novice`,
+`solo-teammates-0`, `solo-start`, `lobby-screen`, `ai-tag`, `hq-hq-sf`, `ready`, `defender-screen`,
+`monster-screen`, `ai-difficulty-${playerId}-expert`, `ai-add-defender`, `ai-remove-${playerId}`,
+`spawn-${spawnOptions[0]}`, `cmd-ATTACK`, `results-screen`, `result-players`. IDs in the two AI management
+selectors come from `RoomView.players`, and the spawn ID comes from the monster's own projection.
+`test:fastForward` exercises AI controllers through `RoomManager.stepMatch()` as well as engine movement.
 
 ## Test-only server hooks, and why they cannot reach production
 

@@ -108,7 +108,7 @@ export function attachSockets(io: IO, rooms: RoomManager, cameras: CameraService
         const t = Date.now();
         ipBudget.seenAt = t;
         if (!requests.take(t) || !ipBudget.requests.take(t)) return safeAck(ack, bad('Rate limit exceeded — try again shortly'));
-        if ((event === 'room:create' || event === 'room:join' || event === 'room:resume') &&
+        if ((event === 'room:create' || event === 'room:createSolo' || event === 'room:join' || event === 'room:resume') &&
           (!ipBudget.joins.take(t) || !ipBudget.failures.available(t))) return safeAck(ack, bad('Join limit exceeded — try again shortly'));
         try {
           const result = (handler as (...a: unknown[]) => unknown)(...args);
@@ -153,6 +153,16 @@ export function attachSockets(io: IO, rooms: RoomManager, cameras: CameraService
       const res = rooms.create(v.data.name, v.data.token);
       if (res.ok) bind(socket, res.code, res.playerId);
       if (!res.ok && (res.error === 'Room not found' || res.error === 'Session expired')) ipBudget.failures.take(Date.now());
+      safeAck(ack, res);
+    });
+
+    on('room:createSolo', (p, ack) => {
+      const v = S.createSoloSchema.safeParse(p);
+      if (!v.success) return safeAck(ack, bad('Invalid solo setup'));
+      if (!identityAllowed()) return safeAck(ack, bad('Cannot change identity during a match'));
+      leaveCurrent();
+      const res = rooms.createSolo(v.data.name, v.data, v.data.token);
+      if (res.ok) bind(socket, res.code, res.playerId);
       safeAck(ack, res);
     });
 
@@ -217,6 +227,9 @@ export function attachSockets(io: IO, rooms: RoomManager, cameras: CameraService
       'lobby:setReady',
       lobby(S.readySchema, (c, d) => rooms.setReady(c.code, c.playerId, d.ready)),
     );
+    on('lobby:addAi', lobby(S.addAiSchema, (c, d) => rooms.addAi(c.code, c.playerId, d.role, d.difficulty)));
+    on('lobby:removeAi', lobby(S.removeAiSchema, (c, d) => rooms.removeAi(c.code, c.playerId, d.playerId)));
+    on('lobby:setAiDifficulty', lobby(S.aiDifficultySchema, (c, d) => rooms.setAiDifficulty(c.code, c.playerId, d.playerId, d.difficulty)));
     on(
       'lobby:setSettings',
       lobby(S.settingsSchema, (c, d) => rooms.setSettings(c.code, c.playerId, d)),

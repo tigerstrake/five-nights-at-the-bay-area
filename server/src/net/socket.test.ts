@@ -43,6 +43,56 @@ beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(1_000_000); vi.stubEnv('
 afterEach(() => { stop?.(); stop = undefined; vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.useRealTimers(); });
 
 describe('socket security regressions', () => {
+  it('validates solo setup, publishes tagged seats and limits AI management to the host/lobby', () => {
+    const { rm, cfg, socket } = setup(), host = socket(), guest = socket();
+    for (const p of [
+      { name: 'Solo', role: 'spectator', difficulty: 'expert' },
+      { name: 'Solo', role: 'defender', difficulty: 'cheater' },
+      { name: 'Solo', role: 'defender', difficulty: 'expert', teammates: 3 },
+      { name: 'Solo', role: 'defender', difficulty: 'expert', teammates: 0.5 },
+    ]) expect(host.request('room:createSolo', p).ok).toBe(false);
+    expect(rm.rooms.size).toBe(0);
+    const a = joined(host.request<JoinResult>('room:createSolo', { name: 'Solo', role: 'defender', difficulty: 'expert', teammates: 1 }));
+    const room = rm.rooms.get(a.code)!;
+    const aiMonster = [...room.players.values()].find(p => p.ai && p.role === 'monster')!;
+    expect(host.values('room:state').at(-1).players).toContainEqual(expect.objectContaining({ id: aiMonster.id, ai: { difficulty: 'expert' }, ready: true }));
+    guest.request('room:join', { code: a.code, name: 'Guest' });
+    expect(guest.request('lobby:addAi', { role: 'defender', difficulty: 'novice' }).ok).toBe(false);
+    expect(guest.request('lobby:removeAi', { playerId: aiMonster.id }).ok).toBe(false);
+    expect(guest.request('lobby:setAiDifficulty', { playerId: aiMonster.id, difficulty: 'novice' }).ok).toBe(false);
+    expect(host.request('lobby:addAi', { role: 'defender', difficulty: 'novice' }).ok).toBe(true);
+    expect(host.request('lobby:setAiDifficulty', { playerId: aiMonster.id, difficulty: 'novice' }).ok).toBe(true);
+    expect(host.request('lobby:setAiDifficulty', { playerId: aiMonster.id, difficulty: 'omniscient' }).ok).toBe(false);
+    const aiDefender = [...room.players.values()].find(p => p.ai && p.role === 'defender')!;
+    expect(host.request('lobby:removeAi', { playerId: aiDefender.id }).ok).toBe(true);
+    host.request('lobby:setReady', { ready: true }); guest.request('lobby:setReady', { ready: true });
+    vi.advanceTimersByTime(cfg.tickMs + cfg.match.countdownMs + cfg.tickMs);
+    expect(room.stage).toBe('playing');
+    expect(host.request('lobby:addAi', { role: 'defender', difficulty: 'novice' }).ok).toBe(false);
+    expect(host.request('lobby:removeAi', { playerId: aiMonster.id }).ok).toBe(false);
+    expect(host.request('room:createSolo', { name: 'Switch', role: 'monster', difficulty: 'expert' }).ok).toBe(false);
+  });
+
+  it('AI lobby events share the normal request rate limits', () => {
+    const { cfg, socket } = setup(c => { c.net!.socketBurst = 3; c.net!.socketPerSecond = 1; });
+    const host = socket();
+    joined(host.request<JoinResult>('room:createSolo', { name: 'Solo', role: 'monster', difficulty: 'competent' }));
+    expect(host.request('lobby:addAi', { role: 'defender', difficulty: 'novice' }).ok).toBe(true);
+    expect(host.request('lobby:addAi', { role: 'defender', difficulty: 'expert' }).ok).toBe(true);
+    expect(host.request('lobby:addAi', { role: 'defender', difficulty: 'competent' }).error).toMatch(/Rate limit/);
+    vi.advanceTimersByTime(1000);
+    expect(host.request('lobby:addAi', { role: 'defender', difficulty: 'expert' }).ok).toBe(true);
+    expect(cfg.net!.socketBurst).toBe(3);
+  });
+
+  it('solo creates also consume the per-IP join budget across sockets', () => {
+    const { rm, socket } = setup(c => { c.net!.joinBurst = 1; c.net!.joinPerSecond = 0.1; });
+    const options = { name: 'Solo', role: 'monster', difficulty: 'expert' };
+    joined(socket().request<JoinResult>('room:createSolo', options));
+    expect(socket().request('room:createSolo', options).error).toMatch(/Join limit/);
+    expect(rm.rooms.size).toBe(1);
+  });
+
   it('1 unbinds same-room and cross-room identities and disconnects only the latest player', () => {
     const { rm, socket } = setup(), s = socket();
     const a = joined(s.request<JoinResult>('room:create', { name: 'm' }));

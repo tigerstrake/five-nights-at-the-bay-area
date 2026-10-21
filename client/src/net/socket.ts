@@ -1,6 +1,6 @@
 // Socket.IO client singleton + session persistence + server clock sync.
 import { io, type Socket } from 'socket.io-client';
-import type { ClientToServerEvents, GameAction, JoinResult, ServerToClientEvents, ActionResult, Role, HqId } from '@fnab/shared';
+import type { AiDifficulty, ClientToServerEvents, GameAction, JoinResult, ServerToClientEvents, ActionResult, Role, HqId, SoloOptions } from '@fnab/shared';
 import { normalizeResult, useGame } from '../state/store';
 
 export type ClientSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
@@ -168,6 +168,15 @@ function onJoined(res: JoinResult, name: string): JoinResult {
 export function createRoom(name: string): Promise<JoinResult> {
   return new Promise((resolve) => getSocket().emit('room:create', { name, token: tabToken() }, (r) => resolve(onJoined(r, name))));
 }
+export function createSoloRoom(name: string, options: SoloOptions): Promise<JoinResult> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve({ ok: false, error: 'Server did not respond' }), 4000);
+    getSocket().emit('room:createSolo', { name, ...options, token: tabToken() }, (r) => {
+      clearTimeout(timer);
+      resolve(onJoined(r, name));
+    });
+  });
+}
 export function joinRoom(code: string, name: string): Promise<JoinResult> {
   return new Promise((resolve) => getSocket().emit('room:join', { code, name, token: tabToken() }, (r) => resolve(onJoined(r, name))));
 }
@@ -194,6 +203,9 @@ async function withToast(p: Promise<ActionResult>): Promise<ActionResult> {
 }
 
 export const lobby = {
+  addAi: (role: 'monster' | 'defender', difficulty: AiDifficulty) => withToast(ackP((a) => getSocket().emit('lobby:addAi', { role, difficulty }, a))),
+  removeAi: (playerId: string) => withToast(ackP((a) => getSocket().emit('lobby:removeAi', { playerId }, a))),
+  setAiDifficulty: (playerId: string, difficulty: AiDifficulty) => withToast(ackP((a) => getSocket().emit('lobby:setAiDifficulty', { playerId, difficulty }, a))),
   setRole: (role: Role) => withToast(ackP((a) => getSocket().emit('lobby:setRole', { role }, a))),
   setReady: (ready: boolean) => withToast(ackP((a) => getSocket().emit('lobby:setReady', { ready }, a))),
   setName: (name: string) => withToast(ackP((a) => getSocket().emit('lobby:setName', { name }, a))),

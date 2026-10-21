@@ -1,6 +1,19 @@
 // ALL balance tunables live here (spec §13). Engine code must not hard-code gameplay numbers.
 // Times in ms, power in abstract units, rates per second unless noted.
-import type { MonsterCommand, MonsterStance, MatchPhase, ManifestationKind, HqId } from './types';
+import type { AiDifficulty, MonsterCommand, MonsterStance, MatchPhase, ManifestationKind, HqId } from './types';
+
+/** Seat controllers; the reused defender policy retains its measured skill/attention settings. */
+export const AI_PLAYER_CONFIG: {
+  observeMs: number;
+  initialStaggerMs: [number, number];
+  monsterReactionMs: Record<AiDifficulty, [number, number]>;
+  soloMaxTeammates: number;
+} = {
+  observeMs: 300,
+  initialStaggerMs: [0, 350],
+  monsterReactionMs: { novice: [3_000, 6_000], competent: [1_200, 3_600], expert: [350, 1_000] },
+  soloMaxTeammates: 2,
+};
 
 /** Utility weights for the tactical brain only; these do not change simulation balance. */
 export interface TacticalAiConfig {

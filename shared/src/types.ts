@@ -95,6 +95,14 @@ export interface NetworkData {
 // ───────────────────────────── Roles, phases, commands ─────────────────────────────
 
 export type Role = 'monster' | 'defender' | 'spectator';
+export type AiDifficulty = 'novice' | 'competent' | 'expert';
+export interface AiSeat { difficulty: AiDifficulty }
+export interface SoloOptions {
+  role: 'monster' | 'defender';
+  difficulty: AiDifficulty;
+  /** Additional defenders for a human defender; ignored for a human monster. */
+  teammates?: number;
+}
 export type Team = 'monster' | 'defenders';
 
 /** Match phases (spec §12). Preparation is a fixed window; the others split the match duration. */
@@ -398,6 +406,8 @@ export interface MatchStats {
 }
 
 export interface MatchResult {
+  /** Match-start roster, retained for timeline attribution even after players leave. */
+  players?: Array<Pick<LobbyPlayer, 'id' | 'name' | 'role' | 'ai'>>;
   /** Human-readable result detail, including which team failed to reconnect. */
   reasonText?: string;
   winner: Team;
@@ -417,6 +427,8 @@ export interface MatchResult {
 export type RoomStage = 'lobby' | 'countdown' | 'playing' | 'results';
 
 export interface LobbyPlayer {
+  /** Absent for humans. AI seats are always connected and ready in the lobby. */
+  ai?: AiSeat;
   id: string;
   name: string;
   role: Role;

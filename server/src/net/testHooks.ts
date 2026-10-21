@@ -3,7 +3,6 @@
 // Nothing here is reachable in a normal run: the socket handlers below are only registered when enabled.
 import type { Server } from 'socket.io';
 import { DEFAULT_CONFIG, type BalanceConfig } from '@fnab/shared';
-import { step } from '../engine/engine';
 import type { RoomManager } from '../rooms/RoomManager';
 
 /** Longest fast-forward a single call may request (match time). */
@@ -57,7 +56,7 @@ export function fastForward(rooms: RoomManager, token: string, ms: number): Fast
   const steps = Math.ceil(ms / tick);
   let done = 0;
   while (done < steps && !m.state.result) {
-    step(m.ctx, m.state, tick, m.rng);
+    rooms.stepMatch(loc.room);
     done++;
   }
   m.t0Epoch -= done * tick;

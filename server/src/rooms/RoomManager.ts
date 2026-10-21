@@ -2,6 +2,8 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import type {
   ActionResult,
+  AiDifficulty,
+  AiSeat,
   BalanceConfig,
   GameAction,
   Graph,
@@ -14,18 +16,21 @@ import type {
   RoomSettings,
   RoomView,
   Rng,
+  SoloOptions,
 } from '@fnab/shared';
-import { DEFAULT_CONFIG, clampDurationMs, createRng, scaleForDefenders } from '@fnab/shared';
+import { AI_PLAYER_CONFIG, DEFAULT_CONFIG, clampDurationMs, createRng, hashString, scaleForDefenders } from '@fnab/shared';
 import type { MonsterBrain } from '../ai/types';
 import { defaultBrain } from '../ai/baselineBrain';
 import { applyAction, forfeit, step, type EngineCtx } from '../engine/engine';
 import { createGame, pushEvent, type GameState } from '../engine/state';
 import { projectView } from '../visibility';
+import { AiPlayer } from '../players/AiPlayer';
 
 const MONSTER_ACTIONS = new Set(['command', 'sabotage', 'decoy', 'chooseSpawn']);
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // no I/O to avoid confusion
 
 export interface Player {
+  ai?: AiSeat;
   id: string;
   token: string;
   name: string;
@@ -37,6 +42,8 @@ export interface Player {
 }
 
 export interface Match {
+  aiPlayers: Map<string, AiPlayer>;
+  roster: NonNullable<MatchResult['players']>;
   state: GameState;
   rng: Rng;
   ctx: EngineCtx;
@@ -49,6 +56,7 @@ export interface Match {
 }
 
 export interface Room {
+  nextAiNumber: number;
   code: string;
   players: Map<string, Player>;
   hostId: string;
@@ -123,6 +131,7 @@ export class RoomManager {
     const code = this.newCode();
     const defaultHq = (this.graph.data.headquarters[0]?.id ?? 'hq-sf') as HqId;
     const room: Room = {
+      nextAiNumber: 1,
       code,
       players: new Map(),
       hostId: '',
@@ -140,6 +149,20 @@ export class RoomManager {
     return { ok: true, code, playerId: p.id, token: p.token };
   }
 
+  createSolo(name: string, options: SoloOptions, token?: string): JoinResult {
+    const teammates = options.role === 'defender' ? options.teammates ?? 0 : 0;
+    if (!['monster', 'defender'].includes(options.role) || !this.validDifficulty(options.difficulty) ||
+      !Number.isInteger(teammates) || teammates < 0 || teammates > AI_PLAYER_CONFIG.soloMaxTeammates ||
+      2 + teammates > this.cfg.room.maxPlayers) return { ok: false, error: 'Invalid solo setup' };
+    const res = this.create(name, token);
+    if (!res.ok) return res;
+    const room = this.rooms.get(res.code)!;
+    room.players.get(res.playerId)!.role = options.role;
+    this.addAi(res.code, res.playerId, options.role === 'monster' ? 'defender' : 'monster', options.difficulty);
+    for (let i = 0; i < teammates; i++) this.addAi(res.code, res.playerId, 'defender', options.difficulty);
+    return res;
+  }
+
   join(code: string, name: string, token?: string): JoinResult {
     const room = this.rooms.get(code.toUpperCase().trim());
     if (!room) return { ok: false, error: 'Room not found' };
@@ -147,9 +170,14 @@ export class RoomManager {
       const existing = this.findByToken(room, token);
       if (existing) return this.resume(room.code, token);
     }
-    if (room.players.size >= this.cfg.room.maxPlayers) return { ok: false, error: 'Room is full' };
     const hasMonster = [...room.players.values()].some((p) => p.role === 'monster');
-    const role: Role = room.stage === 'playing' || room.stage === 'results' ? 'spectator' : hasMonster ? 'defender' : 'monster';
+    const inLobby = room.stage === 'lobby' || room.stage === 'countdown';
+    let role: Role = inLobby ? hasMonster ? 'defender' : 'monster' : 'spectator';
+    const ais = [...room.players.values()].filter(p => p.ai);
+    const replacement = inLobby ? ais.find(p => p.role === role) ??
+      (room.players.size >= this.cfg.room.maxPlayers ? ais[0] : undefined) : undefined;
+    if (room.players.size >= this.cfg.room.maxPlayers && !replacement) return { ok: false, error: 'Room is full' };
+    if (replacement) { role = replacement.role; this.removePlayer(room, replacement.id); }
     const p = this.addPlayer(room, name, token, role);
     if (!room.hostId) room.hostId = p.id;
     this.cancelCountdown(room);
@@ -157,7 +185,7 @@ export class RoomManager {
   }
 
   private findByToken(room: Room, token: string): Player | undefined {
-    for (const p of room.players.values()) if (p.token === token) return p;
+    for (const p of room.players.values()) if (!p.ai && p.token === token) return p;
     return undefined;
   }
 
@@ -204,7 +232,7 @@ export class RoomManager {
   disconnect(code: string, playerId: string): void {
     const room = this.rooms.get(code);
     const p = room?.players.get(playerId);
-    if (!room || !p || !p.connected) return;
+    if (!room || !p || p.ai || !p.connected) return;
     p.connected = false;
     p.disconnectedAt = this.now();
     room.version++;
@@ -214,7 +242,7 @@ export class RoomManager {
 
   leave(code: string, playerId: string): void {
     const room = this.rooms.get(code);
-    if (!room) return;
+    if (!room || room.players.get(playerId)?.ai) return;
     this.removePlayer(room, playerId);
   }
 
@@ -233,7 +261,7 @@ export class RoomManager {
       }
     }
     if (room.hostId === playerId) {
-      const next = [...room.players.values()].sort((a, b) => Number(b.connected) - Number(a.connected) || a.joinedAt - b.joinedAt)[0];
+      const next = [...room.players.values()].filter(x => !x.ai).sort((a, b) => Number(b.connected) - Number(a.connected) || a.joinedAt - b.joinedAt)[0];
       room.hostId = next?.id ?? '';
     }
     this.cancelCountdown(room);
@@ -253,7 +281,7 @@ export class RoomManager {
   private lobbyGuard(room: Room | undefined, playerId: string): { room: Room; p: Player } | ActionResult {
     if (!room) return { ok: false, error: 'Room not found' };
     const p = room.players.get(playerId);
-    if (!p) return { ok: false, error: 'Not in room' };
+    if (!p || p.ai) return { ok: false, error: 'Not in room' };
     if (room.stage !== 'lobby' && room.stage !== 'countdown') return { ok: false, error: 'Match in progress' };
     return { room, p };
   }
@@ -273,9 +301,14 @@ export class RoomManager {
     const g = this.lobbyGuard(this.rooms.get(code), playerId);
     if ('ok' in g) return g;
     const { room, p } = g;
+    if (p.role === role) return { ok: true };
     if (role === 'monster') {
       const other = [...room.players.values()].find((x) => x.role === 'monster' && x.id !== p.id);
-      if (other) return { ok: false, error: `${other.name} is already the monster` };
+      if (other && !other.ai) return { ok: false, error: `${other.name} is already the monster` };
+      if (other) this.removePlayer(room, other.id);
+    } else if (role === 'defender') {
+      const replacement = [...room.players.values()].find(x => x.role === 'defender' && x.ai);
+      if (replacement) this.removePlayer(room, replacement.id);
     }
     if (p.role !== role) {
       p.role = role;
@@ -283,6 +316,54 @@ export class RoomManager {
       room.version++;
       this.cancelCountdown(room);
     }
+    return { ok: true };
+  }
+
+  private validDifficulty(difficulty: AiDifficulty): boolean {
+    return ['novice', 'competent', 'expert'].includes(difficulty);
+  }
+
+  private aiHostGuard(code: string, playerId: string) {
+    const g = this.lobbyGuard(this.rooms.get(code), playerId);
+    if ('ok' in g) return g;
+    if (g.room.hostId !== playerId) return { ok: false, error: 'Only the host can manage AI players' };
+    return g;
+  }
+
+  addAi(code: string, playerId: string, role: 'monster' | 'defender', difficulty: AiDifficulty): ActionResult {
+    const g = this.aiHostGuard(code, playerId);
+    if ('ok' in g) return g;
+    const { room } = g;
+    if (!['monster', 'defender'].includes(role) || !this.validDifficulty(difficulty)) return { ok: false, error: 'Invalid AI setup' };
+    if (room.players.size >= this.cfg.room.maxPlayers) return { ok: false, error: 'Room is full' };
+    if (role === 'monster' && [...room.players.values()].some(p => p.role === 'monster')) return { ok: false, error: 'Monster seat is taken' };
+    const p: Player = {
+      id: randomUUID(), token: '', name: `Unit-${room.nextAiNumber++} (AI)`, role,
+      ai: { difficulty }, ready: true, connected: true, disconnectedAt: null, joinedAt: this.now(),
+    };
+    room.players.set(p.id, p);
+    room.version++;
+    this.cancelCountdown(room);
+    return { ok: true };
+  }
+
+  removeAi(code: string, playerId: string, aiId: string): ActionResult {
+    const g = this.aiHostGuard(code, playerId);
+    if ('ok' in g) return g;
+    if (!g.room.players.get(aiId)?.ai) return { ok: false, error: 'AI player not found' };
+    this.removePlayer(g.room, aiId);
+    return { ok: true };
+  }
+
+  setAiDifficulty(code: string, playerId: string, aiId: string, difficulty: AiDifficulty): ActionResult {
+    const g = this.aiHostGuard(code, playerId);
+    if ('ok' in g) return g;
+    const p = g.room.players.get(aiId);
+    if (!p?.ai || !this.validDifficulty(difficulty)) return { ok: false, error: 'Invalid AI player or difficulty' };
+    if (p.ai.difficulty === difficulty) return { ok: true };
+    p.ai = { difficulty };
+    g.room.version++;
+    this.cancelCountdown(g.room);
     return { ok: true };
   }
 
@@ -331,7 +412,7 @@ export class RoomManager {
     room.result = null;
     room.countdownEndsAt = null;
     for (const p of room.players.values()) {
-      p.ready = false;
+      p.ready = !!p.ai;
       // Players who joined mid-match (auto-spectators) get a playing role for the next match.
       if (p.role === 'spectator' && roles && !roles.has(p.id)) {
         p.role = [...room.players.values()].some((x) => x.role === 'monster') ? 'defender' : 'monster';
@@ -389,6 +470,9 @@ export class RoomManager {
       publicIdKey: randomBytes(32).toString('hex'),
     });
     room.match = {
+      aiPlayers: new Map([...room.players.values()].filter(p => p.ai && p.role !== 'spectator').map((p, i) =>
+        [p.id, new AiPlayer(p.role as 'monster' | 'defender', p.ai!.difficulty, this.graph, state.cfg, hashString(`${seed}:ai:${i}`))])),
+      roster: [...room.players.values()].map(p => ({ id: p.id, name: p.name, role: p.role, ...(p.ai ? { ai: { ...p.ai } } : {}) })),
       state,
       rng: createRng(seed),
       ctx: { graph: this.graph, brain: this.brainFactory(), placementCount: this.placementCount },
@@ -406,6 +490,19 @@ export class RoomManager {
     room.countdownEndsAt = null;
     room.result = null;
     room.version++;
+  }
+
+  /** One authoritative simulation tick, shared by real time and the guarded headless test hook. */
+  stepMatch(room: Room): void {
+    const m = room.match;
+    if (!m || room.stage !== 'playing' || m.state.result || this.pausedForReconnect(m)) return;
+    for (const [id, controller] of m.aiPlayers) {
+      if (!controller.due(m.state.t)) continue;
+      const view = projectView(m.ctx, m.state, controller.role, { t0Epoch: m.t0Epoch, serverNow: m.t0Epoch + m.state.t });
+      const action = controller.act(view);
+      if (action) this.action(room.code, id, action);
+    }
+    step(m.ctx, m.state, m.state.cfg.tickMs, m.rng);
   }
 
   private pausedForReconnect(m: Match): boolean {
@@ -471,10 +568,11 @@ export class RoomManager {
         if (!p.connected && p.disconnectedAt !== null && now - p.disconnectedAt > this.cfg.room.reconnectGraceMs)
           this.removePlayer(room, p.id);
       }
-      const anyConnected = [...room.players.values()].some((p) => p.connected);
+      const humans = [...room.players.values()].filter(p => !p.ai);
+      const anyConnected = humans.some((p) => p.connected);
       if (!anyConnected) {
         room.emptySince ??= now;
-        if (now - room.emptySince > this.cfg.room.emptyRoomTtlMs || room.players.size === 0) {
+        if (now - room.emptySince > this.cfg.room.emptyRoomTtlMs || humans.length === 0) {
           this.deleteRoom(room);
           continue;
         }
@@ -496,7 +594,7 @@ export class RoomManager {
         if (paused) m.lastStepAt = now;
         let steps = 0;
         while (now - m.lastStepAt >= tick && steps < 10 && !m.state.result) {
-          step(m.ctx, m.state, tick, m.rng);
+          this.stepMatch(room);
           m.lastStepAt += tick;
           steps++;
         }
@@ -506,8 +604,9 @@ export class RoomManager {
         out.playing.push(room);
         if (m.state.result) {
           room.stage = 'results';
+          m.state.result.players = m.roster;
           room.result = m.state.result;
-          for (const p of room.players.values()) p.ready = false;
+          for (const p of room.players.values()) p.ready = !!p.ai;
           room.version++;
           out.ended.push(room);
         }
@@ -527,7 +626,8 @@ export class RoomManager {
   roomView(room: Room, playerId: string): RoomView {
     const players: LobbyPlayer[] = [...room.players.values()]
       .sort((a, b) => a.joinedAt - b.joinedAt)
-      .map((p) => ({ id: p.id, name: p.name, role: p.role, ready: p.ready, connected: p.connected, isHost: p.id === room.hostId }));
+      .map((p) => ({ id: p.id, name: p.name, role: p.role, ready: p.ready, connected: p.connected, isHost: p.id === room.hostId,
+        ...(p.ai ? { ai: { ...p.ai } } : {}) }));
     return {
       code: room.code,
       youId: playerId,

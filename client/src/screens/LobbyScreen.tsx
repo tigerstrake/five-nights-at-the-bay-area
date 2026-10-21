@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import clsx from 'clsx';
-import type { LobbyPlayer, Role, RoomView } from '@fnab/shared';
+import type { AiDifficulty, LobbyPlayer, Role, RoomView } from '@fnab/shared';
 import { DEFAULT_CONFIG, spawnCandidates } from '@fnab/shared';
 import { lobby, leaveRoom } from '../net/socket';
 import { useGame } from '../state/store';
@@ -13,6 +13,7 @@ import { HqCard } from './shell/HqCard';
 import { RoleBriefing } from './shell/briefings';
 import { HowToPlay } from './shell/HowToPlay';
 import { nextDefenderSummary, scalingSummary } from './shell/difficulty';
+import { AiDifficultyControl } from './shell/AiSetup';
 
 const ROLE_INFO: Record<Role, { label: string; desc: string }> = {
   monster: { label: 'Monster', desc: 'Command the thing in the cameras. Breach the HQ before dawn.' },
@@ -55,7 +56,7 @@ function RoleChip({ role }: { role: Role }) {
   );
 }
 
-function PlayerRow({ p, you }: { p: LobbyPlayer; you: boolean }) {
+function PlayerRow({ p, you, isHost }: { p: LobbyPlayer; you: boolean; isHost: boolean }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(p.name);
   const commit = () => {
@@ -97,11 +98,17 @@ function PlayerRow({ p, you }: { p: LobbyPlayer; you: boolean }) {
             </button>
           )}
           {p.isHost && <span className="shrink-0 border border-warn/50 px-1 font-mono text-[9px] uppercase tracking-[0.12em] text-warn">host</span>}
+          {p.ai && <span className="shrink-0 border border-cyan/40 px-1 font-mono text-[9px] text-cyan" data-testid="ai-tag">AI</span>}
         </div>
         <div className="mt-0.5 flex items-center gap-3">
           <RoleChip role={p.role} />
+          {p.ai && <span className="font-mono text-[10px] capitalize text-mute">{p.ai.difficulty}</span>}
           {!p.connected && <span className="font-mono text-[10px] text-warn">signal lost</span>}
         </div>
+        {p.ai && isHost && <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <AiDifficultyControl value={p.ai.difficulty} onChange={d => void lobby.setAiDifficulty(p.id, d)} testIdPrefix={`ai-difficulty-${p.id}`} />
+          <Button tone="ghost" size="sm" onClick={() => void lobby.removeAi(p.id)} data-testid={`ai-remove-${p.id}`} aria-label={`Remove ${p.name}`}>Remove</Button>
+        </div>}
       </div>
       {p.role !== 'spectator' ? (
         <span
@@ -126,6 +133,7 @@ export function LobbyScreen({ room }: { room: RoomView }) {
   const canPickHq = me?.role === 'defender' || isHost;
   const toast = useGame((s) => s.toast);
   const [help, setHelp] = useState(false);
+  const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>('competent');
   const assets = useUiAssets();
   const minS = DEFAULT_CONFIG.match.minDurationMs / 1000;
   const maxS = DEFAULT_CONFIG.match.maxDurationMs / 1000;
@@ -204,10 +212,19 @@ export function LobbyScreen({ room }: { room: RoomView }) {
           >
             <ul className="divide-y divide-edge" data-testid="player-list">
               {room.players.map((p) => (
-                <PlayerRow key={p.id} p={p} you={p.id === room.youId} />
+                <PlayerRow key={p.id} p={p} you={p.id === room.youId} isHost={isHost} />
               ))}
             </ul>
-            {room.players.length < 3 && (
+            {isHost && <div className="space-y-2 border-t border-edge p-3" data-testid="ai-controls">
+              <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-mute">Add AI players</div>
+              <AiDifficultyControl value={aiDifficulty} onChange={setAiDifficulty} testIdPrefix="ai-add-difficulty" />
+              <div className="flex gap-2">
+                <Button size="sm" tone="cyan" disabled={room.players.length >= DEFAULT_CONFIG.room.maxPlayers} onClick={() => void lobby.addAi('defender', aiDifficulty)} data-testid="ai-add-defender">+ Defender</Button>
+                <Button size="sm" tone="blood" disabled={monsters > 0 || room.players.length >= DEFAULT_CONFIG.room.maxPlayers} onClick={() => void lobby.addAi('monster', aiDifficulty)} data-testid="ai-add-monster">+ Monster</Button>
+              </div>
+              <p className="text-[11px] leading-snug text-dim">AI players ready up automatically. A human taking their role replaces them.</p>
+            </div>}
+            {room.players.length < 3 && !room.players.some(p => p.ai) && (
               <p className="px-3 py-3 text-[12px] leading-snug text-dim">
                 {monsters === 0
                   ? 'Nobody is the monster yet. Someone has to be.'
@@ -275,7 +292,7 @@ export function LobbyScreen({ room }: { room: RoomView }) {
           <Panel title="Your role" className="shrink-0">
             <div className="flex flex-col gap-1.5 p-2.5" role="radiogroup" aria-label="Role">
               {(Object.keys(ROLE_INFO) as Role[]).map((r) => {
-                const holder = r === 'monster' ? room.players.find((p) => p.role === 'monster' && p.id !== room.youId) : undefined;
+                const holder = r === 'monster' ? room.players.find((p) => p.role === 'monster' && p.id !== room.youId && !p.ai) : undefined;
                 const sel = me?.role === r;
                 return (
                   <button
