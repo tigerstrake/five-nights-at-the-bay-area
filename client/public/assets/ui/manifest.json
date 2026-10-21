@@ -1,5 +1,12 @@
 {
   "defeat": "defeat.jpg",
   "keyart": "keyart.jpg",
-  "keyartSmall": "keyart-small.jpg"
+  "keyartSmall": "keyart-small.jpg",
+  "hq": {
+    "hq-stanford": "hq-stanford.jpg",
+    "hq-sf": "hq-sf.jpg",
+    "hq-oakland": "hq-oakland.jpg",
+    "hq-sanjose": "hq-sanjose.jpg"
+  },
+  "victory": "victory.jpg"
 }
