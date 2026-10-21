@@ -56,6 +56,7 @@ Deployable via Render Blueprints or as a Docker Web Service:
 2. In the Render Dashboard, create a **New Blueprint Instance** and point to the repository (or create a **Web Service** with runtime `Docker`).
 3. Render automatically picks up `render.yaml` or `Dockerfile`.
 4. WebSockets are natively supported over HTTPS.
+5. In **Environment**, set `TRUST_PROXY` to a comma-separated list of verified Render ingress proxy IPs/CIDRs and any additional trusted proxy hops between the service and the client. For example, **if** the verified ingress pool is `10.42.0.0/24`, set `TRUST_PROXY=10.42.0.0/24`; this is an illustrative range, not a Render-wide default. Obtain the ingress ranges for your service/region from your platform operator before configuring them. Render forwards client addresses through `X-Forwarded-For` ([Render's client-IP guidance](https://render.com/articles/how-render-handles-ddos-attacks)); without this allowlist, users of a shared ingress address share rate-limit buckets.
 
 > **CRITICAL**: In Render settings, ensure instance count is set to **1** (`numInstances: 1`). Do not enable autoscaling.
 
@@ -79,6 +80,11 @@ Deployable using the Fly CLI (`flyctl`):
    fly status
    fly logs
    ```
+5. Set the allowlist to your verified Fly Proxy ingress IPs/CIDRs, including trusted intermediate hops in `X-Forwarded-For`, then deploy/restart with that environment value:
+   ```bash
+   fly secrets set TRUST_PROXY='<verified-proxy-ip-or-cidr>,<other-trusted-hop>'
+   ```
+   Replace the placeholders with actual addresses/ranges; omit unused entries. If the immediate proxy is verified to connect over loopback, `TRUST_PROXY=127.0.0.1,::1` covers that hop; otherwise list its actual peer IP/CIDR. Use proxy source addresses, not your app's public Anycast or egress IP. Fly documents the forwarded chain in its [request headers reference](https://docs.fly.io/networking/request-headers). This server reads `X-Forwarded-For` through trusted hops; it does not implicitly trust `Fly-Client-IP`.
 
 > **CRITICAL**: Ensure only 1 machine is running (`fly scale count 1`).
 
@@ -92,6 +98,7 @@ Deployable using the Fly CLI (`flyctl`):
 | `NODE_ENV` | `production` | Enables production mode and static asset serving from `client/dist`. |
 | `CAMERA_MODE` | `auto` | Camera ingestion mode (`auto`, `live`, `snapshot`, `simulation`). |
 | `CORS_ORIGIN` | reflect origin | Comma-separated list of allowed origins (e.g., `https://example.com`) if the client is hosted on a separate CDN/domain. |
+| `TRUST_PROXY` | empty (trust none) | Comma-separated trusted reverse-proxy IPs/CIDRs, IPv4 or IPv6. Enables `X-Forwarded-For` only from allowlisted socket peers and walks the chain right-to-left, stopping at the first untrusted hop. Unset/empty/`false` disables forwarding trust; invalid entries, `true`, and hop counts fail startup. |
 | `CAMERA_CHECK_INTERVAL_MS`| `300000` (5m) | Background health check interval for external Caltrans feeds. |
 | `CAMERA_TIMEOUT_MS` | `8000` (8s) | Probe timeout when checking external camera streams. |
 | `CAMERA_CONCURRENCY` | `3` | Max simultaneous external probes. |
@@ -109,6 +116,7 @@ Deployable using the Fly CLI (`flyctl`):
 ### 2. WebSockets & Sticky Sessions
 - Client and server communicate over Socket.IO using WebSocket transport (falling back to HTTP long-polling).
 - When fronted by a reverse proxy or CDN (e.g., Nginx, Cloudflare), WebSocket upgrading (`Upgrade: websocket` and `Connection: Upgrade`) must be preserved.
+- Configure `TRUST_PROXY` on Render and Fly as above. Allowlist only proxies whose forwarding behavior you trust; use the narrowest verified ingress ranges, and ensure those proxies append the real peer address or overwrite untrusted forwarding headers. Missing/malformed forwarding headers fall back to the socket address. Direct connections from other peers ignore forwarding headers. IPv4-mapped IPv6 and equivalent IPv6 spellings share a rate-limit key. Do not set `0.0.0.0/0` or `::/0`: that would also trust arbitrary direct clients.
 
 ### 3. Camera Modes & Offline Resilience
 - `CAMERA_MODE=auto`: Probes Caltrans feeds and gracefully falls back to simulated procedural feeds if external streams are offline or unreachable.

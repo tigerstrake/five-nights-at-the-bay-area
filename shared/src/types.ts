@@ -237,6 +237,8 @@ export interface TeamConnectionView {
   totalPlayers: number;
   /** Wall-clock deadline; null while at least one member of the team is online. */
   reconnectDeadlineEpoch: number | null;
+  /** Cumulative whole-team pause allowance left this match (wall milliseconds). */
+  pauseRemainingMs?: number;
 }
 
 export interface ViewBase {

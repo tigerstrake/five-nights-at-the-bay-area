@@ -17,9 +17,17 @@ export interface ViewClock {
   serverNow: number;
 }
 
+/** Opaque order first; never expose a partial batch at a moving window boundary. */
+function visibleWindow<T extends { t: number; id: number }>(entries: T[], limit: number): T[] {
+  entries.sort((a, b) => a.t - b.t || a.id - b.id);
+  let start = Math.max(0, entries.length - limit);
+  while (start > 0 && start < entries.length && entries[start]!.t === entries[start - 1]!.t) start++;
+  return entries.slice(start);
+}
+
 function visibleEvents(s: GameState, audience: 'defenders' | 'monster', limit: number): VisibleEvent[] {
   const out: VisibleEvent[] = [];
-  for (let i = s.events.length - 1; i >= 0 && out.length < limit; i--) {
+  for (let i = s.events.length - 1; i >= 0; i--) {
     const e: GameEvent = s.events[i]!;
     if (e.audience !== 'all' && e.audience !== audience) continue;
     const v: VisibleEvent = { id: publicId(s, e.id), t: e.t, kind: e.kind, text: e.text, severity: e.severity };
@@ -29,7 +37,7 @@ function visibleEvents(s: GameState, audience: 'defenders' | 'monster', limit: n
     if (e.by !== undefined && audience === 'defenders') v.by = e.by;
     out.push(v);
   }
-  return out.sort((a, b) => a.t - b.t || a.id - b.id);
+  return visibleWindow(out, limit);
 }
 
 function base(s: GameState, clock: ViewClock, defenders: boolean): ViewBase {
@@ -74,11 +82,10 @@ export function projectDefenderView(
       manifestation,
     };
   });
-  const visibleSightings = s.sightings
+  const visibleSightings = visibleWindow(s.sightings
     .filter((x) => s.t - x.t < s.cfg.detection.sightingTtlMs)
-    .map((x) => ({ id: publicId(s, x.id), nodeId: x.nodeId, t: x.t, confidence: x.confidence, source: x.source, flaggedFalse: x.flaggedFalse }))
-    .sort((a, b) => a.t - b.t || a.id - b.id)
-    .slice(-s.cfg.visibility.sightingsInView);
+    .map((x) => ({ id: publicId(s, x.id), nodeId: x.nodeId, t: x.t, confidence: x.confidence, source: x.source, flaggedFalse: x.flaggedFalse })),
+    s.cfg.visibility.sightingsInView);
   const lastReal = [...visibleSightings].reverse().find((x) => !x.flaggedFalse && x.source !== 'sensor');
   const m = s.monster;
   const hq = ctx.graph.hqs.get(s.hqId)!;

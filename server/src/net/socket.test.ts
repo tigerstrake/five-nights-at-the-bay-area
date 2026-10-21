@@ -9,10 +9,10 @@ import { FIXTURE, testCfg } from '../../test/fixtures';
 // Exercise the real transport registrations without opening ports or using the network.
 class WireSocket {
   data: { code?: string; playerId?: string } = {};
-  handshake: { address: string };
+  handshake: { address: string; headers: { 'x-forwarded-for'?: string } };
   handlers = new Map<string, (...args: any[]) => void>();
   out: Array<{ event: string; value: any }> = [];
-  constructor(readonly id: string, ip = '127.0.0.1') { this.handshake = { address: ip }; }
+  constructor(readonly id: string, ip = '127.0.0.1', forwarded?: string) { this.handshake = { address: ip, headers: { 'x-forwarded-for': forwarded } }; }
   on(event: string, handler: (...args: any[]) => void) { this.handlers.set(event, handler); }
   emit(event: string, value: unknown) { this.out.push({ event, value }); }
   disconnect() { this.handlers.get('disconnect')?.(); }
@@ -34,13 +34,13 @@ function setup(over?: Parameters<typeof testCfg>[0]) {
   const io = { on: (_event: string, handler: typeof connect) => { connect = handler; }, emit: vi.fn() };
   stop = attachSockets(io as never, rm, new SimulationCameraService({ cameras: [] }), cfg.tickMs);
   let id = 0;
-  const socket = (ip?: string) => { const s = new WireSocket(String(++id), ip); connect(s); return s; };
+  const socket = (ip?: string, forwarded?: string) => { const s = new WireSocket(String(++id), ip, forwarded); connect(s); return s; };
   return { rm, cfg, socket };
 }
 function joined(result: JoinResult) { if (!result.ok) throw new Error(result.error); return result; }
 
-beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(1_000_000); });
-afterEach(() => { stop?.(); stop = undefined; vi.restoreAllMocks(); vi.useRealTimers(); });
+beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(1_000_000); vi.stubEnv('TRUST_PROXY', ''); });
+afterEach(() => { stop?.(); stop = undefined; vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.useRealTimers(); });
 
 describe('socket security regressions', () => {
   it('1 unbinds same-room and cross-room identities and disconnects only the latest player', () => {
@@ -159,5 +159,26 @@ describe('socket security regressions', () => {
     const cfg = testCfg();
     expect(networkLimits(cfg, { FNAB_RATE_LIMIT_MULTIPLIER: '100' }).socketBurst).toBe(cfg.net!.socketBurst);
     expect(networkLimits(cfg, { FNAB_TEST_HOOKS: '1', FNAB_RATE_LIMIT_MULTIPLIER: '100' }).socketBurst).toBe(cfg.net!.socketBurst * 100);
+  });
+
+  it('isolates request and resume budgets for clients behind an explicitly trusted proxy', () => {
+    vi.stubEnv('TRUST_PROXY', '10.42.0.0/16');
+    const { rm, socket } = setup(c => { c.net = { ...c.net!, ipBurst: 4, joinBurst: 1 }; });
+    const first = socket('10.42.0.7', '198.51.100.1');
+    const player = joined(first.request<JoinResult>('room:create', { name: 'm' }));
+    first.disconnect();
+    expect(socket('10.42.0.7', '198.51.100.1').request('room:resume', player).error).toContain('Join limit');
+    const second = socket('10.42.0.7', '198.51.100.2');
+    expect(second.request('room:resume', player).ok).toBe(true);
+    expect(rm.locate(player.token)?.player.connected).toBe(true);
+    for (let i = 0; i < 3; i++) first.request('time:ping', { clientSentAt: 0 });
+    expect(first.request('time:ping', { clientSentAt: 0 }).error).toContain('Rate limit');
+    expect(socket('10.42.0.7', '198.51.100.3').request<any>('time:ping', { clientSentAt: 0 }).serverNow).toBeDefined();
+  });
+
+  it('ignores spoofed forwarded addresses on direct connections and untrusted proxies', () => {
+    const { socket } = setup(c => { c.net = { ...c.net!, joinBurst: 1 }; });
+    joined(socket('198.51.100.1', '203.0.113.1').request<JoinResult>('room:create', { name: 'm' }));
+    expect(socket('198.51.100.1', '203.0.113.2').request('room:create', { name: 'other' }).error).toContain('Join limit');
   });
 });

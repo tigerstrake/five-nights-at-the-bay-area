@@ -136,6 +136,8 @@ export interface BalanceConfig {
   sensors: {
     maxCount: number;
     pingCooldownMs: number;
+    /** Same vague confidence for exact-node and adjacent motion. Optional for saved configs. */
+    confidence?: number;
     hideDetectChance: number;
     /** Chance a pinging sensor reveals itself to the monster. */
     revealChance: number;
@@ -191,6 +193,8 @@ export interface BalanceConfig {
   room: {
     codeLength: number;
     reconnectGraceMs: number;
+    /** Cumulative wall-time pause allowance per team per match; reconnects never refill it. */
+    reconnectPauseBudgetMs?: number;
     emptyRoomTtlMs: number;
     maxPlayers: number;
     maxNameLength: number;
@@ -274,7 +278,7 @@ export const DEFAULT_CONFIG: BalanceConfig = {
     jamMs: 12_000,
     heatAfterJam: 0.4,
   },
-  sensors: { maxCount: 4, pingCooldownMs: 6_000, hideDetectChance: 0.5, revealChance: 0.5 },
+  sensors: { maxCount: 4, pingCooldownMs: 6_000, confidence: 0.5, hideDetectChance: 0.5, revealChance: 0.5 },
   scan: { cooldownMs: 20_000, radiusHops: 1, decoyExposeWindowMs: 40_000 },
   traps: { maxCount: 3, armDelayMs: 6_000, holdMs: 8_000 },
   containment: {
@@ -306,7 +310,7 @@ export const DEFAULT_CONFIG: BalanceConfig = {
     monsterMemoryMs: 45_000,
     doorObserveHops: 1,
   },
-  room: { codeLength: 4, reconnectGraceMs: 45_000, emptyRoomTtlMs: 120_000, maxPlayers: 12, maxNameLength: 20 },
+  room: { codeLength: 4, reconnectGraceMs: 45_000, reconnectPauseBudgetMs: 75_000, emptyRoomTtlMs: 120_000, maxPlayers: 12, maxNameLength: 20 },
   net: {
     socketBurst: 40, socketPerSecond: 12,
     ipBurst: 160, ipPerSecond: 48,

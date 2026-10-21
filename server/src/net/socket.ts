@@ -5,6 +5,7 @@ import type { RoomManager, Room } from '../rooms/RoomManager';
 import type { CameraService } from '../cameras';
 import * as S from './schemas';
 import { networkLimits, TokenBucket } from './limits';
+import { clientAddressResolver } from './clientAddress';
 
 interface SocketData {
   code?: string;
@@ -24,6 +25,7 @@ export function attachSockets(io: IO, rooms: RoomManager, cameras: CameraService
   /** playerId → socket (latest connection wins; a second tab has its own token so its own player). */
   const sockets = new Map<string, Sock>();
   const limits = networkLimits(rooms.cfg);
+  const clientAddress = clientAddressResolver();
   const ips = new Map<string, { requests: TokenBucket; joins: TokenBucket; failures: TokenBucket; seenAt: number }>();
   const dirty = new Set<Room>();
   let generation = 0;
@@ -87,7 +89,7 @@ export function attachSockets(io: IO, rooms: RoomManager, cameras: CameraService
 
   io.on('connection', (socket: Sock) => {
     const now = Date.now();
-    const ip = socket.handshake.address; // never trust client-supplied forwarding headers
+    const ip = clientAddress(socket.handshake.address, socket.handshake.headers?.['x-forwarded-for']);
     let budget = ips.get(ip);
     if (!budget) {
       for (const [key, b] of ips) if (now - b.seenAt >= limits.ipIdleTtlMs) ips.delete(key);

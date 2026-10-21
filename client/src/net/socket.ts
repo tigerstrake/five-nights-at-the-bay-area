@@ -50,6 +50,54 @@ function tabToken(): string {
 }
 
 let socket: ClientSocket | null = null;
+let cancelResume = () => {};
+
+const SESSION_INVALID_ERRORS = new Set(['Room not found', 'Session expired', 'Reconnection grace expired', 'Invalid session']);
+const RESUME_RETRY_BASE_MS = 500;
+const RESUME_RETRY_MAX_MS = 4_000;
+const RESUME_ACK_TIMEOUT_MS = 4_000;
+
+function resumeSession(s: ClientSocket) {
+  cancelResume();
+  const sess = readSession();
+  if (!sess) return;
+  let cancelled = false, attempt = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  cancelResume = () => { cancelled = true; clearTimeout(timer); };
+  const current = () => {
+    const saved = readSession();
+    return !cancelled && s.connected && saved?.code === sess.code && saved.token === sess.token;
+  };
+  const retry = () => {
+    if (!current()) return;
+    useGame.getState().set({ connection: 'reconnecting' });
+    timer = setTimeout(send, Math.min(RESUME_RETRY_MAX_MS, RESUME_RETRY_BASE_MS * 2 ** Math.min(attempt++, 4)));
+  };
+  const send = () => {
+    if (!current()) return;
+    let pending = true;
+    // Socket.IO may never acknowledge a request lost during a transport interruption.
+    timer = setTimeout(() => { pending = false; retry(); }, RESUME_ACK_TIMEOUT_MS);
+    s.emit('room:resume', sess, (res) => {
+      if (!pending || !current()) return;
+      pending = false;
+      clearTimeout(timer);
+      if (res.ok) {
+        cancelResume();
+        useGame.getState().set({ connection: 'online' });
+      } else if (SESSION_INVALID_ERRORS.has(res.error)) {
+        cancelResume();
+        writeSession(null);
+        useGame.getState().set({ connection: 'online', room: null, view: null, result: null });
+        useGame.getState().toast(res.error === 'Session expired' ? 'Previous session expired' : res.error, 'warn');
+      } else {
+        if (attempt === 0) useGame.getState().toast(res.error, 'warn');
+        retry();
+      }
+    });
+  };
+  send();
+}
 
 export function getSocket(): ClientSocket {
   if (socket) return socket;
@@ -60,18 +108,9 @@ export function getSocket(): ClientSocket {
   s.on('connect', () => {
     store().set({ connection: 'online' });
     syncClock();
-    const sess = readSession();
-    if (sess) {
-      s.emit('room:resume', sess, (res) => {
-        if (!res.ok) {
-          writeSession(null);
-          store().set({ room: null, view: null, result: null });
-          store().toast(res.error === 'Session expired' ? 'Previous session expired' : res.error, 'warn');
-        }
-      });
-    }
+    resumeSession(s);
   });
-  s.on('disconnect', () => store().set({ connection: 'reconnecting' }));
+  s.on('disconnect', () => { cancelResume(); store().set({ connection: 'reconnecting' }); });
   s.io.on('reconnect_attempt', () => store().set({ connection: 'reconnecting' }));
   s.on('room:state', (room) => {
     store().setRoom(room);
@@ -82,6 +121,7 @@ export function getSocket(): ClientSocket {
   s.on('room:kicked', ({ reason }) => {
     // Forget the seat: otherwise this tab would auto-resume on its next reconnect and kick the replacement
     // connection (e.g. the same player who reopened the game in another tab).
+    cancelResume();
     writeSession(null);
     store().toast(reason, 'warn');
     store().set({ room: null, view: null, result: null });
@@ -97,11 +137,16 @@ export function syncClock() {
   if (!s?.connected) return;
   for (let i = 0; i < 3; i++) {
     setTimeout(() => {
+      if (!s.connected) return;
       const sent = Date.now();
       s.emit('time:ping', { clientSentAt: sent }, (res) => {
         const now = Date.now();
+        // The generic server limiter can acknowledge any event with a failure payload.
+        if (!res || !Number.isFinite(res.clientSentAt) || !Number.isFinite(res.serverNow) || res.clientSentAt !== sent) return;
         const rtt = now - res.clientSentAt;
-        samples.push({ rtt, offset: res.serverNow + rtt / 2 - now });
+        const offset = res.serverNow + rtt / 2 - now;
+        if (rtt < 0 || !Number.isFinite(rtt) || !Number.isFinite(offset)) return;
+        samples.push({ rtt, offset });
         if (samples.length > 10) samples.shift();
         const best = [...samples].sort((a, b) => a.rtt - b.rtt)[0]!;
         useGame.getState().set({ clockOffset: best.offset, rtt: best.rtt });
@@ -112,8 +157,10 @@ export function syncClock() {
 
 function onJoined(res: JoinResult, name: string): JoinResult {
   if (res.ok) {
+    cancelResume();
     writeSession({ code: res.code, token: res.token });
     saveName(name);
+    useGame.getState().set({ connection: 'online' });
   }
   return res;
 }
@@ -125,6 +172,7 @@ export function joinRoom(code: string, name: string): Promise<JoinResult> {
   return new Promise((resolve) => getSocket().emit('room:join', { code, name, token: tabToken() }, (r) => resolve(onJoined(r, name))));
 }
 export function leaveRoom() {
+  cancelResume();
   getSocket().emit('room:leave');
   writeSession(null);
   useGame.getState().set({ room: null, view: null, result: null });

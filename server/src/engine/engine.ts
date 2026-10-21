@@ -15,11 +15,11 @@ import type {
   Team,
   WinReason,
 } from '@fnab/shared';
-import { edgeTravelMs, spawnCandidates, MONSTER_COMMANDS } from '@fnab/shared';
+import { DEFAULT_CONFIG, edgeTravelMs, spawnCandidates, MONSTER_COMMANDS } from '@fnab/shared';
 import type { MonsterBrain } from '../ai/types';
 import { buildMonsterKnowledge } from '../ai/knowledge';
 import type { GameState, Sighting } from './state';
-import { isOutage, matchEndT, monsterEffectiveNode, phaseAt, pushEvent, publicId } from './state';
+import { isOutage, matchEndT, monsterEffectiveNode, phaseAt, pushEvent, publicId, retainBatchEntry } from './state';
 
 export interface EngineCtx {
   graph: Graph;
@@ -119,9 +119,8 @@ function addSighting(s: GameState, nodeId: string, confidence: number, source: S
     flaggedFalse: false,
     isDecoy,
   };
-  s.sightings.push(sg);
   const limit = s.cfg.visibility.maxRetainedSightings ?? 256;
-  if (s.sightings.length > limit) s.sightings.splice(0, s.sightings.length - limit);
+  s.sightingsEvictedThroughT = retainBatchEntry(s.sightings, sg, limit, s.sightingsEvictedThroughT);
   if (source === 'camera') s.stats.sightings++;
   if (isDecoy) s.stats.falseSightings++;
   return sg;
@@ -480,7 +479,7 @@ function onArrive(ctx: EngineCtx, s: GameState, nodeId: string, rng: Rng) {
       if (m.stance === 'HIDE' && !rng.chance(s.cfg.sensors.hideDetectChance)) continue;
       sn.lastPingAt = s.t;
       s.stats.sensorPings++;
-      addSighting(s, sn.nodeId, sn.nodeId === nodeId ? 0.5 : 0.3, 'sensor', false);
+      addSighting(s, sn.nodeId, s.cfg.sensors.confidence ?? DEFAULT_CONFIG.sensors.confidence!, 'sensor', false);
       pushEvent(s, 'sensorPing', 'defenders', `Motion sensor tripped near ${nodeName(ctx, sn.nodeId)}`, {
         nodeId: sn.nodeId,
         severity: 'warn',

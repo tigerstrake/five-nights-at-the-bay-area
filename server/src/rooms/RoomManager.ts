@@ -44,6 +44,8 @@ export interface Match {
   lastStepAt: number;
   roles: Map<string, Role>; // role snapshot at match start
   connectionLostAt: { monster: number | null; defenders: number | null };
+  pauseRemainingMs: { monster: number; defenders: number };
+  connectionUpdatedAt: number;
 }
 
 export interface Room {
@@ -365,7 +367,7 @@ export class RoomManager {
     const m = room?.match;
     if (!room || !m || room.stage !== 'playing') return { ok: false, error: 'No match running' };
     if (!room.players.get(playerId)?.connected) return { ok: false, error: 'Player disconnected' };
-    if (m.connectionLostAt.monster !== null || m.connectionLostAt.defenders !== null) return { ok: false, error: 'Waiting for reconnection' };
+    if (this.pausedForReconnect(m)) return { ok: false, error: 'Waiting for reconnection' };
     const role = m.roles.get(playerId);
     if (role !== 'monster' && role !== 'defender') return { ok: false, error: 'Spectators cannot act' };
     const isMonsterAction = MONSTER_ACTIONS.has(action.type);
@@ -394,6 +396,11 @@ export class RoomManager {
       lastStepAt: now,
       roles: new Map([...room.players.values()].map((p) => [p.id, p.role])),
       connectionLostAt: { monster: null, defenders: null },
+      pauseRemainingMs: {
+        monster: cfg.room.reconnectPauseBudgetMs ?? DEFAULT_CONFIG.room.reconnectPauseBudgetMs!,
+        defenders: cfg.room.reconnectPauseBudgetMs ?? DEFAULT_CONFIG.room.reconnectPauseBudgetMs!,
+      },
+      connectionUpdatedAt: now,
     };
     room.stage = 'playing';
     room.countdownEndsAt = null;
@@ -401,10 +408,23 @@ export class RoomManager {
     room.version++;
   }
 
+  private pausedForReconnect(m: Match): boolean {
+    return (['monster', 'defenders'] as const).some(team => m.connectionLostAt[team] !== null && m.pauseRemainingMs[team] > 0);
+  }
+
   private updateConnections(room: Room, now: number): void {
     const m = room.match;
     if (!m || room.stage !== 'playing' || m.state.result) return;
-    const wasPaused = m.connectionLostAt.monster !== null || m.connectionLostAt.defenders !== null;
+    // Account before changing connections so a resume between ticks cannot refill or skip pause usage.
+    const elapsed = Math.max(0, now - m.connectionUpdatedAt);
+    let pausedMs = 0;
+    for (const team of ['monster', 'defenders'] as const) {
+      if (m.connectionLostAt[team] === null) continue;
+      pausedMs = Math.max(pausedMs, Math.min(elapsed, m.pauseRemainingMs[team]));
+      m.pauseRemainingMs[team] = Math.max(0, m.pauseRemainingMs[team] - elapsed);
+    }
+    m.connectionUpdatedAt = now;
+    m.lastStepAt += pausedMs;
     for (const team of ['monster', 'defenders'] as const) {
       const role = team === 'monster' ? 'monster' : 'defender';
       const online = [...m.roles].some(([id, r]) => r === role && room.players.get(id)?.connected);
@@ -423,12 +443,9 @@ export class RoomManager {
         room.version++;
       }
     }
-    m.state.monsterDisconnected = m.connectionLostAt.monster !== null;
-    // Resuming between tick callbacks must not replay the paused interval as simulation backlog.
-    if (wasPaused) {
-      m.lastStepAt = now;
-      m.t0Epoch = now - m.state.t;
-    }
+    // The engine's connection hold applies only while a missing team has pause allowance left.
+    m.state.monsterDisconnected = this.pausedForReconnect(m);
+    m.t0Epoch = m.lastStepAt - m.state.t;
   }
 
   /** Advance every room to `now`. Fixed-step simulation (cfg.tickMs) with bounded catch-up. */
@@ -475,7 +492,7 @@ export class RoomManager {
       if (room.stage === 'playing' && room.match) {
         const m = room.match;
         const tick = m.state.cfg.tickMs;
-        const paused = m.connectionLostAt.monster !== null || m.connectionLostAt.defenders !== null;
+        const paused = this.pausedForReconnect(m);
         if (paused) m.lastStepAt = now;
         let steps = 0;
         while (now - m.lastStepAt >= tick && steps < 10 && !m.state.result) {
@@ -536,9 +553,10 @@ export class RoomManager {
       view[team === 'monster' ? 'monsterConnection' : 'defenderConnection'] = {
         connected: connectedPlayers > 0, connectedPlayers, totalPlayers: ids.length,
         reconnectDeadlineEpoch: lost === null ? null : lost + this.cfg.room.reconnectGraceMs,
+        pauseRemainingMs: Math.max(0, m.pauseRemainingMs[team] - (lost === null || m.state.result ? 0 : Math.max(0, now - m.connectionUpdatedAt))),
       };
     }
-    view.pausedForReconnect = !m.state.result && (m.connectionLostAt.monster !== null || m.connectionLostAt.defenders !== null);
+    view.pausedForReconnect = !m.state.result && this.pausedForReconnect(m);
     return view;
   }
 }

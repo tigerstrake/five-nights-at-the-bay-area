@@ -67,8 +67,71 @@ describe('review regressions: engine and visibility', () => {
     for (let i = 0; i < 1000; i++) applyAction(h.ctx, h.s, M, { type: 'command', command: 'ATTACK' }, h.rng);
     expect(h.s.events).toHaveLength(count); expect(h.s.stats.commandsIssued).toBe(issued);
     for (let i = 0; i < 100; i++) applyAction(h.ctx, h.s, D, { type: 'door', approachId: 'A1', closed: i % 2 === 0 }, h.rng);
-    expect(h.s.events).toHaveLength(12);
+    // A same-tick flood is evicted as one whole batch rather than retaining a creation-order suffix.
+    expect(h.s.events).toHaveLength(0);
+    h.s.t += h.s.cfg.tickMs;
+    applyAction(h.ctx, h.s, D, { type: 'door', approachId: 'A1', closed: true }, h.rng);
+    expect(h.s.events).toHaveLength(1);
     expect(h.s.events.every(x => x.by === 'd')).toBe(true);
+  });
+
+  it('evicts simultaneous real and decoy events together after 59 accepted door toggles', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const h = harness({ seed }); h.run(20_000);
+      h.s.events = [];
+      pushEvent(h.s, 'sighting', 'defenders', 'Movement', { nodeId: 'a' });
+      pushEvent(h.s, 'sighting', 'defenders', 'Movement', { nodeId: 'b' });
+      for (let i = 0; i < 62; i++) {
+        const contacts = projectDefenderView(h.ctx, h.s, clock).events.filter(e => e.kind === 'sighting');
+        expect([0, 2]).toContain(contacts.length);
+        h.s.t += h.s.cfg.tickMs;
+        expect(applyAction(h.ctx, h.s, D, { type: 'door', approachId: 'A1', closed: i % 2 === 0 }, h.rng).ok).toBe(true);
+      }
+    }
+  });
+
+  it('authoritative retention drops whole simultaneous batches and never readmits a same-tick suffix', () => {
+    const h = harness({ cfg: testCfg(c => { c.visibility.maxRetainedEvents = 4; }) });
+    pushEvent(h.s, 'sighting', 'defenders', 'Real', { nodeId: 'a' });
+    pushEvent(h.s, 'sighting', 'defenders', 'Decoy', { nodeId: 'b' });
+    for (let i = 0; i < 3; i++) { h.s.t++; pushEvent(h.s, 'info', 'all', 'Newer'); }
+    expect(h.s.events.map(e => e.text)).toEqual(['Newer', 'Newer', 'Newer']);
+    h.s.t++;
+    for (let i = 0; i < 10; i++) pushEvent(h.s, 'info', 'all', 'Flood');
+    expect(h.s.events).toHaveLength(0);
+    h.s.t++;
+    pushEvent(h.s, 'info', 'all', 'Next tick');
+    expect(h.s.events.map(e => e.text)).toEqual(['Next tick']);
+  });
+
+  it('retains and projects simultaneous real and decoy sightings as whole batches', () => {
+    const h = harness({ cfg: testCfg(c => {
+      c.visibility.maxRetainedSightings = 3; c.visibility.sightingsInView = 1;
+      c.detection.baseChance = 10;
+    }) });
+    h.run(20_000);
+    for (let batch = 0; batch < 4; batch++) {
+      h.s.monster.pendingDecoys.push({ nodeId: 'b', at: h.s.t });
+      h.run(h.s.cfg.detection.rollEveryMs);
+      expect(h.s.sightings).toHaveLength(2);
+      expect(h.s.sightings.filter(s => s.isDecoy)).toHaveLength(1);
+      expect(new Set(h.s.sightings.map(s => s.t)).size).toBe(1);
+      expect(projectDefenderView(h.ctx, h.s, clock).sightings).toHaveLength(0);
+    }
+  });
+
+  it('sensor confidence is identical at the occupied node and adjacent nodes through movement and projection', () => {
+    const h = harness();
+    for (const nodeId of ['a', 's1', 'b', 'd']) {
+      expect(applyAction(h.ctx, h.s, D, { type: 'placeSensor', nodeId }, h.rng).ok).toBe(true);
+    }
+    h.run(20_000);
+    expect(h.runUntil(s => s.monster.nodeId === 'a', 30_000)).toBe(true);
+    const v = projectDefenderView(h.ctx, h.s, clock);
+    const pings = v.sightings.filter(s => s.source === 'sensor');
+    expect(pings.map(s => s.nodeId).sort()).toEqual(['a', 'b', 'd', 's1']);
+    expect(new Set(pings.map(s => s.confidence))).toEqual(new Set([h.s.cfg.sensors.confidence]));
+    expect(pings.every(s => s.t === h.s.monster.arrivedAt)).toBe(true);
   });
 
   it('6 real and decoy confidence share the full distribution, including HIDE caps', () => {

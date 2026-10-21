@@ -50,7 +50,7 @@ export function fastForward(rooms: RoomManager, token: string, ms: number): Fast
   const loc = rooms.locate(token);
   const m = loc?.room.match;
   if (!loc || !m || loc.room.stage !== 'playing') return { ok: false, error: 'No match running' };
-  if (m.connectionLostAt.monster !== null || m.connectionLostAt.defenders !== null)
+  if (m.state.monsterDisconnected)
     return { ok: false, error: 'Waiting for reconnection' };
   if (!Number.isFinite(ms) || ms <= 0 || ms > MAX_FAST_FORWARD_MS) return { ok: false, error: 'Bad duration' };
   const tick = m.state.cfg.tickMs;

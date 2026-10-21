@@ -113,17 +113,20 @@ export interface GameState {
   cameras: Record<string, CameraState>;
   manifestations: Record<string, ManifestationState>;
   sightings: Sighting[];
+  sightingsEvictedThroughT: number;
   scan: { readyAt: number; last: { nodeId: string; t: number; radiusHops: number; found: boolean } | null };
   lureReadyAt: number;
   containment: { nodeId: string; startedAt: number; elapsed: number } | null;
   breach: { approachId: string; progress: number; stalled: boolean } | null;
   monster: MonsterState;
   events: StoredEvent[];
+  /** Whole timestamp batches evicted from retention must not reappear later in the same tick. */
+  eventsEvictedThroughT: number;
   nextId: number;
   stats: MatchStats;
   monsterPath: Array<{ nodeId: string; t: number }>;
   result: MatchResult | null;
-  /** Set by the room lifecycle. The pure engine also honors this hold. */
+  /** Room lifecycle's reconnect hold (either missing team, only while pause allowance remains). */
   monsterDisconnected: boolean;
 }
 
@@ -194,6 +197,7 @@ export function createGame(o: CreateGameOptions): GameState {
     cameras,
     manifestations: Object.create(null),
     sightings: [],
+    sightingsEvictedThroughT: -Infinity,
     scan: { readyAt: 0, last: null },
     lureReadyAt: 0,
     containment: null,
@@ -220,6 +224,7 @@ export function createGame(o: CreateGameOptions): GameState {
       visited: [],
     },
     events: [],
+    eventsEvictedThroughT: -Infinity,
     nextId: 1,
     stats: emptyStats(),
     monsterPath: [],
@@ -236,10 +241,23 @@ export function pushEvent(
   extra: Partial<Pick<GameEvent, 'nodeId' | 'cameraId' | 'approachId' | 'severity'>> = {},
 ): StoredEvent {
   const ev: GameEvent = { id: s.nextId++, t: s.t, kind, audience, text, severity: extra.severity ?? 'info', ...extra };
-  s.events.push(ev);
   const limit = s.cfg.visibility.maxRetainedEvents ?? 4096;
-  if (s.events.length > limit) s.events.splice(0, s.events.length - limit);
+  s.eventsEvictedThroughT = retainBatchEntry(s.events, ev, limit, s.eventsEvictedThroughT);
   return ev;
+}
+
+/** Strictly bounded chronological retention, evicting whole simultaneous batches, including oversized ones. */
+export function retainBatchEntry<T extends { t: number }>(entries: T[], entry: T, limit: number, evictedThroughT: number): number {
+  if (entry.t <= evictedThroughT) return evictedThroughT;
+  entries.push(entry);
+  if (entries.length > limit) {
+    const cutoff = entries[entries.length - limit - 1]!.t;
+    let end = 0;
+    while (end < entries.length && entries[end]!.t <= cutoff) end++;
+    entries.splice(0, end);
+    return cutoff;
+  }
+  return evictedThroughT;
 }
 
 const idCaches = new WeakMap<GameState, { ids: Map<number, number>; used: Set<number> }>();

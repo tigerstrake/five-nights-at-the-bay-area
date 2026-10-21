@@ -14,9 +14,14 @@ All numbers below are defaults from `shared/src/config.ts` (`DEFAULT_CONFIG`), s
 | Final Assault | last 25 %. Monster 20 % faster, detection ×1.2, breach 1.0×. |
 | End | Breach → monster wins. Timer expiry → defenders win. 15 s uninterrupted containment → defenders win (capture). Explicitly leaving the final team slot forfeits immediately; connection loss gets 45 s to reconnect. The server produces one `MatchResult`, including `reasonText`, aggregate stats and a bounded recent timeline/route. Host can restart from results. |
 
-When the monster disconnects, or all defenders disconnect, the simulation pauses: movement, breach,
-containment, power and the night clock hold. The 45 s reconnection deadline uses wall time, even in accelerated
-tests. A returning member resumes that team; expiry awards the other team a forfeit win. One missing defender
+When the monster disconnects, or all defenders disconnect, the simulation pauses while that team has allowance:
+movement, breach, containment, power and the night clock hold. Each team has **75 s cumulative pause budget per
+match** (`room.reconnectPauseBudgetMs`), consumed only while the whole team is absent. Reconnecting never refills
+it; only starting a new match does. Simultaneous absences consume each missing team's own budget, with their
+pause intervals overlapping. Once a team's budget is exhausted, its disconnection no longer pauses simulation
+or blocks the connected opponent's actions. The normal **45 s per-disconnection reconnection deadline** still uses
+wall time, even in accelerated tests, and is not extended by spending the pause budget. A returning member
+resumes that team; expiry awards the other team a forfeit win. One missing defender
 does not pause a team with another defender online. Spectators do not keep either playing team alive.
 Repeated disconnect callbacks cannot extend grace. Pauses and discarded catch-up backlog shift `t0Epoch`
 to remain aligned with authoritative `t`.
@@ -63,6 +68,9 @@ text, severity and manifestation generation. Initial decoys and follow-ups wait 
 cadence. Action acknowledgements never trigger view broadcasts. Live event/sighting/device identifiers
 are opaque, stable numbers/strings derived from a secret per-match key; equal-time entries sort by opaque
 ID, independently of creation order. Scan contacts, trap contacts and breach alerts remain explicit sources.
+Visible windows sort before selection. Event and sighting windows and authoritative retention evict whole
+equal-time batches, so contacts published together disappear together. Bounds remain strict; an oversized batch
+is dropped entirely, and additional entries from that same timestamp cannot reappear as a retained suffix.
 Cosmetic manifestation seeds are derived independently of raw simulation RNG outputs. Post-match decoy
 labels attach to their originating event, so sighting expiry and simultaneous real contacts cannot corrupt them.
 Client event consumers must deduplicate with an ID set, never `id > lastId` or `Math.max(id)`; in particular
@@ -78,7 +86,7 @@ These are game status only; the real source state comes from the `CameraService`
 | --- | --- | --- |
 | Power | baseline max 94/114/136/142 for 1/2/3/4 defenders; regen +0.24/s | Add HQ reserves: Stanford +24, SF −8, Oakland −8, San Jose +0. ≤0 → **outage** 12 s: cameras black, doors forced open, sensors dead, repairs cancelled, containment collapses. Restores to 15. Low warning at 25. |
 | Doors (3 per HQ) | 0.8/s while sealed | A sealed door stalls a breach (progress decays 8 %/s). Heat +1/25 per s sealed, +1/20 extra while battered; at 100 % it jams **open** for 12 s (heat → 40 %). Cools 1/20 per s when open. No permanent lockdown. |
-| Motion sensors | 5 to place, 0.03/s upkeep, max 4 (+1/extra defender) | Pings when the monster arrives at the sensor's node or a neighbour (vague: reports the sensor's node; 50 % under HIDE; 6 s cooldown per sensor). A ping may reveal the sensor to the monster (50 %, always when it is on that node). |
+| Motion sensors | 5 to place, 0.03/s upkeep, max 4 (+1/extra defender) | Pings when the monster arrives at the sensor's node or a neighbour (vague: reports the sensor's node with the same 50 % confidence in either case, `sensors.confidence`; 50 % detection chance under HIDE; 6 s cooldown per sensor). A ping may reveal the sensor to the monster (50 %, always when it is on that node). |
 | Scan | 12, 20 s team cooldown | Radius 1 hop around a node. Reveals the monster exactly (even hidden) if inside; otherwise "no contact". Flags decoy sightings in the area from the last 40 s as FALSE. The monster feels pulses within radius+1. |
 | Traps | 8, max 3 (+1 per 2 extra defenders) | Invisible to the monster. Go live after 6 s (immediately in prep). Arrival/idle contact holds for 8 s, cancels breach and reveals location. Release grants 6 s trap immunity. |
 | Containment | 4 to engage, 1.6/s | Only while the monster is held. Extends the hold; 15 s uninterrupted = capture. Disengagement, outage or successful struggle interrupts it. |
@@ -127,22 +135,35 @@ Rooms retain at most 4,096 events, 256 sightings and 512 route entries, with agg
 
 `BalanceConfig.net` defines token buckets: socket burst/rate 40 / 12 per second, IP 160 / 48 per second,
 IP join/create/resume 12 / 0.5 per second, failed room/session lookups 8 / 0.1 per second. IP buckets survive
-socket reconnects; idle TTL is 600,000 ms and tracking caps at 10,000 IPs. Limits use wall time and do not trust
-client forwarding headers. With `FNAB_TEST_HOOKS=1`, `FNAB_RATE_LIMIT_MULTIPLIER=100` multiplies burst/rate
+socket reconnects; idle TTL is 600,000 ms and tracking caps at 10,000 IPs. Limits use wall time and default to the
+socket peer address. `TRUST_PROXY` accepts a comma-separated explicit IP/CIDR allowlist (IPv4/IPv6, default:
+trust none). Only trusted peers may supply `X-Forwarded-For`; the chain is walked right-to-left until the first
+untrusted address. Direct/untrusted peers and malformed chains retain the socket address. See `docs/DEPLOYMENT.md`
+for Render/Fly configuration. With `FNAB_TEST_HOOKS=1`, `FNAB_RATE_LIMIT_MULTIPLIER=100` multiplies burst/rate
 budgets for rapid E2E actions (range 1–1,000). The multiplier is ignored without the explicit test guard.
-Saved configs can override `net`; absent fields use defaults. Grace uses `room.reconnectGraceMs`.
+Saved configs can override `net`; absent fields use defaults. Grace uses `room.reconnectGraceMs`;
+an absent `room.reconnectPauseBudgetMs` uses the default 75 s budget.
+
+Client automatic resume preserves saved credentials and game state on temporary failures, including rate-limit
+and internal-server errors. It retries after 0.5/1/2/4 s, capped at 4 s, and retries a missing acknowledgement
+after a 4 s timeout plus backoff. Disconnect, leave, kick or a successful new join cancels pending attempts;
+stale callbacks cannot invalidate a newer session. Definitive invalidation (`Room not found`, `Session expired`,
+`Reconnection grace expired`, `Invalid session`) clears the saved session. Clock pings accept only matching,
+finite timestamps, a finite nonnegative RTT and a finite offset, retaining the last valid estimate on errors.
 
 Additive optional fields on every `PlayerView`:
 
 ```ts
 monsterConnection?: { connected: boolean; connectedPlayers: number; totalPlayers: number;
-  reconnectDeadlineEpoch: number | null };
+  reconnectDeadlineEpoch: number | null; pauseRemainingMs?: number };
 defenderConnection?: { connected: boolean; connectedPlayers: number; totalPlayers: number;
-  reconnectDeadlineEpoch: number | null };
+  reconnectDeadlineEpoch: number | null; pauseRemainingMs?: number };
 pausedForReconnect?: boolean;
 ```
 
-Display the missing team's reconnect notice and wall-time countdown. While paused, render the night clock
+`pauseRemainingMs` reports that team's remaining cumulative allowance. Display the missing team's reconnect
+notice and wall-time countdown; connection loss can continue without a pause after allowance is exhausted.
+While paused, render the night clock
 from `view.t`. `events` includes new `connectionLost`, `connectionRestored`, and `forfeit` kinds using the
 normal `VisibleEvent` shape: `{id:number,t:number,kind,text:string,severity:'info'|'warn'|'alert'|'good'}`
 (plus existing optional location/attribution fields). Loss/restoration are public. `MatchResult.reason`
