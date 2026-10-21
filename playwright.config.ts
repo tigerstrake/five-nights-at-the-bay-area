@@ -12,15 +12,17 @@ import { E2E_GRACE_MS } from './e2e/helpers/data';
 const HOOKS = `FNAB_TEST_HOOKS=1 FNAB_RATE_LIMIT_MULTIPLIER=1000 FNAB_TEST_RECONNECT_GRACE_MS=${E2E_GRACE_MS}`;
 const OUTAGE_SERVER_PORT = 3102;
 const OUTAGE_CLIENT_PORT = 5198;
+// GitHub's 2-vCPU runners render every canvas in software; several multi-context tests at once starve them.
+const CI = !!process.env.CI;
 
 export default defineConfig({
   testDir: './e2e',
   testMatch: /.*\.spec\.ts/,
-  timeout: 90_000,
-  expect: { timeout: 10_000 },
+  timeout: CI ? 180_000 : 90_000,
+  expect: { timeout: CI ? 20_000 : 10_000 },
   fullyParallel: true,
-  workers: process.env.E2E_WORKERS ? Number(process.env.E2E_WORKERS) : 4,
-  retries: 0,
+  workers: process.env.E2E_WORKERS ? Number(process.env.E2E_WORKERS) : CI ? 1 : 4,
+  retries: CI ? 1 : 0,
   reporter: [['list']],
   use: { baseURL: 'http://localhost:5199', trace: 'retain-on-failure', actionTimeout: 15_000, ...devices['Desktop Chrome'] },
   projects: [
