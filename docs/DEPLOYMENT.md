@@ -118,9 +118,5 @@ Deployable using the Fly CLI (`flyctl`):
 
 ## 6. Open Issues
 
-The following item was identified during deployment verification:
-
-1. **Client TypeScript Type Check (`client/src/ui/assets.ts`)**:
-   - `npm run build` succeeds cleanly and generates `client/dist`.
-   - However, `npm run typecheck` (`tsc -p tsconfig.json --noEmit` in `@fnab/client`) reports two TypeScript errors in `src/ui/assets.ts` (lines 36 and 39) because `fetch().then(r => r.ok ? r.json() : {})` resolves to a type union including `{}` without explicit index signatures.
-   - *Workaround / Planned Fix*: Add type casting `r.json() as Promise<Record<string, unknown>>` to the empty fallback object `({} as Record<string, unknown>)`. In accordance with non-destructive deployment instructions, existing application source code was not modified.
+1. **Docker image not yet built in CI or locally.** The Dockerfile was written against the current scripts (`tsx` is a server runtime dependency, so `npm prune --omit=dev` keeps it), but no Docker daemon was available when it was authored. Run `docker build -t fnab . && docker run -p 3001:3001 fnab` and check `/api/health` before the first deploy.
+2. **Single instance only.** Match state lives in memory, so keep exactly one instance (`numInstances: 1` on Render, one machine on Fly). On Fly, `auto_stop_machines` with `min_machines_running = 1` keeps one machine up; stopping it ends any matches in progress.
