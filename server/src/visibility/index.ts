@@ -26,6 +26,7 @@ function visibleEvents(s: GameState, audience: 'defenders' | 'monster', limit: n
     if (e.nodeId !== undefined) v.nodeId = e.nodeId;
     if (e.cameraId !== undefined) v.cameraId = e.cameraId;
     if (e.approachId !== undefined) v.approachId = e.approachId;
+    if (e.by !== undefined && audience === 'defenders') v.by = e.by;
     out.push(v);
   }
   return out.reverse();
@@ -153,7 +154,7 @@ export function projectMonsterView(ctx: EngineCtx, s: GameState, clock: ViewCloc
     knownSensors: k.knownSensors.map((x) => ({
       id: x.id,
       nodeId: x.nodeId,
-      disabledUntil: x.disabled ? (s.sensors.find((y) => y.id === x.id)?.disabledUntil ?? null) : null,
+      disabledUntil: x.disabled ? (x.disabledUntil ?? null) : null,
     })),
     knownDoors: Object.entries(k.knownDoors).map(([approachId, d]) => ({
       approachId,

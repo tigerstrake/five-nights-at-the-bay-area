@@ -2,6 +2,51 @@
 // Times in ms, power in abstract units, rates per second unless noted.
 import type { MonsterCommand, MonsterStance, MatchPhase, ManifestationKind } from './types';
 
+/** Utility weights for the tactical brain only; these do not change simulation balance. */
+export interface TacticalAiConfig {
+  exposureMs: number;
+  cameraNeighborExposure: number;
+  sensorExposure: number;
+  sensorNeighborWeight: number;
+  dangerNeighborWeight: number;
+  dangerWeights: { sighted: number; scanned: number; trapped: number };
+  stanceExposure: Record<MonsterStance, number>;
+  recentPathPenalty: number;
+  obviousPathPenalty: number;
+  safetyWeight: number;
+  openDoorCredit: number;
+  switchMargin: number;
+  variationCostRatio: number;
+  variationChanceMin: number;
+  variationChanceMax: number;
+  lureHops: number;
+  lureAttractionMs: number;
+  relocationDanger: number;
+  minimumAggression: number;
+}
+
+export const DEFAULT_TACTICAL_AI: TacticalAiConfig = {
+  exposureMs: 8_000,
+  cameraNeighborExposure: 0.15,
+  sensorExposure: 2,
+  sensorNeighborWeight: 0.5,
+  dangerNeighborWeight: 0.25,
+  dangerWeights: { sighted: 2, scanned: 2.5, trapped: 6 },
+  stanceExposure: { HUNT: 0.6, HIDE: 4, FLANK: 2, ATTACK: 0.08, RETREAT: 1.2 },
+  recentPathPenalty: 3,
+  obviousPathPenalty: 2,
+  safetyWeight: 6,
+  openDoorCredit: 1.5,
+  switchMargin: 0.2,
+  variationCostRatio: 1.2,
+  variationChanceMin: 0.1,
+  variationChanceMax: 0.2,
+  lureHops: 4,
+  lureAttractionMs: 120_000,
+  relocationDanger: 1,
+  minimumAggression: 0.25,
+};
+
 export interface BalanceConfig {
   tickMs: number;
   /**
@@ -19,6 +64,8 @@ export interface BalanceConfig {
     countdownMs: number;
   };
   monster: {
+    /** Optional overrides of AI utility weights; old configurations remain valid. */
+    tactical?: Partial<TacticalAiConfig>;
     /** Edge travel time = clamp(baseEdgeMs + lengthKm × msPerKm, min, max) × stance × phase multipliers. */
     baseEdgeMs: number;
     msPerKm: number;
@@ -152,10 +199,10 @@ export const DEFAULT_CONFIG: BalanceConfig = {
     countdownMs: 5_000,
   },
   monster: {
-    baseEdgeMs: 12_000,
-    msPerKm: 600,
+    baseEdgeMs: 45_000,
+    msPerKm: 400,
     minEdgeMs: 8_000,
-    maxEdgeMs: 40_000,
+    maxEdgeMs: 65_000,
     stanceSpeed: { HUNT: 1.0, HIDE: 1.6, FLANK: 1.1, ATTACK: 0.8, RETREAT: 0.75 },
     phaseSpeed: { preparation: 1, infiltration: 1.0, escalation: 0.9, final: 0.8 },
     cooldownMs: { HUNT: 0, HIDE: 15_000, FLANK: 15_000, ATTACK: 20_000, RETREAT: 30_000, SABOTAGE: 30_000, DECOY: 25_000 },
@@ -187,7 +234,7 @@ export const DEFAULT_CONFIG: BalanceConfig = {
   },
   power: {
     max: 100,
-    regenPerSec: 0.15,
+    regenPerSec: 0.22,
     lowThreshold: 25,
     outageMs: 12_000,
     restoreTo: 15,
@@ -210,8 +257,8 @@ export const DEFAULT_CONFIG: BalanceConfig = {
   },
   sensors: { maxCount: 4, pingCooldownMs: 6_000, hideDetectChance: 0.5, revealChance: 0.5 },
   scan: { cooldownMs: 20_000, radiusHops: 1, decoyExposeWindowMs: 40_000 },
-  traps: { maxCount: 3, armDelayMs: 3_000, holdMs: 8_000 },
-  containment: { captureMs: 15_000, struggleBreakMs: 11_000, containedStruggleMult: 0.7 },
+  traps: { maxCount: 3, armDelayMs: 15_000, holdMs: 8_000 },
+  containment: { captureMs: 15_000, struggleBreakMs: 12_300, containedStruggleMult: 0.7 },
   repair: { durationMs: 10_000, maxConcurrent: 2 },
   lure: { cooldownMs: 25_000, durationMs: 25_000, maxActive: 2 },
   failures: { perMinute: 1.2, durationMs: [6_000, 14_000] },
@@ -245,16 +292,16 @@ export function scaleForDefenders(count: number, base: BalanceConfig = DEFAULT_C
   const n = Math.max(1, Math.floor(count));
   const extra = n - 1;
   const c: BalanceConfig = JSON.parse(JSON.stringify(base)) as BalanceConfig;
-  const speed = 1 / (1 + 0.08 * Math.min(extra, 5)); // up to ~29% faster
+  const speed = 1 / (1 + 0.04 * Math.min(extra, 5)); // up to ~17% faster
   c.monster.baseEdgeMs = Math.round(base.monster.baseEdgeMs * speed);
   c.monster.msPerKm = base.monster.msPerKm * speed;
   c.monster.minEdgeMs = Math.round(base.monster.minEdgeMs * speed);
   c.detection.baseChance = base.detection.baseChance / (1 + 0.1 * Math.min(extra, 5));
-  c.power.max = base.power.max + 20 * Math.min(extra, 4);
+  c.power.max = base.power.max + 6 * Math.min(extra, 4);
   c.sensors.maxCount = base.sensors.maxCount + Math.min(extra, 3);
   c.traps.maxCount = base.traps.maxCount + Math.floor(Math.min(extra, 4) / 2);
   c.repair.maxConcurrent = base.repair.maxConcurrent + Math.floor(Math.min(extra, 2) / 2);
-  c.containment.struggleBreakMs = Math.round(base.containment.struggleBreakMs / (1 + 0.06 * Math.min(extra, 5)));
+  c.containment.struggleBreakMs = Math.round(base.containment.struggleBreakMs / (1 + 0.06 * Math.min(extra, 2) + 0.03 * Math.max(0, Math.min(extra, 5) - 2)));
   c.breach.durationMs = Math.round(base.breach.durationMs / (1 + 0.05 * Math.min(extra, 5)));
   return c;
 }

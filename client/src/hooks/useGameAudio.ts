@@ -103,6 +103,8 @@ export function useGameAudio() {
     }
     let played = 0;
     for (const e of fresh) {
+      // The monster screen plays its own sound when it fires SABOTAGE / DECOY; don't double it.
+      if (e.kind === 'ability' && view.role === 'monster') continue;
       const sfx = e.kind === 'sighting' && view.role !== 'monster' && view.threat >= 0.6 ? 'monsterNear' : EVENT_SFX[e.kind];
       if (sfx && played < 3) {
         audio.play(sfx);

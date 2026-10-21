@@ -248,21 +248,71 @@ node scripts/cameras/validate-network.mjs    # schema, references, connectivity,
   use it only when `verified.streamPlayable` is true (or re-probe at runtime).
 - Schema: field names/types follow `docs/CONTRACT.md` exactly; the only additions are the three optional `verified` keys above. `network.json` carries no axis note, so this document is the reference: tactical y grows downward.
 
-## 7. Wave-2 server camera adapter: recommendation
+## 7. Camera adapter (implemented, wave 2)
 
-1. **Do not proxy media for access reasons.** Snapshots and HLS both send `Access-Control-Allow-Origin: *`, so browsers can load them directly (`<img>`, canvas reads, hls.js).
-   A media proxy would add bandwidth and legal surface for no benefit. The Conditions of Use do not forbid redistribution of public-domain material, but they warn about third-party copyright, so keep it direct and do not archive.
-2. **Do run a small server-side health service** (it protects Caltrans and gives consistent state to all players):
-   - Keep the 36-camera list from `cameras.json` in memory; every **5 minutes** (the source cadence) `HEAD` each snapshot URL (<= 3 in flight, 100-200 ms apart): record status, `Content-Length`, `Last-Modified`.
-   - Mark `imageState = placeholder` when the length is 13.3-13.7 KB (`looksLikePlaceholder`), `stale` when `Last-Modified` is older than ~15 minutes, `down` on non-200/timeouts.
-   - Every ~10 minutes re-probe each listed HLS playlist (+ first segment on state change). Only cameras whose stream works are offered as `live`; re-check on failure with backoff (30 s, 60 s, ..., 10 min).
-   - Optional: an in-memory cache of the latest JPEG bytes with a 60-120 s TTL, served to the room via the game server, so 10 players watching the same 6 cameras produce 6 requests per refresh instead of 60.
-     Memory only, never written to disk or git.
-   - Pixel checks for "No video"/snow/obstruction can run client-side (canvas, CORS is open) and be reported to the server, or server-side once `sharp` is allowed.
-3. **Fallback order per camera** (server decides, client shows a visible badge): `LIVE` (HLS playable, hls.js, ~30 s behind real time) -> `SNAPSHOT` (JPEG, refresh every 60-90 s with a cache-buster-free URL;
-   Caltrans refreshes every 5 minutes, so refreshing faster than ~60 s gains nothing) -> `SIMULATED` (bundled/generated imagery, explicitly labelled "SIMULATION", never styled as live).
-   Game-caused outages (sabotage) are a separate overlay; keep `sourceState` (real) and `gameState` (fictional) as different fields.
-4. **Client details**: show "Caltrans CCTV" attribution and age ("snapshot 2 min ago"). Use `crossOrigin="anonymous"` only when pixels are needed (FX compositing needs it; it works).
-   Load at most the cameras currently on screen. hls.js: `lowLatencyMode: false`, small buffer; destroy players for off-screen feeds; fall back to snapshot after 2 fatal errors.
-5. **Do not trust** `inService`, `recordTimestamp` or the mere presence of `streamingVideoURL`. Refresh the discovery feed (`discover.mjs`) daily or on deploy to catch renamed/removed cameras; fail soft to the last good `cameras.json`.
-6. Because cameras fail often (35% placeholders in the census), always keep the simulated path playable offline: a full match must work with zero external requests.
+Code: `server/src/cameras/` (`caltrans.ts` service, `classify.ts` pure classifier, `simulation.ts`), client `client/src/feeds/`.
+Tests: `server/test/cameras.*.test.ts`, `client/src/feeds/__tests__`. The camera system **never decides whether the game is playable**:
+it only reports which real imagery is trustworthy; the match runs identically on 36 simulated feeds.
+
+### 7.1 Design
+
+- **No media proxy.** Browsers load Caltrans snapshots/HLS directly (CORS `*`). The server only health-checks (36 snapshot probes + 19 stream probes per ~5 min).
+- **`CAMERA_MODE`** (default `auto` when unset): `auto` = LIVE where an HLS stream is verified, else SNAPSHOT, else SIMULATED. `live` = like auto but only verified-live cameras
+  show real imagery (the rest SIMULATED). `snapshot` = stills only, HLS never probed. `simulation` = zero network (`SimulationCameraService`). Unknown value -> simulation.
+- **Independent of the game.** The service has its own timers, never touches the engine, and every probe is wrapped so a network failure becomes a per-camera status, never an exception.
+  Fictional sabotage stays `CameraGameStatus` (engine); real availability is `CameraSourceStatus` (here). The two are separate fields and separate overlays.
+- **Polite scheduling.** Each camera/probe kind has its own `nextAt`; healthy cameras are re-checked every `CAMERA_CHECK_INTERVAL_MS` (300 s, +-10 % jitter). At most `CAMERA_CONCURRENCY`
+  (3) requests in flight, >= 150 ms between starts (the scheduler starts one probe per 250 ms wake-up), 8 s timeout (`CAMERA_TIMEOUT_MS`). Failing probes back off exponentially
+  (snapshots 30 s, 60 s, ... capped 10 min; streams 60 s ... capped 15 min). A **per-host circuit breaker** opens after 6 distinct cameras get no answer from a host (30 s doubling to 5 min;
+  half-open = one trial request); any HTTP answer, even 404, proves the host is up (dead stream URLs answer 404 after ~8 s and must not trip it).
+- **Snapshot classification** (`classify.ts`): HTTP 2xx, `image/*`, JPEG magic, 1 KB..1.5 MB, decodable (pure-JS `jpeg-js`, <= 4 MP), then pixel metrics over the frame minus the bottom 10 % timestamp bar:
+  *placeholder* (13.0-14.1 KB body with >= 50 % near-white pixels, or >= 85 % white with std >= 25), *blank* (>= 90 % white), *black* (>= 90 % dark or mean < 14 and std < 12), *uniform* (std < 8),
+  *snow* (high-frequency energy / std > 0.65 and > 20), *stale* (Last-Modified older than 15 min against the response `Date`). Calibrated on 36 curated frames + 6 placeholders + 8 small/odd frames
+  (real frames: mean 44-161, std 15-86, hf/std 0.04-0.47; placeholder: mean 239, std 57, 93 % white; "no video": mean 11, std 1).
+- **HLS probe**: playlist must be `#EXTM3U`, master -> first variant, media playlist with >= 1 segment and no `#EXT-X-ENDLIST`, then a `Range: bytes=0-187` GET of the last segment must start with the TS sync byte `0x47`
+  (a server that ignores Range costs 188 bytes, the body is cancelled). Probed for **every camera with a published stream URL**: curated `streamPlayable` cameras are trusted after 1 success, the others
+  (404 at curation time) only after 2 consecutive successes. The client trusts the server's `streamUrl` (runtime-verified) rather than the curation flag.
+- **Flap tolerance**: *hard* content evidence (placeholder/black/snow/stale/bad playlist) downgrades at once; *soft* evidence (timeout, HTTP error) needs `failThreshold` = 2 consecutive failures before
+  a good source is dropped. A success upgrades immediately (streams: see above).
+
+### 7.2 Status rule (per camera, in `CameraSourceStatus`)
+
+| mode | When | Fields |
+|---|---|---|
+| `live` | snapshot good AND HLS verified | `snapshotUrl` (`...jpg?v=<Last-Modified s>`, one URL per Caltrans frame), `streamUrl`, `imageAt`, `reason` |
+| `snapshot` | snapshot good, no verified stream (or `snapshot` mode) | `snapshotUrl`, `imageAt`, `reason` ("snapshot good (stream playlist HTTP 404)") |
+| `simulated` | everything else: placeholder, black, snow, stale, HTTP/timeout, host unreachable, not probed yet, `live` mode without a stream | URLs null, `reason` (human) and `error` (probe kind) |
+| `offline` | **never emitted by the service.** Reserved for an explicit operator-disabled card | - |
+
+Why no `offline`: a real-world outage replaced by an "offline" card would be indistinguishable from the in-game `NO POWER`/sabotage look and would leave the player staring at nothing; a labelled SIMULATED
+feed keeps the monster compositing and the game readable while being honest. All cameras start `simulated` ("checking Caltrans source...") and are upgraded only after a probe, so nothing real is claimed unverified.
+`live` requires a good snapshot too because thumbnails (and the snapshot fallback) need one: a camera whose stream works but whose JPEG is the "Temporarily Unavailable" card is reported `simulated`.
+Changes are coalesced (300 ms) and broadcast through the existing `cameras:status` event to everyone (public info).
+
+### 7.3 Ops endpoints
+
+`GET /api/cameras` -> `CameraSourceStatus[]`. `GET /api/cameras?detail=1` -> `{ health, cameras: [{ ...status, name, diagnostics: { snapshot, stream } }] }` (probe state, fails, next check).
+`GET /api/health` -> `cameras: { mode, counts, checks, lastCheckAt, hosts: [{ host, breakerOpen, failStreak }] }`.
+Env: `CAMERA_MODE`, `CAMERA_CHECK_INTERVAL_MS`, `CAMERA_TIMEOUT_MS`, `CAMERA_CONCURRENCY`, `CAMERA_REFRESH_MS`, and the test hook `CAMERA_PROBE_ORIGIN` (send all probes to another origin, e.g. `http://10.255.255.1:81`, to rehearse an outage).
+
+### 7.4 Client (`client/src/feeds/CameraFeed.tsx`)
+
+- Snapshots: `SnapshotLayer` fetches the next frame off-DOM (`fetch` blob + `decode()`), runs the same pixel check on a 40x32 downscale (a "Temporarily Unavailable" card never replaces a good frame),
+  then **cross-fades** (800 ms) it over the current `<img crossOrigin="anonymous">`. Refresh every `refreshMs` (60 s) with a bucket-aligned `&r=` param so every client asks for the same URL; also reloads when the server
+  publishes a new `?v=`. Pauses while the tab is hidden or live video covers it. The age shown comes from the response `Last-Modified`.
+- Live: only the enlarged **main** feed uses hls.js (lazy `import('hls.js')`, no low-latency, 8 s buffer, short timeouts). Thumbnails stay on snapshots. The badge turns LIVE only once the video is actually `playing`.
+- Local fallback without waiting for the server: hls.js 2 fatal errors / 15 s no playback / 12 s stall -> snapshot; image fetch failures (2-3 tries) or a card/black frame -> **simulated**.
+- Badges (`data-testid="feed-source-badge"`, `data-source-mode`): **LIVE** (solid red, pulsing), **SNAPSHOT . 4m ago** (cyan; thumbnails show `4m`), **SIMULATED** (dashed amber outline; the FX layer also draws its own watermark),
+  **OFFLINE** (grey, server-sent only). Main feeds of real cameras carry "Source: Caltrans CCTV". Badge colour/state never depends on `CameraGameStatus`.
+
+### 7.5 Measured behaviour (2026-10-20, about 17:00-17:15 PDT, real network)
+
+- `CAMERA_MODE=auto`: after about 25 s all 36 cameras were classified: **14 live, 22 snapshot, 0 simulated** (the 5 curated-but-404 streams stayed snapshot; one more flapped to playable once and was held at snapshot
+  until its second success). Dead stream URLs answer after ~8 s, i.e. they hit the 8 s timeout: they are retried at 60 s / 120 s / ... only.
+- Outage rehearsal (`CAMERA_PROBE_ORIGIN=http://10.255.255.1:81 CAMERA_TIMEOUT_MS=3000`): 36/36 `simulated` ("host unreachable"), 15 requests in total before both breakers opened, SIMULATED badges everywhere,
+  match kept ticking. With the browser itself blocked from Caltrans (server still says live/snapshot) the client demoted every feed to SIMULATED within about 8 s.
+
+### 7.6 Still true from the research
+
+- Do not trust `inService`, `recordTimestamp` or the mere presence of `streamingVideoURL`; refresh the discovery feed (`discover.mjs`) on deploy and fail soft to the last good `cameras.json`.
+- Never commit/archive Caltrans images; the server keeps nothing but the last probe verdict in memory.

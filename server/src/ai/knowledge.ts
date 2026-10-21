@@ -26,7 +26,6 @@ export function buildMonsterKnowledge(s: GameState, graph: Graph): MonsterKnowle
   const k = m.knowledge;
   const cameraStatusByNode: Record<string, CameraGameStatus> = {};
   for (const c of Object.values(s.cameras)) cameraStatusByNode[c.nodeId] = publicCameraStatus(s, c.cameraId);
-  void graph;
   return {
     t: s.t,
     phase: s.phase,
@@ -41,15 +40,23 @@ export function buildMonsterKnowledge(s: GameState, graph: Graph): MonsterKnowle
     },
     held: m.held !== null,
     cameraStatusByNode,
-    knownSensors: Object.entries(k.knownSensors).map(([id, v]) => {
-      const real = s.sensors.find((x) => x.id === id);
-      return { id, nodeId: v.nodeId, seenAt: v.seenAt, disabled: !!real?.disabledUntil && real.disabledUntil > s.t };
-    }),
-    knownDoors: { ...k.knownDoors },
-    disturbances: k.disturbances.filter((d) => d.expiresAt > s.t),
-    scanPulses: [...k.scanPulses],
-    exposures: [...k.exposures],
+    // Remember observations and our own sabotage. Remote removal/status changes are NOT an oracle.
+    knownSensors: Object.entries(k.knownSensors).map(([id, v]) => ({
+      id, nodeId: v.nodeId, seenAt: v.seenAt,
+      disabled: (v.disabledUntil ?? 0) > s.t,
+      disabledUntil: (v.disabledUntil ?? 0) > s.t ? v.disabledUntil : null,
+    })),
+    knownDoors: Object.fromEntries(Object.entries(k.knownDoors).map(([id, d]) => [id, { ...d }])),
+    disturbances: k.disturbances.filter((d) => d.expiresAt > s.t).map((d) => ({ ...d })),
+    scanPulses: k.scanPulses.map((d) => ({ ...d })),
+    exposures: k.exposures.map((d) => ({ ...d })),
     recentNodes: m.visited.slice(-8),
     powerLevel: coarsePower(s),
+    remainingMs: Math.max(0, s.prepMs + s.durationMs - s.t),
+    cooldowns: { ...m.cooldowns },
+    // trapTriggered is an explicit public notification about our own position. Never read s.traps.
+    trapEncounters: s.events.filter((e) => e.kind === 'trapTriggered' && e.audience === 'all'
+      && e.nodeId && graph.has(e.nodeId) && s.t - e.t < s.cfg.visibility.monsterMemoryMs)
+      .map((e) => ({ nodeId: e.nodeId!, t: e.t })),
   };
 }

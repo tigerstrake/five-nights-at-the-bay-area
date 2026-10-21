@@ -1,193 +1,380 @@
+import { useState } from 'react';
 import clsx from 'clsx';
-import type { HqId, Role, RoomView } from '@fnab/shared';
-import { lobby, leaveRoom } from '../net/socket';
-import { Badge, Button, Dot, Label, Panel } from '../ui/kit';
-import { AudioControls, ConnectionBadge } from '../ui/chrome';
-import { MapPanel } from '../map/MapPanel';
-import { NETWORK, graph, hqById } from '../lib/data';
+import type { LobbyPlayer, Role, RoomView } from '@fnab/shared';
 import { DEFAULT_CONFIG, spawnCandidates } from '@fnab/shared';
+import { lobby, leaveRoom } from '../net/socket';
+import { useGame } from '../state/store';
+import { Button, Dot, Panel, Segmented } from '../ui/kit';
+import { AudioUnlockPrompt, ConnectionBadge, SettingsMenu } from '../ui/chrome';
+import { useUiAssets } from '../ui/assets';
+import { NETWORK, graph, hqById } from '../lib/data';
+import { BrandMark } from './shell/Brand';
+import { HqCard } from './shell/HqCard';
+import { RoleBriefing } from './shell/briefings';
+import { HowToPlay } from './shell/HowToPlay';
+import { nextDefenderSummary, scalingSummary } from './shell/difficulty';
 
-const ROLE_INFO: Record<Role, { label: string; desc: string; tone: 'monster' | 'cyan' | 'neutral' }> = {
-  monster: { label: 'Monster', desc: 'Command the thing in the cameras. Breach the HQ before dawn.', tone: 'monster' },
-  defender: { label: 'Defender', desc: 'Watch the feeds, manage power, trap and contain it.', tone: 'cyan' },
-  spectator: { label: 'Spectator', desc: 'Watch the control room. No secrets revealed.', tone: 'neutral' },
+const ROLE_INFO: Record<Role, { label: string; desc: string }> = {
+  monster: { label: 'Monster', desc: 'Command the thing in the cameras. Breach the HQ before dawn.' },
+  defender: { label: 'Defender', desc: 'Watch the feeds, manage power, trap and contain it.' },
+  spectator: { label: 'Spectator', desc: 'Watch the control room. No monster secrets shown.' },
 };
+
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove();
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
+function RoleChip({ role }: { role: Role }) {
+  return (
+    <span
+      className={clsx(
+        'inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em]',
+        role === 'monster' ? 'text-[#e36b74]' : role === 'defender' ? 'text-cyan' : 'text-mute',
+      )}
+    >
+      <span className={clsx('h-1.5 w-1.5', role === 'monster' ? 'bg-blood-hi' : role === 'defender' ? 'bg-cyan' : 'border border-mute')} />
+      {ROLE_INFO[role].label}
+    </span>
+  );
+}
+
+function PlayerRow({ p, you }: { p: LobbyPlayer; you: boolean }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(p.name);
+  const commit = () => {
+    setEditing(false);
+    const n = draft.trim();
+    if (n && n !== p.name) void lobby.setName(n);
+    else setDraft(p.name);
+  };
+  return (
+    <li className={clsx('flex items-center gap-3 px-3 py-2.5', you && 'bg-panel-2/70')} data-testid={`player-${p.id}`}>
+      <span title={p.connected ? 'Connected' : 'Signal lost — seat held for 60 s'}>
+        <Dot tone={p.connected ? 'ok' : 'warn'} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          {editing ? (
+            <input
+              autoFocus
+              value={draft}
+              maxLength={DEFAULT_CONFIG.room.maxNameLength}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={commit}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commit();
+                if (e.key === 'Escape') {
+                  setDraft(p.name);
+                  setEditing(false);
+                }
+              }}
+              className="w-full min-w-0 border border-cyan bg-ink px-1.5 py-0.5 text-[14px] text-bright outline-none"
+              aria-label="Your name"
+            />
+          ) : (
+            <span className={clsx('truncate text-[14px]', p.connected ? 'text-bright' : 'text-mute')}>{p.name}</span>
+          )}
+          {you && !editing && (
+            <button className="shrink-0 text-[11px] text-dim hover:text-text" onClick={() => setEditing(true)} title="Rename">
+              you · rename
+            </button>
+          )}
+          {p.isHost && <span className="shrink-0 border border-warn/50 px-1 font-mono text-[9px] uppercase tracking-[0.12em] text-warn">host</span>}
+        </div>
+        <div className="mt-0.5 flex items-center gap-3">
+          <RoleChip role={p.role} />
+          {!p.connected && <span className="font-mono text-[10px] text-warn">signal lost</span>}
+        </div>
+      </div>
+      {p.role !== 'spectator' ? (
+        <span
+          className={clsx(
+            'shrink-0 border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em]',
+            p.ready ? 'border-ok/60 bg-ok-dim/40 text-[#a6f0c6]' : 'border-edge text-dim',
+          )}
+        >
+          {p.ready ? 'Ready' : 'Not ready'}
+        </span>
+      ) : (
+        <span className="shrink-0 font-mono text-[10px] text-dim">watching</span>
+      )}
+    </li>
+  );
+}
 
 export function LobbyScreen({ room }: { room: RoomView }) {
   const me = room.players.find((p) => p.id === room.youId);
   const isHost = !!me?.isHost;
   const hq = hqById(room.settings.hqId);
   const canPickHq = me?.role === 'defender' || isHost;
-  const durations = [300, 360, 420, 480, 540, 600];
-  const inviteUrl = `${location.origin}/?room=${room.code}`;
+  const toast = useGame((s) => s.toast);
+  const [help, setHelp] = useState(false);
+  const assets = useUiAssets();
+  const minS = DEFAULT_CONFIG.match.minDurationMs / 1000;
+  const maxS = DEFAULT_CONFIG.match.maxDurationMs / 1000;
+  const durations: number[] = [];
+  for (let d = minS; d <= maxS; d += 60) durations.push(d);
+  const inviteUrl = `${location.origin}${location.pathname}?room=${room.code}`;
+  const defenders = room.players.filter((p) => p.role === 'defender').length;
+  const monsters = room.players.filter((p) => p.role === 'monster').length;
+  const spectators = room.players.length - defenders - monsters;
+  const scaling = scalingSummary(defenders);
+  const spawnCount = spawnCandidates(graph, room.settings.hqId, DEFAULT_CONFIG.spawn).length;
+  const role = me?.role ?? 'spectator';
+
+  const copy = async (what: 'link' | 'code') => {
+    const ok = await copyText(what === 'link' ? inviteUrl : room.code);
+    toast(ok ? (what === 'link' ? 'Invite link copied' : 'Room code copied') : `Copy failed. The code is ${room.code}`, ok ? 'good' : 'warn');
+  };
 
   return (
-    <div className="relative flex h-full flex-col">
+    <div className="relative flex h-full flex-col" data-testid="lobby-screen">
       <img
         aria-hidden
-        src="/assets/ui/keyart-small.jpg"
+        src={assets.keyartSmall ?? assets.keyart}
         alt=""
-        className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-[0.1]"
+        className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-[0.07] grayscale"
         draggable={false}
       />
-      <header className="relative flex items-center justify-between border-b border-edge bg-panel/80 px-5 py-3">
+      <header className="relative z-20 flex items-center justify-between gap-4 border-b border-edge bg-panel/85 px-5 py-2.5 backdrop-blur">
         <div className="flex items-center gap-4">
-          <div className="text-sm font-semibold tracking-tight text-bright">Five Nights at the Bay Area</div>
-          <Badge tone="neutral">Lobby</Badge>
+          <BrandMark />
+          <span className="h-4 w-px bg-edge-hi" />
+          <span className="text-[13px] text-mute">Lobby</span>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <ConnectionBadge />
-          <AudioControls />
-          <Button tone="ghost" size="sm" onClick={leaveRoom}>
+          <Button tone="ghost" size="sm" onClick={() => setHelp(true)}>
+            How to play
+          </Button>
+          <SettingsMenu />
+          <Button tone="ghost" size="sm" onClick={leaveRoom} data-testid="leave">
             Leave
           </Button>
         </div>
       </header>
 
-      <div className="relative grid min-h-0 flex-1 grid-cols-1 gap-3 p-3 lg:grid-cols-[360px_1fr_320px]">
-        {/* Left: room + players */}
+      <div className="relative grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-auto p-3 lg:grid-cols-[320px_minmax(0,1fr)_360px] lg:overflow-hidden">
+        {/* Left: room + operators + scaling */}
         <div className="flex min-h-0 flex-col gap-3">
-          <Panel title="Room code">
-            <div className="flex items-center justify-between p-3">
-              <div className="font-mono text-4xl font-semibold tracking-[0.35em] text-bright" data-testid="room-code">
-                {room.code}
-              </div>
-              <Button
-                size="sm"
-                onClick={() => {
-                  void navigator.clipboard?.writeText(inviteUrl);
-                }}
-                title={inviteUrl}
-              >
-                Copy link
+          <section className="fnab-brackets border border-edge bg-panel/90 p-4" aria-label="Room code">
+            <div className="text-[12px] text-mute">Room code</div>
+            <div className="mt-1 font-mono text-[52px] font-semibold leading-none tracking-[0.28em] text-bright" data-testid="room-code">
+              {room.code}
+            </div>
+            <div className="mt-3 flex gap-2">
+              <Button size="sm" tone="cyan" onClick={() => void copy('link')} title={inviteUrl} data-testid="copy-invite">
+                Copy invite link
+              </Button>
+              <Button size="sm" onClick={() => void copy('code')}>
+                Copy code
               </Button>
             </div>
-          </Panel>
-          <Panel title={`Operators (${room.players.length})`} className="min-h-0 flex-1" bodyClass="overflow-auto">
-            <ul className="divide-y divide-edge">
+            <p className="mt-2 truncate font-mono text-[10px] text-dim" title={inviteUrl}>
+              {inviteUrl.replace(/^https?:\/\//, '')}
+            </p>
+          </section>
+
+          <Panel
+            title={`Operators · ${room.players.length}`}
+            right={
+              <span className="font-mono text-[10px] text-dim">
+                {monsters}M · {defenders}D{spectators ? ` · ${spectators}S` : ''}
+              </span>
+            }
+            className="min-h-[160px] flex-1"
+            bodyClass="overflow-auto"
+          >
+            <ul className="divide-y divide-edge" data-testid="player-list">
               {room.players.map((p) => (
-                <li key={p.id} className={clsx('flex items-center justify-between px-3 py-2', p.id === room.youId && 'bg-panel-2')}>
-                  <div className="flex min-w-0 items-center gap-2">
-                    <Dot tone={p.connected ? 'ok' : 'warn'} />
-                    <span className="truncate text-sm text-bright">{p.name}</span>
-                    {p.isHost && <Badge tone="warn">Host</Badge>}
-                    {p.id === room.youId && <span className="font-mono text-[10px] text-dim">(you)</span>}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge tone={ROLE_INFO[p.role].tone}>{ROLE_INFO[p.role].label}</Badge>
-                    {p.role !== 'spectator' && <Badge tone={p.ready ? 'ok' : 'ghost'}>{p.ready ? 'Ready' : 'Not ready'}</Badge>}
-                  </div>
-                </li>
+                <PlayerRow key={p.id} p={p} you={p.id === room.youId} />
               ))}
             </ul>
+            {room.players.length < 3 && (
+              <p className="px-3 py-3 text-[12px] leading-snug text-dim">
+                {monsters === 0
+                  ? 'Nobody is the monster yet. Someone has to be.'
+                  : 'Send the invite link to add defenders. Any number can share the control room.'}
+              </p>
+            )}
+          </Panel>
+
+          <Panel title="Difficulty scaling" className="shrink-0" testId="scaling">
+            <div className="p-3">
+              <p className="text-[12px] leading-snug text-mute">
+                The night scales with the team. {defenders <= 1 ? 'One defender plays at base settings.' : `Tuned for ${defenders} defenders.`}{' '}
+                <span className="text-text">{nextDefenderSummary(defenders)}</span>
+              </p>
+              <dl className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-1">
+                {scaling.map((l) => (
+                  <div key={l.label} className="flex items-baseline justify-between gap-2 text-[11px]">
+                    <dt className="truncate text-dim" title={l.label}>
+                      {l.label}
+                    </dt>
+                    <dd
+                      className={clsx(
+                        'shrink-0 font-mono tabular-nums',
+                        !l.changed ? 'text-mute' : l.side === 'monster' ? 'text-[#e36b74]' : 'text-cyan',
+                      )}
+                    >
+                      {l.changed || l.side === 'defenders' ? l.value : 'base'}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
           </Panel>
         </div>
 
-        {/* Center: HQ map */}
-        <Panel
-          title="Headquarters"
-          right={
-            <span className="font-mono text-[10px] text-mute">
-              {canPickHq ? 'Defenders choose · click a diamond' : 'Chosen by defenders'}
+        {/* Center: headquarters */}
+        <section className="flex min-h-0 flex-col border border-edge bg-panel/70" aria-label="Headquarters">
+          <header className="flex flex-wrap items-baseline justify-between gap-2 border-b border-edge px-4 py-3">
+            <div>
+              <h2 className="font-display text-[18px] font-extrabold text-bright">Choose headquarters</h2>
+              <p className="text-[12px] text-mute">
+                {canPickHq ? 'Defenders pick where to make their stand.' : 'The defenders pick where to make their stand.'} Each has three doors.
+              </p>
+            </div>
+            <span className="text-[12px] text-dim">
+              <span className="mr-1.5 inline-block h-2 w-2 rounded-full border border-blood-hi align-middle" />
+              {spawnCount} places the monster can emerge
             </span>
-          }
-          className="min-h-[320px]"
-        >
-          <div className="flex h-full flex-col">
-            <div className="min-h-0 flex-1">
-              <MapPanel
-                allHqs
-                hqId={room.settings.hqId}
-                onHqClick={canPickHq ? (id) => void lobby.selectHq(id) : undefined}
-                marks={Object.fromEntries(
-                  spawnCandidates(graph, room.settings.hqId, DEFAULT_CONFIG.spawn).map((n) => [n, ['spawn' as const]]),
-                )}
+          </header>
+          <div className="grid min-h-0 flex-1 auto-rows-fr grid-cols-1 gap-3 p-3 sm:grid-cols-2">
+            {NETWORK.headquarters.map((h) => (
+              <HqCard
+                key={h.id}
+                hq={h}
+                selected={h.id === room.settings.hqId}
+                disabled={!canPickHq}
+                onSelect={canPickHq ? (id) => void lobby.selectHq(id) : undefined}
               />
-            </div>
-            <div className="grid grid-cols-2 gap-2 border-t border-edge p-2 md:grid-cols-4">
-              {NETWORK.headquarters.map((h) => (
-                <Button
-                  key={h.id}
-                  size="sm"
-                  tone={h.id === room.settings.hqId ? 'ok' : 'neutral'}
-                  disabled={!canPickHq}
-                  onClick={() => void lobby.selectHq(h.id as HqId)}
-                  data-testid={`hq-${h.id}`}
-                >
-                  {h.name}
-                </Button>
-              ))}
-            </div>
+            ))}
           </div>
-        </Panel>
+        </section>
 
-        {/* Right: role, settings, ready */}
-        <div className="flex min-h-0 flex-col gap-3 overflow-auto">
-          <Panel title="Your role">
-            <div className="flex flex-col gap-2 p-3">
+        {/* Right: role, briefing, settings, ready */}
+        <div className="flex min-h-0 flex-col gap-3 lg:overflow-auto">
+          <Panel title="Your role" className="shrink-0">
+            <div className="flex flex-col gap-1.5 p-2.5" role="radiogroup" aria-label="Role">
               {(Object.keys(ROLE_INFO) as Role[]).map((r) => {
-                const taken = r === 'monster' && room.players.some((p) => p.role === 'monster' && p.id !== room.youId);
+                const holder = r === 'monster' ? room.players.find((p) => p.role === 'monster' && p.id !== room.youId) : undefined;
+                const sel = me?.role === r;
                 return (
                   <button
                     key={r}
-                    disabled={taken}
-                    onClick={() => void lobby.setRole(r)}
+                    role="radio"
+                    aria-checked={sel}
+                    disabled={!!holder}
+                    onClick={() => !sel && void lobby.setRole(r)}
                     data-testid={`role-${r}`}
                     className={clsx(
-                      'border px-3 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40',
-                      me?.role === r
+                      'border px-3 py-2 text-left transition-colors disabled:cursor-not-allowed',
+                      sel
                         ? r === 'monster'
-                          ? 'border-monster bg-[#2a0b12]'
-                          : 'border-cyan bg-cyan-dim/40'
-                        : 'border-edge bg-panel-2 hover:border-edge-hi',
+                          ? 'border-blood-hi/80 bg-[#1f0a0d]'
+                          : r === 'defender'
+                            ? 'border-cyan/70 bg-cyan-dim/35'
+                            : 'border-edge-hi bg-panel-2'
+                        : 'border-edge bg-panel-2/60 hover:border-edge-hi',
+                      holder && 'opacity-50',
                     )}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-mono text-xs uppercase tracking-[0.18em] text-bright">{ROLE_INFO[r].label}</span>
-                      {taken && <span className="font-mono text-[9px] text-dim">TAKEN</span>}
+                      <span
+                        className={clsx(
+                          'font-display text-[14px] font-extrabold',
+                          sel ? (r === 'monster' ? 'text-bone' : r === 'defender' ? 'text-cyan' : 'text-bright') : 'text-text',
+                        )}
+                      >
+                        {ROLE_INFO[r].label}
+                      </span>
+                      {holder && <span className="font-mono text-[10px] text-dim">taken by {holder.name}</span>}
+                      {sel && <span className="font-mono text-[10px] text-mute">selected</span>}
                     </div>
-                    <div className="mt-0.5 text-xs text-mute">{ROLE_INFO[r].desc}</div>
+                    <div className="mt-0.5 text-[12px] leading-snug text-mute">{ROLE_INFO[r].desc}</div>
                   </button>
                 );
               })}
             </div>
           </Panel>
-          <Panel title="Night length" right={!isHost && <span className="font-mono text-[10px] text-dim">host</span>}>
-            <div className="grid grid-cols-6 gap-1 p-3">
-              {durations.map((d) => (
-                <Button
-                  key={d}
-                  size="sm"
-                  tone={room.settings.durationSec === d ? 'cyan' : 'neutral'}
-                  disabled={!isHost}
-                  onClick={() => void lobby.setDuration(d)}
-                >
-                  {d / 60}m
-                </Button>
-              ))}
+
+          <Panel
+            title="Briefing"
+            right={
+              <button className="font-mono text-[10px] text-mute hover:text-text" onClick={() => setHelp(true)}>
+                full rules
+              </button>
+            }
+            className="min-h-0 shrink"
+            bodyClass="overflow-auto"
+            tone={role === 'monster' ? 'monster' : 'default'}
+          >
+            <RoleBriefing
+              role={role}
+              hqName={hq?.name ?? 'headquarters'}
+              className="p-3"
+              compact
+              pointsClassName="[@media(max-height:820px)]:hidden"
+            />
+          </Panel>
+
+          <Panel title="Night length" right={<span className="font-mono text-[10px] text-dim">{isHost ? 'you are host' : 'host sets'}</span>} className="shrink-0">
+            <div className="p-2.5">
+              <Segmented
+                options={durations.map((d) => ({ value: d, label: `${d / 60}m`, title: `${d / 60} minute night` }))}
+                value={room.settings.durationSec}
+                onChange={(d) => void lobby.setDuration(d)}
+                disabled={!isHost}
+                testIdPrefix="duration"
+              />
             </div>
           </Panel>
-          <Panel title="Status">
-            <div className="flex flex-col gap-3 p-3">
-              <div>
-                <Label>Target HQ</Label>
-                <div className="text-sm text-bright">{hq?.name}</div>
-                <div className="text-xs text-mute">{hq?.approaches.map((a) => a.label).join(' · ')}</div>
-              </div>
-              <div className={clsx('font-mono text-[11px]', room.blocker ? 'text-warn' : 'text-ok')}>
-                {room.blocker ?? 'All set — starting'}
-              </div>
-              {me?.role !== 'spectator' ? (
-                <Button tone={me?.ready ? 'ok' : 'alert'} size="lg" onClick={() => void lobby.setReady(!me?.ready)} data-testid="ready">
-                  {me?.ready ? 'Ready ✓ (click to cancel)' : 'Ready up'}
-                </Button>
-              ) : (
-                <div className="text-xs text-mute">Spectators don't need to ready up.</div>
-              )}
+
+          <section className="shrink-0 border border-edge bg-panel/90 p-3" aria-label="Ready">
+            <div className={clsx('mb-2.5 flex items-start gap-2 text-[12px]', room.blocker ? 'text-[#f3d28d]' : 'text-ok')} data-testid="blocker">
+              <span className="mt-1">
+                <Dot tone={room.blocker ? 'warn' : 'ok'} />
+              </span>
+              <span>{room.blocker ?? 'Everyone is ready. Starting…'}</span>
             </div>
-          </Panel>
+            {role !== 'spectator' ? (
+              <Button
+                tone={me?.ready ? 'ok' : role === 'monster' ? 'blood' : 'alert'}
+                size="xl"
+                className="w-full"
+                onClick={() => void lobby.setReady(!me?.ready)}
+                data-testid="ready"
+              >
+                {me?.ready ? 'Ready — click to stand down' : 'Ready up'}
+              </Button>
+            ) : (
+              <p className="text-[12px] text-mute">Spectators don't ready up. The match starts when the players are ready.</p>
+            )}
+          </section>
         </div>
       </div>
+      <div className="pointer-events-none absolute bottom-3 left-1/2 z-20 -translate-x-1/2">
+        <AudioUnlockPrompt />
+      </div>
+      <HowToPlay open={help} onClose={() => setHelp(false)} />
     </div>
   );
 }

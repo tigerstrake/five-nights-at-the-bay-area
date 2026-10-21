@@ -1,0 +1,13 @@
+node_modules
+client/dist
+.git
+.github
+.env
+.env.*
+!.env.example
+*.log
+test-results
+playwright-report
+e2e
+docs
+.DS_Store

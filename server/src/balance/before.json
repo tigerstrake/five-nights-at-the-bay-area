@@ -1,0 +1,208 @@
+{
+  "tickMs": 100,
+  "spawn": {
+    "minHopsFromHq": 5,
+    "maxHopsFromHq": 6
+  },
+  "match": {
+    "durationMs": 480000,
+    "minDurationMs": 300000,
+    "maxDurationMs": 600000,
+    "prepMs": 20000,
+    "phaseFractions": {
+      "infiltration": 0.4,
+      "escalation": 0.35
+    },
+    "countdownMs": 5000
+  },
+  "monster": {
+    "baseEdgeMs": 12000,
+    "msPerKm": 600,
+    "minEdgeMs": 8000,
+    "maxEdgeMs": 40000,
+    "stanceSpeed": {
+      "HUNT": 1,
+      "HIDE": 1.6,
+      "FLANK": 1.1,
+      "ATTACK": 0.8,
+      "RETREAT": 0.75
+    },
+    "phaseSpeed": {
+      "preparation": 1,
+      "infiltration": 1,
+      "escalation": 0.9,
+      "final": 0.8
+    },
+    "cooldownMs": {
+      "HUNT": 0,
+      "HIDE": 15000,
+      "FLANK": 15000,
+      "ATTACK": 20000,
+      "RETREAT": 30000,
+      "SABOTAGE": 30000,
+      "DECOY": 25000
+    },
+    "globalCommandGapMs": 1500,
+    "sabotageRangeHops": 1,
+    "sabotageDurationMs": 45000,
+    "sensorSabotageDurationMs": 30000,
+    "decoyRangeHops": 3,
+    "decoyFollowupMs": [
+      3000,
+      6000
+    ],
+    "replanMs": 2500,
+    "unpredictability": 0.12,
+    "phaseAggression": {
+      "preparation": 0,
+      "infiltration": 0.6,
+      "escalation": 1,
+      "final": 1.4
+    },
+    "retreatHops": 2,
+    "freedTrapImmunityMs": 6000
+  },
+  "detection": {
+    "rollEveryMs": 1000,
+    "baseChance": 0.08,
+    "stanceMult": {
+      "HUNT": 1,
+      "HIDE": 0.3,
+      "FLANK": 0.75,
+      "ATTACK": 1.5,
+      "RETREAT": 1.1
+    },
+    "phaseMult": {
+      "preparation": 0,
+      "infiltration": 0.9,
+      "escalation": 1,
+      "final": 1.2
+    },
+    "movingMult": 0.35,
+    "proximityMult": [
+      2.2,
+      1.8,
+      1.4,
+      1.1,
+      1
+    ],
+    "arrivalBonus": 0.15,
+    "confidence": {
+      "min": 0.45,
+      "max": 0.95,
+      "hideMax": 0.6
+    },
+    "sightingTtlMs": 60000,
+    "exposureNoticeChance": 0.7,
+    "manifestationByHops": [
+      "closeup",
+      "figure",
+      "silhouette",
+      "shadow"
+    ],
+    "manifestationMs": [
+      2500,
+      5000
+    ]
+  },
+  "power": {
+    "max": 100,
+    "regenPerSec": 0.15,
+    "lowThreshold": 25,
+    "outageMs": 12000,
+    "restoreTo": 15,
+    "doorDrainPerSec": 0.8,
+    "sensorPlaceCost": 5,
+    "sensorUpkeepPerSec": 0.03,
+    "trapArmCost": 10,
+    "scanCost": 12,
+    "repairCost": 8,
+    "lureCost": 6,
+    "containmentDrainPerSec": 2.5,
+    "containmentStartCost": 5
+  },
+  "doors": {
+    "heatPerSecClosed": 0.04,
+    "heatPerSecBattered": 0.05,
+    "coolPerSecOpen": 0.05,
+    "jamMs": 12000,
+    "heatAfterJam": 0.4
+  },
+  "sensors": {
+    "maxCount": 4,
+    "pingCooldownMs": 6000,
+    "hideDetectChance": 0.5,
+    "revealChance": 0.5
+  },
+  "scan": {
+    "cooldownMs": 20000,
+    "radiusHops": 1,
+    "decoyExposeWindowMs": 40000
+  },
+  "traps": {
+    "maxCount": 3,
+    "armDelayMs": 3000,
+    "holdMs": 8000
+  },
+  "containment": {
+    "captureMs": 15000,
+    "struggleBreakMs": 11000,
+    "containedStruggleMult": 0.7
+  },
+  "repair": {
+    "durationMs": 10000,
+    "maxConcurrent": 2
+  },
+  "lure": {
+    "cooldownMs": 25000,
+    "durationMs": 25000,
+    "maxActive": 2
+  },
+  "failures": {
+    "perMinute": 1.2,
+    "durationMs": [
+      6000,
+      14000
+    ]
+  },
+  "breach": {
+    "durationMs": 5000,
+    "phaseMult": {
+      "preparation": 99,
+      "infiltration": 1.8,
+      "escalation": 1.2,
+      "final": 1
+    },
+    "decayPerSecWhenStalled": 0.08
+  },
+  "threat": {
+    "steps": 5,
+    "horizonHops": 6,
+    "phaseFloor": {
+      "preparation": 0,
+      "infiltration": 0.05,
+      "escalation": 0.2,
+      "final": 0.4
+    },
+    "hideDampen": 0.75
+  },
+  "visibility": {
+    "eventsInView": 60,
+    "sightingsInView": 20,
+    "phaseInterference": {
+      "preparation": 0.05,
+      "infiltration": 0.1,
+      "escalation": 0.2,
+      "final": 0.35
+    },
+    "monsterMemoryMs": 45000,
+    "doorObserveHops": 1
+  },
+  "room": {
+    "codeLength": 4,
+    "reconnectGraceMs": 60000,
+    "emptyRoomTtlMs": 120000,
+    "maxPlayers": 12,
+    "maxNameLength": 20
+  }
+}

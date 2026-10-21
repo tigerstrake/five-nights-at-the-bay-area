@@ -3,6 +3,7 @@
 import type { HqApproach, MonsterStance, NetworkEdge, Rng } from '@fnab/shared';
 import { edgeTravelMs } from '@fnab/shared';
 import type { BrainInput, MonsterBrain, MonsterIntent, MonsterKnowledge } from './types';
+import { TacticalBrain } from './tacticalBrain';
 
 const EXPOSURE_UNIT_MS = 8_000;
 const STANCE_EXPOSURE_WEIGHT: Record<MonsterStance, number> = { HUNT: 0.4, HIDE: 3, FLANK: 1.2, ATTACK: 0, RETREAT: 1 };
@@ -165,8 +166,8 @@ export class BaselineBrain implements MonsterBrain {
   }
 }
 
-export function defaultBrain(): BaselineBrain {
-  return new BaselineBrain();
+export function defaultBrain(): TacticalBrain {
+  return new TacticalBrain();
 }
 
 export type { MonsterKnowledge };

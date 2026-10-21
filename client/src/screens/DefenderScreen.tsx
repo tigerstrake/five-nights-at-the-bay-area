@@ -1,30 +1,55 @@
-import { useEffect, useMemo, useState } from 'react';
+// Defender control room (also used read-only for spectators). Composition:
+//   top bar · alert ticker
+//   [ main monitor / monitor bank (or containment console) ] [ tactical map / tools / inspector ] [ power / doors / containment / log ]
+// Sub-panels live in ./defender/. Everything shown is derived from the DefenderView only (no secrets).
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
-import type { CameraView, DefenderView, RoomView } from '@fnab/shared';
+import type { CameraView, DefenderAction, DefenderView, RoomView, VisibleEvent } from '@fnab/shared';
 import { useGame, matchNow } from '../state/store';
 import { sendAction } from '../net/socket';
-import { CameraFeed } from '../feeds/CameraFeed';
 import { MapPanel } from '../map/MapPanel';
 import type { MarkKind } from '../map/TacticalMap';
-import { Badge, Button, Label, Meter, Panel } from '../ui/kit';
-import { EventLog, TopBar } from './hud';
-import { graph, hqById, nodeName } from '../lib/data';
+import { TopBar } from './hud';
+import { graph, hqById } from '../lib/data';
 import { useNow } from '../hooks/useNow';
-import { ago } from '../lib/format';
-import { audio } from '../audio';
-import { DEFAULT_CONFIG } from '@fnab/shared';
+import { audio, type SfxName } from '../audio';
+import { isReducedMotion } from '../fx';
+import { Bay, CFG, DefenderStyles, FOCUS, THREAT_WORD, type RoomCtx } from './defender/common';
+import { MainFeed } from './defender/MainFeed';
+import { BANK_SIZE, MonitorBank, type BankPage } from './defender/MonitorBank';
+import { DoorsPanel, PowerPanel } from './defender/Systems';
+import { NodeInspector, TOOL_KEYS, ToolDock } from './defender/Devices';
+import { ContainmentConsole, ContainmentStandby } from './defender/Containment';
+import { TeamLog } from './defender/TeamLog';
+import { AlertTicker, BlackoutCurtain, HelpSheet, PhaseAnnouncer, ThreatVignette } from './defender/Atmosphere';
 
-const BANK_SIZE = 12;
-const P = DEFAULT_CONFIG.power;
+const ALERT_MS = 8000;
+const CYCLE_MS = 7000;
+const MAX_PINS = 4;
+const DOOR_KEYS = ['q', 'w', 'e'];
 
-type Tool = 'inspect' | 'sensor' | 'trap' | 'scan' | 'lure';
-const TOOLS: Array<{ id: Tool; label: string; cost: string; key: string }> = [
-  { id: 'inspect', label: 'Inspect', cost: '', key: '1' },
-  { id: 'sensor', label: 'Sensor', cost: `${P.sensorPlaceCost}⚡`, key: '2' },
-  { id: 'trap', label: 'Trap', cost: `${P.trapArmCost}⚡`, key: '3' },
-  { id: 'scan', label: 'Scan', cost: `${P.scanCost}⚡`, key: '4' },
-  { id: 'lure', label: 'Lure', cost: `${P.lureCost}⚡`, key: '5' },
-];
+const ACTION_SFX: Partial<Record<DefenderAction['type'], SfxName>> = {
+  placeSensor: 'sensorPing',
+  lure: 'alarm',
+  removeSensor: 'uiClick',
+  disarmTrap: 'uiClick',
+};
+
+/** On very large CSS viewports (e.g. 2560×1440 at 1×), scale the whole console so type stays readable. */
+function useConsoleZoom(): { zoom: number; w: number; h: number } {
+  const calc = () => {
+    if (typeof window === 'undefined') return { zoom: 1, w: 0, h: 0 };
+    const z = Math.min(window.innerWidth / 1680, window.innerHeight / 1000);
+    return { zoom: z >= 1.15 ? Math.min(1.6, Math.round(z * 20) / 20) : 1, w: window.innerWidth, h: window.innerHeight };
+  };
+  const [z, setZ] = useState(calc);
+  useEffect(() => {
+    const on = () => setZ(calc());
+    window.addEventListener('resize', on);
+    return () => window.removeEventListener('resize', on);
+  }, []);
+  return z;
+}
 
 export function DefenderScreen({ room, view }: { room: RoomView; view: DefenderView }) {
   useNow(250);
@@ -34,64 +59,172 @@ export function DefenderScreen({ room, view }: { room: RoomView; view: DefenderV
   const selectedNode = useGame((s) => s.selectedNode);
   const tool = useGame((s) => s.mapTool);
   const set = useGame((s) => s.set);
-  const [bank, setBank] = useState<'auto' | number>('auto');
+  const [page, setPage] = useState<BankPage>('auto');
+  const [cycle, setCycle] = useState(false);
+  const [pinned, setPinned] = useState<string[]>([]);
+  const [help, setHelp] = useState(false);
   const hq = hqById(view.hqId)!;
   const outage = view.power.outageUntil !== null;
+  const prep = view.phase === 'preparation';
+  const reduced = isReducedMotion();
+  const { zoom, w: vw, h: vh } = useConsoleZoom();
 
   const camByNode = useMemo(() => new Map(view.cameras.map((c) => [c.nodeId, c])), [view.cameras]);
   const camById = useMemo(() => new Map(view.cameras.map((c) => [c.cameraId, c])), [view.cameras]);
+  const camNo = useMemo(() => new Map(view.cameras.map((c, i) => [c.cameraId, i + 1])), [view.cameras]);
   const approachCams = hq.approaches.map((a) => camByNode.get(a.fromNode)).filter(Boolean) as CameraView[];
-
   const mainCam = (selectedCamera && camById.get(selectedCamera)) || approachCams[0] || view.cameras[0];
 
-  // Auto bank: HQ approaches, then recent sightings, then faulted cams, then nearest to HQ.
+  const alertNodes = useMemo(
+    () => new Set(view.sightings.filter((s) => t - s.t < ALERT_MS && !s.flaggedFalse).map((s) => s.nodeId)),
+    [view.sightings, t],
+  );
+
+  // AUTO bank: pins, HQ approaches, recent sightings, faulted cameras, then nearest to HQ.
   const autoBank = useMemo(() => {
     const ids: string[] = [];
     const add = (id?: string) => id && !ids.includes(id) && ids.length < BANK_SIZE && ids.push(id);
+    pinned.forEach(add);
     approachCams.forEach((c) => add(c.cameraId));
     [...view.sightings].reverse().forEach((s) => add(camByNode.get(s.nodeId)?.cameraId));
     view.cameras.filter((c) => c.status !== 'ok').forEach((c) => add(c.cameraId));
     [...view.cameras]
       .sort((a, b) => graph.hopsToHq(a.nodeId, view.hqId) - graph.hopsToHq(b.nodeId, view.hqId))
       .forEach((c) => add(c.cameraId));
-    return ids;
-  }, [view, approachCams, camByNode]);
-  const banks = Math.ceil(view.cameras.length / BANK_SIZE);
-  const bankCams =
-    bank === 'auto' ? autoBank.map((id) => camById.get(id)!).filter(Boolean) : view.cameras.slice(bank * BANK_SIZE, (bank + 1) * BANK_SIZE);
+    return ids.map((id) => camById.get(id)!).filter(Boolean);
+  }, [view, approachCams, camByNode, camById, pinned]);
+  const pages = Math.ceil(view.cameras.length / BANK_SIZE);
+  const pageCams = (p: BankPage) => (p === 'auto' ? autoBank : view.cameras.slice(p * BANK_SIZE, (p + 1) * BANK_SIZE));
+  const bankCams = pageCams(page);
+  const pageAlerts = new Set<BankPage>();
+  (['auto', ...Array.from({ length: pages }, (_, i) => i)] as BankPage[]).forEach((p) => {
+    if (pageCams(p).some((c) => alertNodes.has(c.nodeId) || c.manifestation)) pageAlerts.add(p);
+  });
 
-  const recentSightingNodes = new Set(view.sightings.filter((s) => t - s.t < 8000 && !s.flaggedFalse).map((s) => s.nodeId));
+  useEffect(() => {
+    if (!cycle) return;
+    const id = setInterval(() => setPage((p) => (p === 'auto' ? 0 : (p + 1) % pages)), CYCLE_MS);
+    return () => clearInterval(id);
+  }, [cycle, pages]);
 
-  // keyboard shortcuts for tools
+  const selectCamera = useCallback(
+    (id: string) => {
+      const st = useGame.getState();
+      if (id !== st.selectedCamera) audio.play('cameraSwitch');
+      const cam = camById.get(id);
+      set({ selectedCamera: id, selectedNode: cam?.nodeId ?? st.selectedNode });
+    },
+    [camById, set],
+  );
+  const selectNode = useCallback(
+    (nodeId: string) => {
+      set({ selectedNode: nodeId });
+      const cam = camByNode.get(nodeId);
+      if (cam) selectCamera(cam.cameraId);
+    },
+    [camByNode, selectCamera, set],
+  );
+
+  const act = useCallback(
+    async (a: DefenderAction): Promise<boolean> => {
+      if (spectator) return false;
+      const res = await sendAction(a);
+      if (res.ok) {
+        const sfx = ACTION_SFX[a.type];
+        if (sfx) audio.play(sfx, { volume: 0.55 });
+      } else audio.play('doorBlocked', { volume: 0.35 });
+      return res.ok;
+    },
+    [spectator],
+  );
+
+  const togglePin = useCallback((id: string) => {
+    audio.play('uiClick', { volume: 0.5 });
+    setPinned((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id].slice(-MAX_PINS)));
+  }, []);
+
+  const locate = useCallback(
+    (e: VisibleEvent) => {
+      const ap = e.approachId ? hq.approaches.find((a) => a.id === e.approachId) : undefined;
+      const camId = e.cameraId ?? (e.nodeId ? camByNode.get(e.nodeId)?.cameraId : undefined) ?? (ap ? camByNode.get(ap.fromNode)?.cameraId : undefined);
+      if (camId) selectCamera(camId);
+      if (e.nodeId) set({ selectedNode: e.nodeId });
+    },
+    [camByNode, hq, selectCamera, set],
+  );
+
+  const jumpToLatest = useCallback(() => {
+    const s = [...view.sightings].reverse().find((x) => !x.flaggedFalse && t - x.t < 30_000);
+    const nodeId = s?.nodeId ?? view.lastKnown?.nodeId ?? view.held?.nodeId;
+    if (nodeId) selectNode(nodeId);
+  }, [view, t, selectNode]);
+
+  // When a trap springs, put the held node on the main monitor once.
+  const heldAt = view.held?.nodeId ?? null;
+  const prevHeld = useRef<string | null>(null);
+  useEffect(() => {
+    if (heldAt && heldAt !== prevHeld.current) {
+      const cam = camByNode.get(heldAt);
+      if (cam) selectCamera(cam.cameraId);
+    }
+    prevHeld.current = heldAt;
+  }, [heldAt, camByNode, selectCamera]);
+
+  // Keyboard: see SHORTCUTS in ./defender/Atmosphere.
+  const keyState = useRef({ bankCams, mainCam, view, pages });
+  keyState.current = { bankCams, mainCam, view, pages };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
-      const tl = TOOLS.find((x) => x.key === e.key);
-      if (tl) set({ mapTool: tl.id });
-      if (e.key === 'Escape') set({ mapTool: 'inspect' });
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const { bankCams: bc, mainCam: mc, view: v, pages: pg } = keyState.current;
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      if (k === 'Escape') {
+        setHelp(false);
+        set({ mapTool: 'inspect' });
+        return;
+      }
+      if (k === '?') return setHelp((h) => !h);
+      if (/^[1-9]$/.test(k)) {
+        const c = bc[Number(k) - 1];
+        if (c) selectCamera(c.cameraId);
+        return;
+      }
+      if (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'ArrowUp' || k === 'ArrowDown') {
+        if (el && el.closest('[role=tablist],[role=toolbar]')) return;
+        e.preventDefault();
+        const i = Math.max(0, bc.findIndex((c) => c.cameraId === mc?.cameraId));
+        const d = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -4, ArrowDown: 4 }[k];
+        const n = bc[(i + d + bc.length) % bc.length];
+        if (n) selectCamera(n.cameraId);
+        return;
+      }
+      if (k === '[' || k === ']') {
+        const order: BankPage[] = ['auto', ...Array.from({ length: pg }, (_, i) => i)];
+        setPage((p) => order[(order.indexOf(p) + (k === ']' ? 1 : -1) + order.length) % order.length]!);
+        audio.play('uiHover', { volume: 0.5 });
+        return;
+      }
+      if (k === 'o') return setCycle((c) => !c);
+      if (k === 'v') return jumpToLatest();
+      if (k === 'p' && mc) return togglePin(mc.cameraId);
+      if (spectator) return;
+      if (k in TOOL_KEYS) return set({ mapTool: TOOL_KEYS[k]! });
+      if (k === 'r' && mc && (mc.status === 'sabotaged' || mc.status === 'static')) return void act({ type: 'repair', cameraId: mc.cameraId });
+      const di = DOOR_KEYS.indexOf(k);
+      if (di >= 0 && v.doors[di]) {
+        const d = v.doors[di]!;
+        return void act({ type: 'door', approachId: d.approachId, closed: !d.closed });
+      }
+      if (k === 'h' && v.held) return void act({ type: 'containment', engage: !v.containment });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [set]);
-
-  const selectCamera = (id: string) => {
-    if (id !== selectedCamera) audio.play('cameraSwitch');
-    const cam = camById.get(id);
-    set({ selectedCamera: id, selectedNode: cam?.nodeId ?? selectedNode });
-  };
-
-  const act = async (a: Parameters<typeof sendAction>[0]) => {
-    if (spectator) return;
-    await sendAction(a);
-  };
+  }, [set, selectCamera, act, togglePin, jumpToLatest, spectator]);
 
   const onNodeClick = (nodeId: string) => {
-    if (spectator || tool === 'inspect') {
-      const cam = camByNode.get(nodeId);
-      set({ selectedNode: nodeId });
-      if (cam) selectCamera(cam.cameraId);
-      return;
-    }
+    if (spectator || tool === 'inspect') return selectNode(nodeId);
     set({ selectedNode: nodeId });
     if (tool === 'sensor') void act({ type: 'placeSensor', nodeId });
     if (tool === 'trap') void act({ type: 'armTrap', nodeId });
@@ -116,394 +249,147 @@ export function DefenderScreen({ room, view }: { room: RoomView; view: DefenderV
   }));
   const rings =
     view.lastScan && t - view.lastScan.t < 4000
-      ? [
-          {
-            nodeId: view.lastScan.nodeId,
-            hops: view.lastScan.radiusHops,
-            tone: view.lastScan.found ? ('alert' as const) : ('cyan' as const),
-          },
-        ]
+      ? [{ nodeId: view.lastScan.nodeId, hops: view.lastScan.radiusHops, tone: view.lastScan.found ? ('alert' as const) : ('cyan' as const) }]
       : [];
-  const scanPreview = tool === 'scan' && selectedNode ? new Set(graph.within(selectedNode, DEFAULT_CONFIG.scan.radiusHops)) : undefined;
+  const scanPreview = tool === 'scan' && selectedNode ? new Set(graph.within(selectedNode, CFG.scan.radiusHops)) : undefined;
 
+  const ctx: RoomCtx = { view, t, hq, spectator, prep, outage, reduced, act, camById, camByNode, camNo, selectCamera, selectNode };
   const powerFrac = view.power.value / view.power.max;
-  const scanLeft = Math.max(0, view.cooldowns.scanReadyAt - t);
-  const lureLeft = Math.max(0, view.cooldowns.lureReadyAt - t);
+  const showConsole = !!view.held;
 
   return (
-    <div className="flex h-full flex-col" data-testid="defender-screen">
+    <div
+      className={clsx('relative flex flex-col', reduced && 'fnab-reduced')}
+      style={zoom !== 1 ? { zoom, width: `${vw / zoom}px`, height: `${vh / zoom}px` } : { height: '100%' }}
+      data-testid="defender-screen"
+    >
+      <DefenderStyles />
       <TopBar room={room} view={view} accent="cyan">
-        <div className="flex min-w-[180px] flex-1 items-center gap-2">
-          <Label>Power</Label>
-          <Meter value={powerFrac} tone={outage ? 'alert' : powerFrac < 0.25 ? 'warn' : 'ok'} className="h-2.5 max-w-[220px]" />
-          <span className={clsx('font-mono text-xs tabular-nums', outage ? 'text-alert' : 'text-bright')} data-testid="power">
+        <div className="flex min-w-[110px] flex-1 items-center gap-2">
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-dim">Power</span>
+          <div className="relative hidden h-2.5 max-w-[200px] flex-1 border border-edge bg-ink min-[1360px]:block">
+            <div
+              className={clsx('h-full transition-[width] duration-200', outage ? 'bg-alert' : powerFrac < 0.25 ? 'bg-warn' : 'bg-ok')}
+              style={{ width: `${Math.max(0, powerFrac) * 100}%` }}
+            />
+          </div>
+          <span className={clsx('font-mono text-[12px] tabular-nums', outage ? 'text-[#ff8a93]' : 'text-bright')} data-testid="power">
             {outage ? `OUT ${Math.ceil((view.power.outageUntil! - t) / 1000)}s` : `${Math.round(view.power.value)}/${view.power.max}`}
           </span>
-          <span className={clsx('font-mono text-[10px]', view.power.drainPerSec > 0 ? 'text-warn' : 'text-ok')}>
-            {view.power.drainPerSec > 0 ? `−${view.power.drainPerSec.toFixed(2)}/s` : `+${(-view.power.drainPerSec).toFixed(2)}/s`}
-          </span>
         </div>
-        <div className="flex min-w-[160px] items-center gap-2">
-          <Label>Threat</Label>
+        <div className="flex items-center gap-2" title="Threat from sightings and sensor reports">
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-dim">Threat</span>
           <div className="flex gap-0.5" data-testid="threat">
             {[0.2, 0.4, 0.6, 0.8, 1].map((lv) => (
               <span
                 key={lv}
                 className={clsx(
-                  'h-3 w-4 border border-edge',
+                  'h-3 w-3.5 border border-edge',
                   view.threat >= lv - 0.01 ? (lv >= 0.8 ? 'bg-alert' : lv >= 0.6 ? 'bg-warn' : 'bg-cyan/70') : 'bg-ink',
+                  view.threat >= 0.79 && lv >= 0.8 && view.threat >= lv - 0.01 && !reduced && 'animate-pulse',
                 )}
               />
             ))}
           </div>
+          <span
+            className={clsx(
+              'hidden w-[68px] whitespace-nowrap font-mono text-[11px] uppercase tracking-[0.1em] min-[1360px]:inline',
+              view.threat >= 0.79 ? 'text-[#ff8a93]' : view.threat >= 0.59 ? 'text-[#f3d28d]' : 'text-mute',
+            )}
+          >
+            {THREAT_WORD(view.threat)}
+          </span>
         </div>
-        {spectator && <Badge tone="neutral">Spectating</Badge>}
+        {spectator && (
+          <span className="border border-edge-hi px-1.5 py-px font-mono text-[10px] uppercase tracking-[0.14em] text-mute">Spectating</span>
+        )}
+        <button
+          type="button"
+          onClick={() => setHelp(true)}
+          className={clsx('h-6 border border-edge px-1.5 font-mono text-[10.5px] text-mute hover:border-mute hover:text-text', FOCUS)}
+          title="Keyboard shortcuts (?)"
+          data-testid="shortcuts"
+        >
+          ?<span className="hidden min-[1360px]:inline"> Keys</span>
+        </button>
       </TopBar>
 
-      {(view.breach || view.held) && (
-        <div
-          className={clsx(
-            'flex items-center justify-center gap-4 border-b px-3 py-1.5 font-mono text-xs uppercase tracking-[0.2em]',
-            view.breach ? 'animate-pulse border-alert bg-alert-dim/70 text-[#ffd0d4]' : 'border-warn bg-[#2c2008] text-[#f3d28d]',
-          )}
-        >
-          {view.breach && (
-            <>
-              <span>⚠ Breach in progress — {hq.approaches.find((a) => a.id === view.breach!.approachId)?.door}</span>
-              <Meter value={view.breach.progress} tone="alert" className="w-48" />
-              <span>{view.breach.stalled ? 'DOOR HOLDING' : 'DOOR OPEN — SEAL IT'}</span>
-            </>
-          )}
-          {!view.breach && view.held && !view.containment && (
-            <span>Target immobilised at {nodeName(view.held.nodeId)} — engage containment!</span>
-          )}
-          {!view.breach && view.held && view.containment && (
-            <>
-              <span>Containment field holding · {nodeName(view.containment.nodeId)}</span>
-              <Meter value={view.containment.progress} tone="ok" className="w-48" />
-              <span>{view.held.struggling ? 'TARGET STRUGGLING' : `${Math.round(view.containment.progress * 100)}%`}</span>
-            </>
-          )}
-        </div>
-      )}
+      <AlertTicker ctx={ctx} onLocate={locate} onJump={jumpToLatest} />
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 p-2 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_300px]">
-        {/* LEFT: feeds */}
-        <div className="flex min-h-0 flex-col gap-2">
-          <Panel
-            title={
-              <span>
-                Main feed · <span className="text-bright">{nodeName(mainCam?.nodeId)}</span>
-              </span>
-            }
-            right={
-              mainCam && mainCam.status !== 'ok' && mainCam.status !== 'repairing' && mainCam.status !== 'blackout' && !spectator ? (
-                <Button
-                  size="sm"
-                  tone="cyan"
-                  onClick={() => void act({ type: 'repair', cameraId: mainCam.cameraId })}
-                  data-testid="repair-main"
-                >
-                  Repair ({P.repairCost}⚡ · 10s)
-                </Button>
-              ) : null
-            }
-            className="min-h-0 flex-[1.5]"
-          >
-            {mainCam && (
-              <CameraFeed
-                key={mainCam.cameraId}
-                cameraId={mainCam.cameraId}
-                nodeId={mainCam.nodeId}
-                variant="main"
-                status={mainCam.status}
-                interference={mainCam.interference}
-                manifestation={mainCam.manifestation}
-                repairProgress={mainCam.repairProgress}
-                t0Epoch={view.t0Epoch}
-                className="h-full w-full"
-              />
-            )}
-          </Panel>
-          <Panel
-            title="Monitor bank"
-            right={
-              <div className="flex gap-1">
-                <Button size="sm" tone={bank === 'auto' ? 'cyan' : 'ghost'} onClick={() => setBank('auto')}>
-                  Auto
-                </Button>
-                {Array.from({ length: banks }, (_, i) => (
-                  <Button key={i} size="sm" tone={bank === i ? 'cyan' : 'ghost'} onClick={() => setBank(i)}>
-                    {i + 1}
-                  </Button>
-                ))}
-              </div>
-            }
-            className="min-h-0 flex-1"
-            bodyClass="overflow-hidden"
-          >
-            <div className="grid h-full grid-cols-4 grid-rows-3 gap-1 p-1">
-              {bankCams.map((c) => (
-                <CameraFeed
-                  key={c.cameraId}
-                  cameraId={c.cameraId}
-                  nodeId={c.nodeId}
-                  variant="thumb"
-                  status={c.status}
-                  interference={c.interference}
-                  manifestation={c.manifestation}
-                  repairProgress={c.repairProgress}
-                  t0Epoch={view.t0Epoch}
-                  selected={c.cameraId === mainCam?.cameraId}
-                  alert={recentSightingNodes.has(c.nodeId)}
-                  onClick={() => selectCamera(c.cameraId)}
-                  className="h-full min-h-[56px] w-full"
-                />
-              ))}
-            </div>
-          </Panel>
-        </div>
-
-        {/* CENTER: map */}
-        <Panel
-          title="Tactical map"
-          right={
-            !spectator && (
-              <div className="flex gap-1" data-testid="map-tools">
-                {TOOLS.map((tl) => (
-                  <Button
-                    key={tl.id}
-                    size="sm"
-                    tone={tool === tl.id ? 'cyan' : 'ghost'}
-                    onClick={() => set({ mapTool: tl.id })}
-                    title={`Hotkey ${tl.key}`}
-                    data-testid={`tool-${tl.id}`}
-                  >
-                    {tl.label}
-                    {tl.cost && <span className="ml-1 text-dim">{tl.cost}</span>}
-                  </Button>
-                ))}
-              </div>
-            )
-          }
-        >
-          <MapPanel
-            hqId={view.hqId}
-            cameraStatus={cameraStatus}
-            marks={marks}
-            sightings={sightings}
-            lastKnown={view.lastKnown?.nodeId ?? null}
-            held={view.held?.nodeId ?? null}
-            rings={rings}
-            highlight={scanPreview}
-            breachApproachId={view.breach?.approachId ?? null}
-            doorClosed={Object.fromEntries(view.doors.map((d) => [d.approachId, d.closed]))}
-            selectedNode={selectedNode}
-            onNodeClick={onNodeClick}
-            cursorHint={tool !== 'inspect' && !spectator ? `${tool.toUpperCase()} — click a node · Esc to cancel` : undefined}
-          />
-        </Panel>
-
-        {/* RIGHT: controls */}
-        <div className="flex min-h-0 flex-col gap-2 overflow-y-auto">
-          <Panel title={`${hq.name} · doors`} className="shrink-0">
-            <div className="flex flex-col divide-y divide-edge" data-testid="doors">
-              {view.doors.map((d) => {
-                const ap = hq.approaches.find((a) => a.id === d.approachId)!;
-                const jammed = d.jammedUntil !== null;
-                return (
-                  <div key={d.approachId} className={clsx('flex items-center gap-2 px-2 py-1.5', d.battering && 'bg-alert-dim/40')}>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-mono text-[11px] text-bright">{ap.door}</span>
-                        <span className="truncate text-[11px] text-mute">{ap.label}</span>
-                      </div>
-                      <Meter
-                        value={d.heat}
-                        tone={d.heat > 0.75 ? 'alert' : d.heat > 0.45 ? 'warn' : 'cyan'}
-                        className="mt-1 h-1.5"
-                        label="Door heat"
-                      />
-                    </div>
-                    {jammed ? (
-                      <Badge tone="alert">Jammed {Math.ceil((d.jammedUntil! - t) / 1000)}s</Badge>
-                    ) : (
-                      <Button
-                        size="sm"
-                        tone={d.closed ? 'ok' : 'neutral'}
-                        disabled={spectator || outage}
-                        onClick={() => void act({ type: 'door', approachId: d.approachId, closed: !d.closed })}
-                        data-testid={`door-${d.approachId}`}
-                      >
-                        {d.closed ? 'Sealed' : 'Open'}
-                      </Button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </Panel>
-          <Panel title="Containment" className="shrink-0">
-            <div className="flex flex-col gap-1.5 p-2">
-              {view.containment ? (
-                <>
-                  <div className="font-mono text-[11px] text-[#ff8a93]">FIELD ACTIVE · {nodeName(view.containment.nodeId)}</div>
-                  <Meter value={view.containment.progress} tone="ok" />
-                  <div className="flex items-center justify-between font-mono text-[10px] text-mute">
-                    <span>
-                      {Math.round(view.containment.progress * 100)}% · −{P.containmentDrainPerSec}/s
-                    </span>
-                    {view.held?.struggling && <span className="animate-pulse text-alert">STRUGGLING</span>}
-                  </div>
-                  <Button size="sm" tone="ghost" disabled={spectator} onClick={() => void act({ type: 'containment', engage: false })}>
-                    Disengage
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <div className="text-[11px] text-mute">
-                    {view.held ? `Target held at ${nodeName(view.held.nodeId)}` : 'Requires a trapped target. Hold 15 s to capture.'}
-                  </div>
-                  <Button
-                    tone="alert"
-                    disabled={!view.held || spectator || outage}
-                    onClick={() => void act({ type: 'containment', engage: true })}
-                    data-testid="contain"
-                  >
-                    Engage containment
-                  </Button>
-                </>
-              )}
-            </div>
-          </Panel>
-          <NodeInspector
-            view={view}
-            t={t}
-            nodeId={selectedNode}
-            act={act}
-            spectator={spectator}
-            scanLeft={scanLeft}
-            lureLeft={lureLeft}
-            onViewFeed={selectCamera}
-          />
-          <Panel title="Event log" className="min-h-[180px] flex-1" bodyClass="overflow-auto">
-            <EventLog events={view.events} view={view} />
-          </Panel>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function NodeInspector({
-  view,
-  t,
-  nodeId,
-  act,
-  spectator,
-  scanLeft,
-  lureLeft,
-  onViewFeed,
-}: {
-  view: DefenderView;
-  t: number;
-  nodeId: string | null;
-  act: (a: Parameters<typeof sendAction>[0]) => Promise<void>;
-  spectator: boolean;
-  scanLeft: number;
-  lureLeft: number;
-  onViewFeed: (id: string) => void;
-}) {
-  if (!nodeId) {
-    return (
-      <Panel title="Node" className="shrink-0">
-        <div className="p-2 text-[11px] text-mute">Select a node on the map.</div>
-      </Panel>
-    );
-  }
-  const node = graph.nodes.get(nodeId)!;
-  const cam = view.cameras.find((c) => c.nodeId === nodeId);
-  const sensor = view.sensors.find((s) => s.nodeId === nodeId);
-  const trap = view.traps.find((x) => x.nodeId === nodeId);
-  const last = [...view.sightings].reverse().find((s) => s.nodeId === nodeId);
-  const prep = view.phase === 'preparation';
-  return (
-    <Panel
-      title={
-        <span>
-          Node · <span className="text-bright">{node.name}</span>
-        </span>
-      }
-      className="shrink-0"
-    >
-      <div className="flex flex-col gap-1.5 p-2 text-[11px]">
-        <div className="flex flex-wrap gap-1">
-          {cam && <Badge tone={cam.status === 'ok' ? 'ok' : cam.status === 'repairing' ? 'cyan' : 'alert'}>CAM {cam.status}</Badge>}
-          {sensor && <Badge tone={sensor.disabledUntil ? 'ghost' : 'cyan'}>Sensor{sensor.disabledUntil ? ' offline' : ''}</Badge>}
-          {trap && <Badge tone="alert">{trap.live ? 'Trap live' : 'Trap arming'}</Badge>}
-          {last && <Badge tone="warn">Seen {ago(t - last.t)}</Badge>}
-        </div>
-        {!spectator && (
-          <div className="grid grid-cols-2 gap-1">
-            {cam && (
-              <Button size="sm" onClick={() => onViewFeed(cam.cameraId)}>
-                View feed
-              </Button>
-            )}
-            {cam && cam.status !== 'ok' && cam.status !== 'repairing' && cam.status !== 'blackout' && (
-              <Button
-                size="sm"
-                tone="cyan"
-                disabled={prep}
-                onClick={() => void act({ type: 'repair', cameraId: cam.cameraId })}
-                data-testid="repair-node"
-              >
-                Repair {P.repairCost}⚡
-              </Button>
-            )}
-            {sensor ? (
-              <Button size="sm" tone="ghost" onClick={() => void act({ type: 'removeSensor', sensorId: sensor.id })}>
-                Remove sensor
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                disabled={view.sensors.length >= view.limits.sensors}
-                onClick={() => void act({ type: 'placeSensor', nodeId })}
-              >
-                Sensor {view.sensors.length}/{view.limits.sensors}
-              </Button>
-            )}
-            {trap ? (
-              <Button size="sm" tone="ghost" onClick={() => void act({ type: 'disarmTrap', trapId: trap.id })}>
-                Disarm trap
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                tone="alert"
-                disabled={view.traps.length >= view.limits.traps}
-                onClick={() => void act({ type: 'armTrap', nodeId })}
-                data-testid="arm-trap"
-              >
-                Trap {view.traps.length}/{view.limits.traps}
-              </Button>
-            )}
-            <Button
-              size="sm"
-              tone="cyan"
-              disabled={prep || scanLeft > 0}
-              onClick={() => void act({ type: 'scan', nodeId })}
-              data-testid="scan-node"
-            >
-              {scanLeft > 0 ? `Scan ${Math.ceil(scanLeft / 1000)}s` : `Scan ${P.scanCost}⚡`}
-            </Button>
-            <Button size="sm" tone="warn" disabled={prep || lureLeft > 0} onClick={() => void act({ type: 'lure', nodeId })}>
-              {lureLeft > 0 ? `Lure ${Math.ceil(lureLeft / 1000)}s` : `Lure ${P.lureCost}⚡`}
-            </Button>
+      <div className="relative grid min-h-0 flex-1 grid-cols-1 gap-1.5 p-1.5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_clamp(300px,24vw,460px)]">
+        <BlackoutCurtain ctx={ctx} />
+        {/* LEFT: monitors */}
+        <div className="flex min-h-0 flex-col gap-1.5">
+          <div className="flex min-h-0 flex-[1.2] flex-col">
+            <MainFeed ctx={ctx} cam={mainCam} pinned={!!mainCam && pinned.includes(mainCam.cameraId)} onPin={() => mainCam && togglePin(mainCam.cameraId)} />
           </div>
-        )}
+          {showConsole ? (
+            <ContainmentConsole ctx={ctx} className="flex-1" />
+          ) : (
+            <MonitorBank
+              ctx={ctx}
+              cams={bankCams}
+              page={page}
+              pages={pages}
+              setPage={(p) => {
+                audio.play('uiHover', { volume: 0.5 });
+                setPage(p);
+              }}
+              pageAlerts={pageAlerts}
+              cycle={cycle}
+              setCycle={setCycle}
+              mainId={mainCam?.cameraId}
+              pinned={pinned}
+              alertNodes={alertNodes}
+              className="flex-1"
+            />
+          )}
+        </div>
+
+        {/* CENTER: map + field devices */}
+        <Bay
+          title="Tactical map"
+          led={view.lastScan && t - view.lastScan.t < 4000 ? 'cyan' : alertNodes.size ? 'alert' : 'ok'}
+          right={
+            <span className="font-mono text-[10.5px] text-dim">
+              {view.sightings.filter((s) => !s.flaggedFalse).length} sightings · {view.sensors.length} sensors · {view.traps.length} traps
+            </span>
+          }
+          bodyClass="flex flex-col"
+        >
+          <div className="relative min-h-0 flex-1">
+            <MapPanel
+              hqId={view.hqId}
+              cameraStatus={cameraStatus}
+              marks={marks}
+              sightings={sightings}
+              lastKnown={view.lastKnown?.nodeId ?? null}
+              held={view.held?.nodeId ?? null}
+              rings={rings}
+              highlight={scanPreview}
+              breachApproachId={view.breach?.approachId ?? null}
+              doorClosed={Object.fromEntries(view.doors.map((d) => [d.approachId, d.closed]))}
+              selectedNode={selectedNode}
+              onNodeClick={onNodeClick}
+              cursorHint={tool !== 'inspect' && !spectator ? `${tool.toUpperCase()}: click a node · Esc to cancel` : undefined}
+            />
+          </div>
+          {!spectator && <ToolDock ctx={ctx} tool={tool} setTool={(x) => set({ mapTool: x })} />}
+          <NodeInspector ctx={ctx} nodeId={selectedNode} />
+        </Bay>
+
+        {/* RIGHT: HQ systems */}
+        <div className="flex min-h-0 flex-col gap-1.5 overflow-y-auto">
+          <PowerPanel ctx={ctx} />
+          <DoorsPanel ctx={ctx} />
+          {!showConsole && <ContainmentStandby ctx={ctx} />}
+          <TeamLog ctx={ctx} room={room} onLocate={locate} />
+        </div>
       </div>
-    </Panel>
+
+      <ThreatVignette view={view} reduced={reduced} />
+      <PhaseAnnouncer phase={view.phase} />
+      {help && <HelpSheet onClose={() => setHelp(false)} />}
+    </div>
   );
 }

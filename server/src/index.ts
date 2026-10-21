@@ -8,7 +8,7 @@ import type { ClientToServerEvents, ServerToClientEvents } from '@fnab/shared';
 import { CAMERAS, CAMERA_BY_ID, DEFAULT_CONFIG, getGraph, validateNetwork, NETWORK } from '@fnab/shared';
 import { RoomManager } from './rooms/RoomManager';
 import { attachSockets } from './net/socket';
-import { createCameraService, parseCameraMode } from './cameras';
+import { cameraConfigFromEnv, createCameraService, parseCameraMode } from './cameras';
 
 const PORT = Number(process.env.PORT ?? 3001);
 const here = dirname(fileURLToPath(import.meta.url));
@@ -18,15 +18,27 @@ const problems = validateNetwork(NETWORK, CAMERAS);
 if (problems.length) console.warn('[network] problems in network.json:\n  ' + problems.join('\n  '));
 
 const graph = getGraph();
-const cameras = createCameraService(parseCameraMode(process.env.CAMERA_MODE), CAMERAS);
+const cameraMode = parseCameraMode(process.env.CAMERA_MODE);
+if (process.env.CAMERA_MODE && cameraMode === 'simulation' && process.env.CAMERA_MODE.trim().toLowerCase() !== 'simulation') {
+  console.warn(`[cameras] unrecognised CAMERA_MODE=${process.env.CAMERA_MODE}; using simulation (valid: auto|live|snapshot|simulation)`);
+}
+// Real-world camera health only: independent of the game loop and of fictional sabotage. Never throws into the game.
+const cameras = createCameraService(cameraMode, CAMERAS, console.log, cameraConfigFromEnv(process.env));
 const rooms = new RoomManager({ graph, placementCount: (id) => CAMERA_BY_ID.get(id)?.placement.length ?? 1 });
 
 const app = express();
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, rooms: rooms.rooms.size, cameraMode: cameras.mode, nodes: graph.nodes.size });
+  res.json({ ok: true, rooms: rooms.rooms.size, cameraMode: cameras.mode, nodes: graph.nodes.size, cameras: cameras.getHealth?.() ?? null });
 });
-app.get('/api/cameras', (_req, res) => {
-  res.json(cameras.getStatuses());
+// Real source status per camera (array of CameraSourceStatus). `?detail=1` adds probe diagnostics for ops.
+app.get('/api/cameras', (req, res) => {
+  const statuses = cameras.getStatuses();
+  if (req.query.detail === undefined) return res.json(statuses);
+  const diag = new Map((cameras.getDiagnostics?.() ?? []).map((d) => [d.cameraId, d]));
+  res.json({
+    health: cameras.getHealth?.() ?? null,
+    cameras: statuses.map((s) => ({ ...s, name: CAMERA_BY_ID.get(s.cameraId)?.name ?? null, diagnostics: diag.get(s.cameraId) ?? null })),
+  });
 });
 if (existsSync(clientDist)) {
   app.use(express.static(clientDist));

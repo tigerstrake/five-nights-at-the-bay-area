@@ -208,6 +208,8 @@ export interface GameEvent {
   cameraId?: string;
   approachId?: string;
   severity: 'info' | 'warn' | 'alert' | 'good';
+  /** Player id of the defender whose action produced this event (team attribution). */
+  by?: string;
 }
 
 /** Event as seen by a client (no audience/internal fields). */
@@ -220,6 +222,8 @@ export interface VisibleEvent {
   cameraId?: string;
   approachId?: string;
   severity: GameEvent['severity'];
+  /** Defender player id that caused it (defender/spectator views only). */
+  by?: string;
 }
 
 // ───────────────────────────── Per-role views (server → client) ─────────────────────────────
@@ -431,4 +435,11 @@ export interface CameraSourceStatus {
   streamUrl: string | null;
   lastUpdated: number | null; // epoch
   error: string | null;
+  // ── additive (camera service, wave 2) ────────────────────────────────────────────────────────────
+  /** Human-readable explanation of `mode` ("Caltrans 'Temporarily Unavailable' card", "HLS playable", ...). */
+  reason?: string | null;
+  /** Epoch ms of the image content itself (Caltrans Last-Modified, else probe time). Drives "4m ago". */
+  imageAt?: number | null;
+  /** Suggested client snapshot refresh interval in ms. */
+  refreshMs?: number;
 }

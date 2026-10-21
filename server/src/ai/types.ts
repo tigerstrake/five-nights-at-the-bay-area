@@ -1,7 +1,7 @@
 // Monster AI interface. Owner: Foundation (baseline) → AI agent (wave 2).
-// The brain only ever sees MonsterKnowledge — the monster's LEGITIMATE information (no trap positions,
+// The brain only ever sees MonsterKnowledge — the monster's LEGITIMATE information (no armed trap positions,
 // no undiscovered sensors, no defender power value, no door states it has not observed).
-import type { BalanceConfig, CameraGameStatus, Graph, HqId, MatchPhase, MonsterStance, PowerLevel, Rng } from '@fnab/shared';
+import type { BalanceConfig, CameraGameStatus, Graph, HqId, MatchPhase, MonsterCommand, MonsterStance, PowerLevel, Rng } from '@fnab/shared';
 
 export interface MonsterKnowledge {
   t: number;
@@ -17,7 +17,7 @@ export interface MonsterKnowledge {
   held: boolean;
   /** Camera game status by node id (cameras are visibly dead or alive to the monster). */
   cameraStatusByNode: Record<string, CameraGameStatus>;
-  knownSensors: Array<{ id: string; nodeId: string; disabled: boolean; seenAt: number }>;
+  knownSensors: Array<{ id: string; nodeId: string; disabled: boolean; seenAt: number; disabledUntil?: number | null }>;
   knownDoors: Record<string, { closed: boolean; jammed: boolean; seenAt: number }>;
   disturbances: Array<{ nodeId: string; t: number; expiresAt: number }>;
   scanPulses: Array<{ nodeId: string; t: number }>;
@@ -25,6 +25,11 @@ export interface MonsterKnowledge {
   exposures: Array<{ nodeId: string; t: number }>;
   recentNodes: string[];
   powerLevel: PowerLevel;
+  /** Public clock and the monster's own ability cooldowns. Optional for older callers. */
+  remainingMs?: number;
+  cooldowns?: Partial<Record<MonsterCommand, number>>;
+  /** Only traps that actually caught the monster, never armed trap positions. */
+  trapEncounters?: Array<{ nodeId: string; t: number }>;
 }
 
 export interface BrainInput {

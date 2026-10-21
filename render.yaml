@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: fnab
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    numInstances: 1
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "10000"
+      - key: CAMERA_MODE
+        value: auto
+      - key: CAMERA_CHECK_INTERVAL_MS
+        value: "300000"
+      - key: CAMERA_TIMEOUT_MS
+        value: "8000"
+      - key: CAMERA_CONCURRENCY
+        value: "3"
+      - key: CAMERA_REFRESH_MS
+        value: "60000"

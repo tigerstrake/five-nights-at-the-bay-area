@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background subtle gradient -->
+    <radialGradient id="bg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#141820"/>
+      <stop offset="85%" stop-color="#0a0b0e"/>
+      <stop offset="100%" stop-color="#050608"/>
+    </radialGradient>
+    
+    <!-- Outer bezel metallic gradient -->
+    <linearGradient id="bezel" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3a4454"/>
+      <stop offset="50%" stop-color="#1a202c"/>
+      <stop offset="100%" stop-color="#2d3748"/>
+    </linearGradient>
+
+    <!-- Glass lens reflection -->
+    <radialGradient id="lens" cx="42%" cy="40%" r="55%">
+      <stop offset="0%" stop-color="#1e3a45"/>
+      <stop offset="60%" stop-color="#09141c"/>
+      <stop offset="100%" stop-color="#02060a"/>
+    </radialGradient>
+
+    <!-- Red recording light glow -->
+    <radialGradient id="redGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ff3b30"/>
+      <stop offset="45%" stop-color="#e01010"/>
+      <stop offset="70%" stop-color="#ff000088"/>
+      <stop offset="100%" stop-color="#ff000000"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Near-black background base with rounded corners -->
+  <rect width="512" height="512" rx="108" fill="url(#bg)"/>
+
+  <!-- Outer CCTV Housing Rim -->
+  <circle cx="256" cy="256" r="190" fill="none" stroke="url(#bezel)" stroke-width="20"/>
+
+  <!-- Stepped lens casing ring -->
+  <circle cx="256" cy="256" r="162" fill="#0c0e14" stroke="#252e3d" stroke-width="8"/>
+
+  <!-- Deep lens glass interior -->
+  <circle cx="256" cy="256" r="142" fill="url(#lens)"/>
+
+  <!-- Internal aperture ring -->
+  <circle cx="256" cy="256" r="92" fill="#04080d" stroke="#122a36" stroke-width="6"/>
+
+  <!-- Lens reflection arc (cyan tint) -->
+  <path d="M 180 180 A 110 110 0 0 1 310 160" fill="none" stroke="#38bdf8" stroke-width="12" stroke-linecap="round" opacity="0.45"/>
+
+  <!-- Center sensor / iris core -->
+  <circle cx="256" cy="256" r="42" fill="#010305" stroke="#1a202c" stroke-width="4"/>
+
+  <!-- CCTV Red Recording Indicator (Top Right) -->
+  <!-- Outer glow -->
+  <circle cx="376" cy="136" r="54" fill="url(#redGlow)"/>
+  <!-- Core bright red LED -->
+  <circle cx="376" cy="136" r="24" fill="#ff2626"/>
+  <!-- LED glint -->
+  <circle cx="370" cy="130" r="7" fill="#ffffff" opacity="0.85"/>
+</svg>

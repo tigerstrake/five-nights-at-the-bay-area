@@ -1,78 +1,233 @@
-import { useEffect, useMemo } from 'react';
-import clsx from 'clsx';
+// Monster player's strategic command interface: the creature's mind. Map + command deck + what it knows.
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MonsterCommand, MonsterStance, MonsterView, RoomView } from '@fnab/shared';
-import { DEFAULT_CONFIG } from '@fnab/shared';
 import { useGame, matchNow } from '../state/store';
 import { sendAction } from '../net/socket';
 import { MapPanel } from '../map/MapPanel';
 import type { MarkKind } from '../map/TacticalMap';
-import { Badge, Button, Label, Meter, Panel } from '../ui/kit';
-import { EventLog, TopBar } from './hud';
-import { graph, hqById, nodeName } from '../lib/data';
+import { Badge, Label } from '../ui/kit';
+import { TopBar, hqShortName } from './hud';
+import { hqById, nodeName } from '../lib/data';
 import { useNow } from '../hooks/useNow';
-import { CameraFeed } from '../feeds/CameraFeed';
+import { audio } from '../audio';
+import { isReducedMotion } from '../fx';
+import { situation, STANCE_INFO, STANCE_ORDER, ABILITY_INFO } from './monster/model';
+import { CommandDeck, useReadyEdges } from './monster/CommandDeck';
+import { LensPanel } from './monster/LensPanel';
+import { EmergencePanel, IntentStream, NightBar, SituationPanel } from './monster/SidePanels';
+import { BreachBanner, Legend, PositionPlate, TargetingBar, TrappedOverlay } from './monster/MapOverlays';
+import './monster/monster.css';
 
-const STANCES: Array<{ id: MonsterStance; desc: string }> = [
-  { id: 'HUNT', desc: 'Stalk the HQ; drawn to disturbances. Breaches once the night escalates.' },
-  { id: 'HIDE', desc: 'Slow. Very hard to see. Creeps between blind spots. Never breaches.' },
-  { id: 'FLANK', desc: 'Route to the least-defended door, avoiding known sensors.' },
-  { id: 'ATTACK', desc: 'Fast and loud. Go straight for a door and breach it.' },
-  { id: 'RETREAT', desc: 'Fall back away from HQ. When trapped: struggle free.' },
-];
+const FONT_ID = 'mx-display-font';
+function useDisplayFont() {
+  useEffect(() => {
+    if (document.getElementById(FONT_ID)) return;
+    const l = document.createElement('link');
+    l.id = FONT_ID;
+    l.rel = 'stylesheet';
+    l.href = 'https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&display=swap';
+    document.head.appendChild(l);
+  }, []);
+}
+
+function useCalm(): boolean {
+  const [calm, setCalm] = useState(() => isReducedMotion());
+  useEffect(() => {
+    const id = setInterval(() => setCalm(isReducedMotion()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return calm;
+}
+
+type Pending = { nodeId: string; target: 'camera' | 'sensor' } | null;
 
 export function MonsterScreen({ room, view }: { room: RoomView; view: MonsterView }) {
   useNow(200);
+  useDisplayFont();
+  const calm = useCalm();
   const t = matchNow(view);
   const tool = useGame((s) => s.monsterTool);
-  const selectedNode = useGame((s) => s.selectedNode);
   const set = useGame((s) => s.set);
   const hq = hqById(view.hqId)!;
   const self = view.self;
   const prep = view.phase === 'preparation';
-  const here = self.nodeId;
-  const origins = self.moving ? [self.moving.from, self.moving.to] : here ? [here] : [];
-  const camStatusByNode = useMemo(() => Object.fromEntries(view.cameras.map((c) => [c.nodeId, c.status])), [view.cameras]);
+  const sit = useMemo(() => situation(view, t), [view, Math.floor(t / 500)]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const inRange = (hops: number) => {
-    const s = new Set<string>();
-    for (const o of origins) for (const n of graph.within(o, hops)) s.add(n);
-    return s;
-  };
-  const sabotageRange = inRange(DEFAULT_CONFIG.monster.sabotageRangeHops);
-  const decoyRange = new Set([...inRange(DEFAULT_CONFIG.monster.decoyRangeHops)].filter((n) => camStatusByNode[n] === 'ok'));
-  const reachable = new Set(origins.flatMap((o) => graph.neighbors(o)));
-
-  const cd = (c: MonsterCommand) => Math.max(0, self.cooldowns[c] - t);
-
-  const issue = (command: MonsterStance, approachId?: string) => void sendAction({ type: 'command', command, approachId });
-  const targetStance: MonsterStance =
-    self.stance === 'HUNT' || self.stance === 'FLANK' || self.stance === 'ATTACK' ? self.stance : 'ATTACK';
-
+  const [pending, setPending] = useState<Pending>(null);
+  const [doorPref, setDoorPref] = useState<string | null>(self.targetApproachId);
+  const [hoverSpawn, setHoverSpawn] = useState<string | null>(null);
+  const [stamps, setStamps] = useState<Partial<Record<MonsterCommand, number>>>({});
+  const lastIssue = useRef(0);
+  const [, force] = useState(0);
+  const gapLeft = Math.max(0, lastIssue.current + sit.cfg.monster.globalCommandGapMs - Date.now());
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') set({ monsterTool: 'move' });
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [set]);
+    if (gapLeft > 0) {
+      const id = setTimeout(() => force((x) => x + 1), gapLeft + 20);
+      return () => clearTimeout(id);
+    }
+  }, [gapLeft]);
+
+  // keep door preference in sync with what the server says the creature is doing
+  useEffect(() => setDoorPref(self.targetApproachId), [self.targetApproachId]);
+
+  const stamp = (c: MonsterCommand) => setStamps((s) => ({ ...s, [c]: Date.now() }));
+  const cd = useCallback((c: MonsterCommand) => Math.max(0, view.self.cooldowns[c] - t), [view, t]);
+
+  useReadyEdges(view, t, (c) => {
+    if (c === 'SABOTAGE' || c === 'DECOY' || (c === 'RETREAT' && view.self.held)) audio.play('abilityReady', { volume: 0.6 });
+  });
+
+  const setTool = useCallback(
+    (next: 'move' | 'sabotage' | 'decoy') => {
+      setPending(null);
+      set({ monsterTool: next });
+    },
+    [set],
+  );
+  // leaving the match or losing the ability's validity drops targeting
+  useEffect(() => {
+    if (prep && tool !== 'move') setTool('move');
+  }, [prep, tool, setTool]);
+
+  const issue = useCallback(
+    (s: MonsterStance, approachId?: string | null) => {
+      const ap = approachId === undefined ? (s === 'HUNT' || s === 'FLANK' || s === 'ATTACK' ? doorPref : null) : approachId;
+      lastIssue.current = Date.now();
+      force((x) => x + 1);
+      void sendAction({ type: 'command', command: s, approachId: ap ?? undefined }).then((r) => {
+        if (r.ok) {
+          audio.play('commandIssued');
+          stamp(s);
+        } else lastIssue.current = 0;
+      });
+    },
+    [doorPref],
+  );
+
+  const stanceBlocked = (s: MonsterStance) => {
+    const active = self.stance === s && !self.held;
+    if (!active && cd(s) > 0) return true;
+    if (self.held && s === 'RETREAT' && self.held.struggling) return true;
+    return gapLeft > 0;
+  };
+
+  const onStance = (s: MonsterStance) => {
+    if (stanceBlocked(s)) return;
+    if (tool !== 'move') setTool('move');
+    issue(s);
+  };
+
+  const onDoor = (approachId: string | null) => {
+    setDoorPref(approachId);
+    audio.play('uiClick', { volume: 0.5 });
+    // Re-issuing the active advancing stance retargets for free; otherwise the choice waits for the next advance.
+    if ((self.stance === 'HUNT' || self.stance === 'FLANK' || self.stance === 'ATTACK') && !self.held && gapLeft === 0) {
+      issue(self.stance, approachId);
+    }
+  };
+
+  const inflight = useRef(false);
+  const confirmTarget = useCallback(() => {
+    // Enter can reach both a focused map node and the window handler; send once.
+    if (!pending || inflight.current) return;
+    inflight.current = true;
+    setTimeout(() => (inflight.current = false), 400);
+    if (tool === 'sabotage') {
+      void sendAction({ type: 'sabotage', nodeId: pending.nodeId, target: pending.target }).then((r) => {
+        if (r.ok) {
+          audio.play('sabotage');
+          stamp('SABOTAGE');
+          setTool('move');
+        }
+      });
+    } else if (tool === 'decoy') {
+      void sendAction({ type: 'decoy', nodeId: pending.nodeId }).then((r) => {
+        if (r.ok) {
+          audio.play('decoy');
+          stamp('DECOY');
+          setTool('move');
+        }
+      });
+    }
+  }, [pending, tool, setTool]);
+
+  const toggleAbility = useCallback(
+    (id: 'sabotage' | 'decoy') => {
+      if (tool === id) return setTool('move');
+      const c: MonsterCommand = id === 'sabotage' ? 'SABOTAGE' : 'DECOY';
+      if (prep || !self.spawned || cd(c) > 0) return;
+      if (id === 'sabotage' && self.held) return;
+      audio.play('uiClick', { volume: 0.5 });
+      setTool(id);
+    },
+    [tool, prep, self.spawned, self.held, cd, setTool],
+  );
 
   const onNodeClick = (nodeId: string) => {
-    set({ selectedNode: nodeId });
     if (prep) {
-      if (view.spawnOptions.includes(nodeId)) void sendAction({ type: 'chooseSpawn', nodeId });
+      if (view.spawnOptions.includes(nodeId)) pickSpawn(nodeId);
       return;
     }
     if (tool === 'sabotage') {
-      const known = view.knownSensors.find((s) => s.nodeId === nodeId);
-      const camOk = camStatusByNode[nodeId] && camStatusByNode[nodeId] !== 'sabotaged';
-      void sendAction({ type: 'sabotage', nodeId, target: camOk || !known ? 'camera' : 'sensor' }).then(
-        (r) => r.ok && set({ monsterTool: 'move' }),
-      );
+      const tg = sit.sabotageTargets.get(nodeId);
+      if (!tg) return audio.play('uiHover', { volume: 0.4 });
+      if (pending?.nodeId === nodeId) return confirmTarget();
+      setPending({ nodeId, target: tg.camera ? 'camera' : 'sensor' });
+      audio.play('uiClick', { volume: 0.5 });
     } else if (tool === 'decoy') {
-      void sendAction({ type: 'decoy', nodeId }).then((r) => r.ok && set({ monsterTool: 'move' }));
+      if (!sit.decoyTargets.has(nodeId)) return audio.play('uiHover', { volume: 0.4 });
+      if (pending?.nodeId === nodeId) return confirmTarget();
+      setPending({ nodeId, target: 'camera' });
+      audio.play('uiClick', { volume: 0.5 });
+    } else {
+      // Clicking a door's approach node targets that door.
+      const ap = hq.approaches.find((a) => a.fromNode === nodeId);
+      set({ selectedNode: nodeId });
+      if (ap) onDoor(ap.id);
     }
   };
 
+  const pickSpawn = (nodeId: string) => {
+    void sendAction({ type: 'chooseSpawn', nodeId }).then((r) => r.ok && audio.play('uiClick'));
+  };
+
+  // hotkeys
+  const keyRef = useRef<(e: KeyboardEvent) => void>(() => undefined);
+  keyRef.current = (e: KeyboardEvent) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const el = e.target as HTMLElement | null;
+    if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+    const k = e.key.toLowerCase();
+    if (k === 'escape') {
+      if (pending) setPending(null);
+      else setTool('move');
+      return;
+    }
+    if (e.repeat) return;
+    if (k === 'enter' && pending) {
+      e.preventDefault();
+      return confirmTarget();
+    }
+    if (k === ' ' && self.held) {
+      e.preventDefault();
+      return onStance('RETREAT');
+    }
+    const stance = STANCE_ORDER.find((s) => STANCE_INFO[s].key.toLowerCase() === k);
+    if (stance) return onStance(stance);
+    if (k === ABILITY_INFO.SABOTAGE.key.toLowerCase()) return toggleAbility('sabotage');
+    if (k === ABILITY_INFO.DECOY.key.toLowerCase()) return toggleAbility('decoy');
+    if (k === '0') return onDoor(null);
+    const di = Number(k);
+    if (di >= 1 && di <= hq.approaches.length) return onDoor(hq.approaches[di - 1]!.id);
+  };
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => keyRef.current(e);
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, []);
+
+  // ── map layers ───────────────────────────────────────
+  const camStatusByNode = useMemo(() => Object.fromEntries(view.cameras.map((c) => [c.nodeId, c.status])), [view.cameras]);
   const marks: Record<string, MarkKind[]> = {};
   const addMark = (n: string, m: MarkKind) => (marks[n] ??= []).push(m);
   view.knownSensors.forEach((s) => addMark(s.nodeId, s.disabledUntil ? 'sensorOff' : 'knownSensor'));
@@ -81,22 +236,63 @@ export function MonsterScreen({ room, view }: { room: RoomView; view: MonsterVie
   view.exposures.filter((p) => t - p.t < 30_000).forEach((p) => addMark(p.nodeId, 'exposure'));
   if (prep) view.spawnOptions.forEach((n) => addMark(n, 'spawn'));
 
+  const here = self.nodeId;
   const path = self.moving ? [self.moving.from, self.moving.to, ...self.path] : here ? [here, ...self.path] : [];
-  const highlight = prep ? new Set(view.spawnOptions) : tool === 'sabotage' ? sabotageRange : tool === 'decoy' ? decoyRange : reachable;
-  const hereCam = here ? view.cameras.find((c) => c.nodeId === here) : undefined;
-  const risk = here ? riskAt(view, here, t) : 0;
-  const knownDoor = (id: string) => view.knownDoors.find((d) => d.approachId === id);
+  const highlight = prep
+    ? new Set(view.spawnOptions)
+    : tool === 'sabotage'
+      ? new Set(sit.sabotageTargets.keys())
+      : tool === 'decoy'
+        ? sit.decoyTargets
+        : undefined;
+  const rings =
+    tool === 'sabotage' || tool === 'decoy'
+      ? sit.origins.map((o) => ({
+          nodeId: o,
+          hops: tool === 'sabotage' ? sit.cfg.monster.sabotageRangeHops : sit.cfg.monster.decoyRangeHops,
+          tone: 'alert' as const,
+        }))
+      : undefined;
+  const doors = Object.fromEntries(view.knownDoors.map((d) => [d.approachId, { closed: d.closed, jammed: d.jammed }]));
+  const nodeNotes: Record<string, string[]> = {};
+  view.knownSensors.forEach((s) => (nodeNotes[s.nodeId] ??= []).push(s.disabledUntil ? 'Sensor (silenced)' : 'Motion sensor you found'));
+  view.exposures.filter((p) => t - p.t < 30_000).forEach((p) => (nodeNotes[p.nodeId] ??= []).push('You may have been seen here'));
+  hq.approaches.forEach((a) => (nodeNotes[a.fromNode] ??= []).push(`Approach to ${a.door} — click to target`));
+  // Wave-2 map props (optional; ignored by maps that don't support them yet).
+  const extraLayers = {
+    theme: 'monster' as const,
+    doors,
+    nodeNotes,
+    attackPaths: !prep,
+    onNodeHover: prep ? setHoverSpawn : undefined,
+    breachProgress: view.breach?.progress,
+  };
+
+  // lens: where the creature is (nearer endpoint while moving), or the emergence point in prep
+  const lensNode = prep ? (hoverSpawn ?? self.spawnChoice) : sit.focusNode;
+  const lensCaption = prep
+    ? lensNode
+      ? `Emergence · ${nodeName(lensNode)}`
+      : ''
+    : self.moving
+      ? `${self.moving.progress < 0.5 ? 'Leaving' : 'Nearing'} ${nodeName(lensNode)}`
+      : nodeName(lensNode);
+
+  const pendingInfo = pending && tool === 'sabotage' ? sit.sabotageTargets.get(pending.nodeId) : null;
 
   return (
-    <div className="flex h-full flex-col bg-[radial-gradient(ellipse_at_30%_20%,#14070b_0%,#050607_60%)]" data-testid="monster-screen">
+    <div className="mx flex h-full flex-col" data-calm={calm ? '1' : '0'} data-testid="monster-screen">
       <TopBar room={room} view={view} accent="monster">
-        <div className="flex items-center gap-2">
-          <Label>Target</Label>
-          <span className="text-sm font-semibold text-monster-hi">{hq.name}</span>
+        <div className="flex min-w-0 items-center gap-2">
+          <Label>Prey</Label>
+          <span className="max-w-[260px] truncate text-sm font-semibold text-[var(--mx-bone)]" title={hq.name}>
+            <span className="hidden min-[1400px]:inline">{hq.name}</span>
+            <span className="min-[1400px]:hidden">{hqShortName(hq.id)}</span>
+          </span>
         </div>
-        <div className="flex items-center gap-2">
-          <Label>Their power</Label>
-          <Badge tone={view.powerLevel === 'high' ? 'ok' : view.powerLevel === 'medium' ? 'warn' : 'alert'}>{view.powerLevel}</Badge>
+        <div className="flex items-center gap-2" title="A rough sense of how much power the defenders have left">
+          <Label>Power</Label>
+          <Badge tone={view.powerLevel === 'high' ? 'neutral' : view.powerLevel === 'medium' ? 'warn' : 'alert'}>{view.powerLevel}</Badge>
         </div>
         <div className="flex items-center gap-2">
           <Label>Stance</Label>
@@ -105,52 +301,10 @@ export function MonsterScreen({ room, view }: { room: RoomView; view: MonsterVie
           </Badge>
         </div>
       </TopBar>
+      <NightBar view={view} sit={sit} t={t} />
 
-      {(view.breach || self.held) && (
-        <div
-          className={clsx(
-            'flex items-center justify-center gap-4 border-b px-3 py-1.5 font-mono text-xs uppercase tracking-[0.2em]',
-            self.held ? 'animate-pulse border-alert bg-alert-dim/70 text-[#ffd0d4]' : 'border-monster bg-[#2a0b12] text-[#ffc2cc]',
-          )}
-        >
-          {self.held ? (
-            <>
-              <span>{self.held.contained ? 'CONTAINMENT FIELD — break free!' : 'TRAPPED'}</span>
-              {view.containment && <Meter value={view.containment.progress} tone="alert" className="w-40" label="capture" />}
-              <span>struggle</span>
-              <Meter value={self.held.struggle} tone="monster" className="w-40" />
-              {!self.held.struggling && (
-                <Button size="sm" tone="monster" disabled={cd('RETREAT') > 0} onClick={() => issue('RETREAT')}>
-                  {cd('RETREAT') > 0 ? `Struggle ${Math.ceil(cd('RETREAT') / 1000)}s` : 'Struggle (RETREAT)'}
-                </Button>
-              )}
-            </>
-          ) : (
-            view.breach && (
-              <>
-                <span>Breaching {hq.approaches.find((a) => a.id === view.breach!.approachId)?.door}</span>
-                <Meter value={view.breach.progress} tone="monster" className="w-56" />
-                <span>{view.breach.stalled ? 'DOOR SEALED — battering' : 'TEARING THROUGH'}</span>
-              </>
-            )
-          )}
-        </div>
-      )}
-
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 p-2 xl:grid-cols-[minmax(0,1.6fr)_minmax(360px,1fr)]">
-        <Panel
-          title={prep ? 'Choose where you emerge' : 'The network'}
-          right={
-            <span className="font-mono text-[10px] text-mute">
-              {prep
-                ? `Spawn: ${nodeName(self.spawnChoice) || 'random'}`
-                : self.moving
-                  ? `${nodeName(self.moving.from)} → ${nodeName(self.moving.to)}`
-                  : `At ${nodeName(here)}`}
-            </span>
-          }
-          className="min-h-[360px]"
-        >
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 p-2 lg:grid-cols-[minmax(0,1fr)_minmax(320px,380px)] lg:grid-rows-[minmax(0,1fr)_auto] 2xl:grid-cols-[minmax(0,1fr)_440px]">
+        <section className="mx-slab relative min-h-[340px] overflow-hidden lg:col-start-1 lg:row-start-1">
           <MapPanel
             hqId={view.hqId}
             cameraStatus={camStatusByNode}
@@ -158,219 +312,73 @@ export function MonsterScreen({ room, view }: { room: RoomView; view: MonsterVie
             monster={self.spawned ? { nodeId: self.nodeId, moving: self.moving } : null}
             path={path}
             highlight={highlight}
-            highlightTone={tool === 'move' && !prep ? 'monster' : 'warn'}
+            highlightTone="monster"
+            rings={rings}
             breachApproachId={view.breach?.approachId ?? null}
             doorClosed={Object.fromEntries(view.knownDoors.map((d) => [d.approachId, d.closed]))}
-            selectedNode={prep ? self.spawnChoice : selectedNode}
+            selectedNode={prep ? self.spawnChoice : (pending?.nodeId ?? null)}
             onNodeClick={onNodeClick}
-            cursorHint={
-              prep
-                ? 'Click a red-ringed spawn point'
-                : tool !== 'move'
-                  ? `${tool.toUpperCase()} — click a highlighted node · Esc`
-                  : undefined
-            }
+            {...extraLayers}
           />
-        </Panel>
-
-        <div className="flex min-h-0 flex-col gap-2 overflow-auto">
-          <Panel title="Commands" className="shrink-0">
-            <div className="flex flex-col gap-1.5 p-2" data-testid="commands">
-              {STANCES.map((s) => {
-                const left = cd(s.id);
-                const active = self.stance === s.id;
-                return (
-                  <div
-                    key={s.id}
-                    className={clsx(
-                      'flex items-center gap-2 border px-2 py-1.5',
-                      active ? 'border-monster bg-[#2a0b12]' : 'border-edge bg-panel-2/60',
-                    )}
-                  >
-                    <Button
-                      tone={active ? 'monster' : 'neutral'}
-                      className="w-24"
-                      disabled={left > 0 && !active}
-                      onClick={() =>
-                        issue(
-                          s.id,
-                          s.id === 'ATTACK' || s.id === 'FLANK' || s.id === 'HUNT' ? (self.targetApproachId ?? undefined) : undefined,
-                        )
-                      }
-                      data-testid={`cmd-${s.id}`}
-                    >
-                      {left > 0 ? `${Math.ceil(left / 1000)}s` : s.id}
-                    </Button>
-                    <div className="min-w-0 flex-1 text-[11px] leading-snug text-mute">{s.desc}</div>
-                  </div>
-                );
-              })}
-              <div className="mt-1">
-                <Label>Door target (HUNT / FLANK / ATTACK)</Label>
-                <div className="mt-1 grid grid-cols-4 gap-1">
-                  <Button
-                    size="sm"
-                    tone={!self.targetApproachId ? 'monster' : 'ghost'}
-                    onClick={() => issue(targetStance)}
-                    disabled={targetStance !== self.stance && cd(targetStance) > 0}
-                  >
-                    AI pick
-                  </Button>
-                  {hq.approaches.map((ap) => {
-                    const d = knownDoor(ap.id);
-                    return (
-                      <Button
-                        key={ap.id}
-                        size="sm"
-                        tone={self.targetApproachId === ap.id ? 'monster' : 'ghost'}
-                        disabled={targetStance !== self.stance && cd(targetStance) > 0}
-                        onClick={() => issue(targetStance, ap.id)}
-                        title={ap.label}
-                        data-testid={`target-${ap.id}`}
-                      >
-                        {ap.door.replace('Door ', '')}
-                        {d && (
-                          <span className={d.jammed ? 'text-warn' : d.closed ? 'text-ok' : 'text-dim'}>
-                            {' '}
-                            {d.jammed ? 'J' : d.closed ? '■' : '□'}
-                          </span>
-                        )}
-                      </Button>
-                    );
-                  })}
-                </div>
+          {prep ? (
+            <div className="pointer-events-none absolute left-2 top-2 z-[2] max-w-[60%] border border-[var(--mx-scar)] bg-[#070404e6] px-2.5 py-1.5">
+              <div className="mx-slab-title !text-[18px]">Choose where you emerge</div>
+              <div className="text-[11px] text-[var(--mx-ash)]">
+                Click a ringed point, then pick an opening stance below.{' '}
+                {self.spawnChoice ? `Emerging at ${nodeName(self.spawnChoice)}.` : 'Undecided: you will emerge at random.'}
               </div>
             </div>
-          </Panel>
+          ) : (
+            tool === 'move' && <PositionPlate view={view} sit={sit} hq={hq} />
+          )}
+          {(tool === 'sabotage' || tool === 'decoy') && (
+            <TargetingBar
+              mode={tool}
+              pendingName={pending ? nodeName(pending.nodeId) : null}
+              pendingKind={pending?.target ?? 'camera'}
+              canSwitchKind={!!pendingInfo && pendingInfo.camera && !!pendingInfo.sensor}
+              onSwitchKind={() => setPending((p) => (p ? { ...p, target: p.target === 'camera' ? 'sensor' : 'camera' } : p))}
+              onConfirm={confirmTarget}
+              onCancel={() => setTool('move')}
+              range={tool === 'sabotage' ? sit.cfg.monster.sabotageRangeHops : sit.cfg.monster.decoyRangeHops}
+              count={tool === 'sabotage' ? sit.sabotageTargets.size : sit.decoyTargets.size}
+            />
+          )}
+          <Legend prep={prep} />
+          <BreachBanner view={view} hq={hq} />
+          {self.held && tool !== 'decoy' && (
+            <TrappedOverlay view={view} t={t} retreatLeft={cd('RETREAT')} calm={calm} onStruggle={() => onStance('RETREAT')} />
+          )}
+        </section>
 
-          <Panel title="Abilities" className="shrink-0">
-            <div className="grid grid-cols-2 gap-2 p-2">
-              <AbilityButton
-                name="SABOTAGE"
-                left={cd('SABOTAGE')}
-                active={tool === 'sabotage'}
-                disabled={prep || !!self.held}
-                desc={`Kill a camera or known sensor within ${DEFAULT_CONFIG.monster.sabotageRangeHops} hop`}
-                onClick={() => set({ monsterTool: tool === 'sabotage' ? 'move' : 'sabotage' })}
-              />
-              <AbilityButton
-                name="DECOY"
-                left={cd('DECOY')}
-                active={tool === 'decoy'}
-                disabled={prep}
-                desc={`Fake sighting on a working camera ≤${DEFAULT_CONFIG.monster.decoyRangeHops} hops`}
-                onClick={() => set({ monsterTool: tool === 'decoy' ? 'move' : 'decoy' })}
-              />
-            </div>
-          </Panel>
+        <aside className="flex min-h-0 flex-col gap-2 lg:col-start-2 lg:row-span-2 lg:row-start-1">
+          <LensPanel view={view} nodeId={lensNode} caption={lensCaption} />
+          {prep ? (
+            <EmergencePanel view={view} hq={hq} onPick={pickSpawn} onHover={setHoverSpawn} />
+          ) : (
+            <>
+              <SituationPanel view={view} sit={sit} t={t} hq={hq} />
+              <IntentStream view={view} />
+            </>
+          )}
+        </aside>
 
-          <div className="grid shrink-0 grid-cols-2 gap-2">
-            <Panel title="Risk here">
-              <div className="flex flex-col gap-1.5 p-2 text-[11px]">
-                <Meter value={risk} tone={risk > 0.6 ? 'alert' : risk > 0.3 ? 'warn' : 'ok'} />
-                <div className="text-mute">
-                  CAM:{' '}
-                  <span className={hereCam?.status === 'ok' ? 'text-alert' : 'text-ok'}>
-                    {hereCam ? (hereCam.status === 'ok' ? 'WATCHING' : hereCam.status.toUpperCase()) : 'none'}
-                  </span>
-                </div>
-                <div className="text-mute">
-                  Known sensors nearby:{' '}
-                  {here ? view.knownSensors.filter((s) => s.nodeId === here || graph.neighbors(here).includes(s.nodeId)).length : 0}
-                </div>
-                <div className="text-mute">Hops to HQ: {here ? graph.hopsToHq(here, view.hqId) : '—'}</div>
-              </div>
-            </Panel>
-            <Panel title="Through the lens" bodyClass="relative min-h-[110px]">
-              {hereCam ? (
-                <CameraFeed
-                  cameraId={hereCam.cameraId}
-                  nodeId={hereCam.nodeId}
-                  variant="thumb"
-                  status={hereCam.status}
-                  interference={0.5}
-                  manifestation={null}
-                  t0Epoch={view.t0Epoch}
-                  className="absolute inset-0"
-                />
-              ) : (
-                <div className="p-2 text-[11px] text-dim">{self.spawned ? 'No camera here' : 'Not yet emerged'}</div>
-              )}
-            </Panel>
-          </div>
-
-          <Panel title="Objectives" className="shrink-0">
-            <ul className="flex flex-col gap-1 p-2 text-[11px] text-mute">
-              <li>
-                ▸ Breach a door of <span className="text-bright">{hq.name}</span> before dawn.
-              </li>
-              <li>
-                ▸ Doors you've seen:{' '}
-                {view.knownDoors.length
-                  ? view.knownDoors
-                      .map(
-                        (d) =>
-                          `${hq.approaches.find((a) => a.id === d.approachId)?.door.replace('Door ', '')}:${d.jammed ? 'jammed' : d.closed ? 'sealed' : 'open'}`,
-                      )
-                      .join(' · ')
-                  : 'none yet'}
-              </li>
-              <li>▸ Traps are invisible to you. Vary your route.</li>
-            </ul>
-          </Panel>
-
-          <Panel title="AI feedback" className="min-h-[160px] flex-1" bodyClass="overflow-auto">
-            <EventLog events={view.events} view={view} />
-          </Panel>
+        <div className="lg:col-start-1 lg:row-start-2">
+          <CommandDeck
+            view={view}
+            sit={sit}
+            t={t}
+            hq={hq}
+            tool={tool}
+            doorPref={doorPref}
+            gapLeft={gapLeft}
+            stamps={stamps}
+            onStance={onStance}
+            onTool={(next) => (next === 'move' ? setTool('move') : toggleAbility(next))}
+            onDoor={onDoor}
+          />
         </div>
       </div>
     </div>
   );
-}
-
-function AbilityButton({
-  name,
-  left,
-  active,
-  disabled,
-  desc,
-  onClick,
-}: {
-  name: string;
-  left: number;
-  active: boolean;
-  disabled?: boolean;
-  desc: string;
-  onClick: () => void;
-}) {
-  const total = DEFAULT_CONFIG.monster.cooldownMs[name as MonsterCommand];
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled || left > 0}
-      data-testid={`ability-${name}`}
-      className={clsx(
-        'relative overflow-hidden border px-2 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-        active ? 'border-monster-hi bg-[#3a0f19]' : 'border-edge bg-panel-2 hover:border-monster',
-      )}
-    >
-      {left > 0 && <span className="absolute inset-y-0 left-0 bg-monster/20" style={{ width: `${(left / total) * 100}%` }} />}
-      <div className="relative font-mono text-xs uppercase tracking-[0.18em] text-bright">
-        {name} {left > 0 && <span className="text-dim">{Math.ceil(left / 1000)}s</span>}
-        {active && <span className="ml-1 text-monster-hi">· targeting</span>}
-      </div>
-      <div className="relative mt-0.5 text-[10px] leading-snug text-mute">{desc}</div>
-    </button>
-  );
-}
-
-function riskAt(view: MonsterView, node: string, t: number): number {
-  let r = 0;
-  const cam = view.cameras.find((c) => c.nodeId === node);
-  if (cam?.status === 'ok') r += 0.35;
-  const near = new Set([node, ...graph.neighbors(node)]);
-  r += 0.2 * view.knownSensors.filter((s) => !s.disabledUntil && near.has(s.nodeId)).length;
-  if (view.exposures.some((e) => near.has(e.nodeId) && t - e.t < 20_000)) r += 0.3;
-  if (view.scanPulses.some((e) => near.has(e.nodeId) && t - e.t < 20_000)) r += 0.2;
-  return Math.min(1, r);
 }

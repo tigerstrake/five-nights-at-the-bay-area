@@ -484,7 +484,8 @@ function onArrive(ctx: EngineCtx, s: GameState, nodeId: string, rng: Rng) {
 function discoverSensor(ctx: EngineCtx, s: GameState, id: string, nodeId: string) {
   const k = s.monster.knowledge;
   const isNew = !k.knownSensors[id];
-  k.knownSensors[id] = { nodeId, seenAt: s.t };
+  const sensor = s.sensors.find((sn) => sn.id === id);
+  k.knownSensors[id] = { nodeId, seenAt: s.t, disabledUntil: sensor?.disabledUntil ?? null };
   if (isNew) pushEvent(s, 'sensorFound', 'monster', `You sense a motion sensor at ${nodeName(ctx, nodeId)}`, { nodeId, severity: 'warn' });
 }
 
@@ -656,7 +657,11 @@ function prune(s: GameState) {
 export function applyAction(ctx: EngineCtx, s: GameState, actor: Actor, action: DefenderAction | MonsterAction, rng: Rng): ActionResult {
   if (s.result) return fail('Match is over');
   if (actor.team === 'monster') return applyMonsterAction(ctx, s, action as MonsterAction, rng);
-  return applyDefenderAction(ctx, s, action as DefenderAction, rng);
+  const before = s.events.length;
+  const res = applyDefenderAction(ctx, s, action as DefenderAction, rng);
+  // Attribute events caused by this action to the acting defender (shown in the team log).
+  for (let i = before; i < s.events.length; i++) if (s.events[i]!.audience !== 'monster') s.events[i]!.by = actor.playerId;
+  return res;
 }
 
 function applyMonsterAction(ctx: EngineCtx, s: GameState, a: MonsterAction, rng: Rng): ActionResult {
@@ -678,6 +683,10 @@ function applyMonsterAction(ctx: EngineCtx, s: GameState, a: MonsterAction, rng:
       m.lastCommandAt = s.t;
       s.stats.commandsIssued++;
       if (m.held && a.command === 'RETREAT') {
+        // The human ordered a retreat, including recovery after breaking free.
+        m.stance = 'RETREAT';
+        m.targetApproachId = null;
+        m.breachApproachId = null;
         m.held.struggling = true;
         m.cooldowns.RETREAT = s.t + s.cfg.monster.cooldownMs.RETREAT;
         pushEvent(s, 'struggle', 'all', 'The monster is struggling against its restraints', {
@@ -728,6 +737,7 @@ function applyMonsterAction(ctx: EngineCtx, s: GameState, a: MonsterAction, rng:
         const sensor = known ? s.sensors.find((x) => x.id === known[0]) : undefined;
         if (!sensor) return fail('No known sensor there');
         sensor.disabledUntil = s.t + s.cfg.monster.sensorSabotageDurationMs;
+        m.knowledge.knownSensors[known![0]]!.disabledUntil = sensor.disabledUntil;
         pushEvent(s, 'sabotage', 'defenders', `Motion sensor at ${nodeName(ctx, a.nodeId)} stopped reporting`, {
           nodeId: a.nodeId,
           severity: 'alert',

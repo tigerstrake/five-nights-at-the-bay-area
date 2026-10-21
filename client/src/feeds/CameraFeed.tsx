@@ -1,14 +1,15 @@
 // One CCTV feed: real imagery when the camera service says so (HLS / snapshot), else the labelled simulated feed.
 // Always overlays FeedFxOverlay (game-driven interference / monster). Source badge reflects REAL availability only.
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import clsx from 'clsx';
-import type Hls from 'hls.js';
 import type { CameraGameStatus, CameraSourceMode, ManifestationState } from '@fnab/shared';
 import { FeedFxOverlay, SimulatedFeed, getSimulatedPlacement, type FeedFxParams, type FeedSourceMode } from '../fx';
 import { useGame, serverNow } from '../state/store';
 import { cameraRecord, cameraSeed, graph } from '../lib/data';
-import { usableStreamUrl } from '@fnab/shared';
 import { useNow } from '../hooks/useNow';
+import { SnapshotLayer } from './SnapshotLayer';
+import { useHls } from './useHls';
+import { ageLabel, ageShort } from './sourceUtils';
 
 export interface CameraFeedProps {
   cameraId: string;
@@ -25,71 +26,55 @@ export interface CameraFeedProps {
   alert?: boolean;
 }
 
-const SNAPSHOT_REFRESH_MS = 20_000;
-
-function useHls(url: string | null, enabled: boolean, onError: () => void) {
-  const ref = useRef<HTMLVideoElement>(null);
-  useEffect(() => {
-    const video = ref.current;
-    if (!video || !url || !enabled) return;
-    let hls: Hls | null = null;
-    let cancelled = false;
-    if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = url;
-      void video.play().catch(() => undefined);
-    } else {
-      void import('hls.js').then(({ default: HlsCtor }) => {
-        if (cancelled) return;
-        if (!HlsCtor.isSupported()) return onError();
-        hls = new HlsCtor({ lowLatencyMode: true, maxBufferLength: 10 });
-        hls.on(HlsCtor.Events.ERROR, (_e, data) => {
-          if (data.fatal) onError();
-        });
-        hls.loadSource(url);
-        hls.attachMedia(video);
-        void video.play().catch(() => undefined);
-      });
-    }
-    return () => {
-      cancelled = true;
-      hls?.destroy();
-      video.removeAttribute('src');
-      video.load();
-    };
-  }, [url, enabled, onError]);
-  return ref;
-}
+const DEFAULT_REFRESH_MS = 60_000;
+const STREAM_RETRY_MS = 60_000;
 
 export function CameraFeed(p: CameraFeedProps) {
   const source = useGame((s) => s.cameraStatuses[p.cameraId]);
   const clockOffset = useGame((s) => s.clockOffset);
   const rec = cameraRecord(p.cameraId);
   const node = graph.nodes.get(p.nodeId);
-  const [failed, setFailed] = useState<null | 'stream' | 'image'>(null);
-  const [tick, setTick] = useState(0);
-  useNow(1000); // keep the OSD clock ticking
+  const [failedStream, setFailedStream] = useState(false);
+  const [failedImage, setFailedImage] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [frameAt, setFrameAt] = useState<number | null>(null);
+  const now = useNow(1000); // keeps the OSD clock and the snapshot age ticking
 
-  useEffect(() => setFailed(null), [source?.mode, source?.snapshotUrl, source?.streamUrl]);
+  // A new server verdict (mode / stream / newer snapshot) earns a fresh local attempt.
+  useEffect(() => setFailedStream(false), [source?.mode, source?.streamUrl]);
+  useEffect(() => setFailedImage(false), [source?.mode, source?.snapshotUrl]);
+  // A local stream failure is not permanent: retry live after a minute (the main feed may still be on screen).
+  useEffect(() => {
+    if (!failedStream) return;
+    const id = setTimeout(() => setFailedStream(false), STREAM_RETRY_MS);
+    return () => clearTimeout(id);
+  }, [failedStream]);
 
-  // Decide what we can actually show.
-  let mode: CameraSourceMode = source?.mode ?? 'simulated';
-  // Streams are only used when curation verified them playable (docs/CAMERAS.md) AND the service reports one.
-  const streamAllowed = usableStreamUrl(rec) !== null;
-  const wantsStream = mode === 'live' && streamAllowed && !!source?.streamUrl && failed !== 'stream' && p.variant === 'main';
-  const wantsImage = (mode === 'snapshot' || (mode === 'live' && !wantsStream)) && !!source?.snapshotUrl && failed !== 'image';
-  if (mode === 'live' && !wantsStream && !wantsImage) mode = source?.snapshotUrl ? 'snapshot' : 'simulated';
-  if (mode === 'live' && !wantsStream && wantsImage) mode = 'snapshot';
-  if (mode === 'snapshot' && !wantsImage) mode = failed ? 'offline' : 'simulated';
+  // What the SERVER says is trustworthy (runtime-verified, see server/src/cameras); local failures only demote:
+  // live -> snapshot -> simulated. Simulated is never styled like live.
+  const serverMode: CameraSourceMode = source?.mode ?? 'simulated';
+  const realOffered = serverMode === 'live' || serverMode === 'snapshot';
+  const snapUrl = realOffered && !failedImage ? (source?.snapshotUrl ?? null) : null;
+  const wantsStream = serverMode === 'live' && !!source?.streamUrl && p.variant === 'main' && !failedStream;
+  useEffect(() => {
+    if (!wantsStream) setPlaying(false);
+  }, [wantsStream]);
+  const livePlaying = wantsStream && playing;
+
+  let mode: CameraSourceMode;
+  if (serverMode === 'offline') mode = 'offline';
+  else if (livePlaying) mode = 'live';
+  else if (snapUrl) mode = 'snapshot';
+  else mode = 'simulated';
   const showSim = mode === 'simulated';
 
-  useEffect(() => {
-    if (!wantsImage) return;
-    const id = setInterval(() => setTick((x) => x + 1), SNAPSHOT_REFRESH_MS);
-    return () => clearInterval(id);
-  }, [wantsImage]);
-
-  const onStreamError = useCallback(() => setFailed('stream'), []);
-  const videoRef = useHls(source?.streamUrl ?? null, wantsStream, onStreamError);
+  const onPlaying = useCallback(() => setPlaying(true), []);
+  const onStreamFail = useCallback(() => {
+    setPlaying(false);
+    setFailedStream(true);
+  }, []);
+  const videoRef = useHls(source?.streamUrl ?? null, wantsStream, { onPlaying, onFail: onStreamFail });
+  const onSnapFail = useCallback(() => setFailedImage(true), []);
 
   const fxSource: FeedSourceMode = mode;
   const params: FeedFxParams = {
@@ -117,20 +102,35 @@ export function CameraFeed(p: CameraFeedProps) {
     repairProgress: p.repairProgress ?? undefined,
   };
 
+  // Source badge: REAL availability only (never the fictional game status). Distinct look per source so a
+  // simulated feed can never be mistaken for live footage.
+  const imageAt = frameAt ?? source?.imageAt ?? source?.lastUpdated ?? null;
+  const age = mode === 'snapshot' && imageAt ? (p.variant === 'main' ? ageLabel(now - imageAt) : ageShort(now - imageAt)) : null;
+  const badgeTitle =
+    mode === 'live'
+      ? 'Caltrans CCTV, live HLS video (typically ~30 s behind real time)'
+      : mode === 'snapshot'
+        ? `Caltrans CCTV still image${imageAt ? `, captured ${ageLabel(now - imageAt)}` : ''}; refreshed about every ${Math.round((source?.refreshMs ?? DEFAULT_REFRESH_MS) / 1000)} s (Caltrans updates every 5 min)`
+        : mode === 'simulated'
+          ? `SIMULATED footage, not a real camera${source?.reason ? `: ${source.reason}` : ''}`
+          : `Real camera offline${source?.reason ? `: ${source.reason}` : ''}`;
   const badge = (
     <span
+      data-testid="feed-source-badge"
+      data-source-mode={mode}
       className={clsx(
-        'inline-flex items-center gap-1 px-1 py-px font-mono font-semibold tracking-[0.14em]',
+        'inline-flex shrink-0 items-center gap-1 px-1 py-px font-mono font-semibold tracking-[0.14em]',
         p.variant === 'main' ? 'text-[10px]' : 'text-[8px]',
-        mode === 'live' && 'bg-alert/85 text-white',
+        mode === 'live' && 'bg-alert/90 text-white',
         mode === 'snapshot' && 'bg-cyan-dim/90 text-[#b5f3fa]',
-        mode === 'simulated' && 'bg-[#2a2f35]/90 text-[#c9ced4]',
+        mode === 'simulated' && 'border border-dashed border-warn/70 bg-black/70 text-warn',
         mode === 'offline' && 'bg-black/80 text-dim',
       )}
-      title={source?.error ?? undefined}
+      title={badgeTitle}
     >
       {mode === 'live' && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />}
       {mode === 'live' ? 'LIVE' : mode === 'snapshot' ? 'SNAPSHOT' : mode === 'simulated' ? 'SIMULATED' : 'OFFLINE'}
+      {age && <span className="font-normal tracking-normal opacity-80">· {age}</span>}
     </span>
   );
 
@@ -156,19 +156,19 @@ export function CameraFeed(p: CameraFeedProps) {
       )}
       onClick={p.onClick}
       data-camera={p.cameraId}
+      data-source-mode={mode}
     >
       {showSim && (
         <SimulatedFeed cameraId={p.cameraId} seed={cameraSeed(p.cameraId)} tags={rec?.tags ?? node?.tags ?? []} variant={p.variant} />
       )}
-      {wantsImage && mode === 'snapshot' && (
-        <img
-          key={tick}
-          crossOrigin="anonymous"
-          src={withBust(source!.snapshotUrl!, tick)}
+      {snapUrl && (
+        <SnapshotLayer
+          url={snapUrl}
+          refreshMs={source?.refreshMs ?? DEFAULT_REFRESH_MS}
+          active={!livePlaying}
           alt={rec?.name ?? p.cameraId}
-          className="absolute inset-0 h-full w-full object-cover [filter:grayscale(0.35)_contrast(1.08)_brightness(0.9)]"
-          onError={() => setFailed('image')}
-          draggable={false}
+          onFrame={setFrameAt}
+          onFail={onSnapFail}
         />
       )}
       {wantsStream && (
@@ -177,7 +177,9 @@ export function CameraFeed(p: CameraFeedProps) {
           muted
           playsInline
           autoPlay
+          data-testid="feed-video"
           className="absolute inset-0 h-full w-full object-cover [filter:grayscale(0.3)_contrast(1.05)]"
+          style={{ opacity: playing ? 1 : 0, transition: 'opacity 600ms ease-in-out' }}
         />
       )}
       {/* offline: FeedFxOverlay draws its own CAMERA OFFLINE card */}
@@ -209,6 +211,11 @@ export function CameraFeed(p: CameraFeedProps) {
         {new Date(serverNow()).toLocaleTimeString('en-US', { hour12: false })}
         {p.variant === 'main' && <span className="ml-2 text-[#8d969e]">{new Date(serverNow()).toLocaleDateString('en-US')}</span>}
       </div>
+      {p.variant === 'main' && (mode === 'live' || mode === 'snapshot') && (
+        <div className="pointer-events-none absolute bottom-1 right-1.5 font-mono text-[9px] tracking-wide text-[#8d969e] [text-shadow:0_0_4px_#000]">
+          Source: Caltrans CCTV
+        </div>
+      )}
       {statusLabel && (
         <div className="pointer-events-none absolute inset-x-0 bottom-1 flex justify-center">
           <span
@@ -229,9 +236,4 @@ export function CameraFeed(p: CameraFeedProps) {
       )}
     </div>
   );
-}
-
-function withBust(url: string, n: number): string {
-  if (n === 0) return url;
-  return url + (url.includes('?') ? '&' : '?') + '_r=' + n;
 }

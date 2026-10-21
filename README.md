@@ -51,10 +51,13 @@ npm run test:e2e   # Playwright (starts its own server on 3101 and client on 519
 
 ## Camera modes
 
-`CAMERA_MODE=simulation` (default) renders clearly-labelled **SIMULATED** procedural feeds and needs no
-network access; a complete match is playable offline. Real Caltrans snapshot/stream modes plug in behind the
-`CameraService` interface (`server/src/cameras/`). Feed badges always show the real source state
-(LIVE / SNAPSHOT / SIMULATED / OFFLINE), independent of fictional in-game sabotage.
+`CAMERA_MODE=auto` (default) health-checks the 36 curated Caltrans cameras politely and shows real imagery only
+where it is verified: **LIVE** (HLS video, enlarged feed only) > **SNAPSHOT** (still image, with its age) > a clearly
+labelled **SIMULATED** feed. A dead or "Temporarily Unavailable" camera, or no internet at all, never affects the
+match: those cameras just fall back to SIMULATED. `live` shows only verified-live cameras as real, `snapshot` uses stills
+only, and `CAMERA_MODE=simulation` needs no network at all (a complete match is playable offline). Badges show the real
+source state, independent of fictional in-game sabotage. Details: `docs/CAMERAS.md` section 7; ops view at
+`/api/cameras?detail=1` and `/api/health`.
 
 ## Docs
 

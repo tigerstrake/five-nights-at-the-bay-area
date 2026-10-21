@@ -59,7 +59,7 @@ export interface Sighting extends SightingView {
 }
 
 export interface MonsterKnowledgeState {
-  knownSensors: Record<string, { nodeId: string; seenAt: number }>;
+  knownSensors: Record<string, { nodeId: string; seenAt: number; disabledUntil?: number | null }>;
   knownDoors: Record<string, { closed: boolean; jammed: boolean; seenAt: number }>;
   disturbances: Array<{ nodeId: string; t: number; expiresAt: number }>;
   scanPulses: Array<{ nodeId: string; t: number }>;

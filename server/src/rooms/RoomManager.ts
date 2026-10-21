@@ -17,7 +17,7 @@ import type {
 } from '@fnab/shared';
 import { DEFAULT_CONFIG, clampDurationMs, createRng, scaleForDefenders } from '@fnab/shared';
 import type { MonsterBrain } from '../ai/types';
-import { BaselineBrain } from '../ai/baselineBrain';
+import { defaultBrain } from '../ai/baselineBrain';
 import { applyAction, forfeit, step, type EngineCtx } from '../engine/engine';
 import { createGame, type GameState } from '../engine/state';
 import { projectView } from '../visibility';
@@ -91,7 +91,7 @@ export class RoomManager {
     this.graph = o.graph;
     this.cfg = o.cfg ?? DEFAULT_CONFIG;
     this.now = o.now ?? Date.now;
-    this.brainFactory = o.brainFactory ?? (() => new BaselineBrain());
+    this.brainFactory = o.brainFactory ?? defaultBrain;
     this.seed = o.seed ?? (() => randomBytes(4).readUInt32LE(0));
     this.placementCount = o.placementCount;
   }

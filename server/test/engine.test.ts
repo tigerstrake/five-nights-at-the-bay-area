@@ -158,7 +158,8 @@ describe('power and doors', () => {
     });
     h.run(20_000);
     applyAction(h.ctx, h.s, M, { type: 'command', command: 'ATTACK', approachId: 'A1' }, h.rng);
-    h.runUntil((s) => s.monster.nodeId === 'b');
+    // Seal on arrival; travel may now take longer than a door's safe closed time.
+    h.runUntil((s) => s.monster.nodeId === 'c');
     applyAction(h.ctx, h.s, D, { type: 'door', approachId: 'A1', closed: true }, h.rng);
     h.runUntil((s) => !!s.breach);
     h.run(4_000);

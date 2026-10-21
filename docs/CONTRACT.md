@@ -142,3 +142,5 @@ Running servers in wave 2: do NOT use `tsx watch` (other agents' edits would res
 Run `PORT=<p> CAMERA_MODE=simulation npx tsx server/src/index.ts` from the repo root and
 `API_PORT=<p> npx vite --port <c> --strictPort` from `client/`. Restart yourself after server edits.
 Keep every existing `data-testid` working (e2e depends on them); add new ones for new controls.
+**Never kill processes by pattern** (`pkill -f …`, `killall node`): other agents run identical commands.
+Kill only the PIDs you started, or whatever listens on *your* ports (`lsof -ti tcp:<port> | xargs kill`).

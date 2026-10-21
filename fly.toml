@@ -1,0 +1,35 @@
+# Fly.io configuration for Five Nights at the Bay Area (fnab)
+app = "fnab"
+primary_region = "sjc"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  NODE_ENV = "production"
+  CAMERA_MODE = "auto"
+  CAMERA_CHECK_INTERVAL_MS = "300000"
+  CAMERA_TIMEOUT_MS = "8000"
+  CAMERA_CONCURRENCY = "3"
+  CAMERA_REFRESH_MS = "60000"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 1000
+    soft_limit = 800
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/api/health"

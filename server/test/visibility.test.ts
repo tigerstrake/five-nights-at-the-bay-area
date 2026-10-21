@@ -109,9 +109,10 @@ describe('monster view (anti-cheat)', () => {
       }),
     });
     h.run(20_000);
-    applyAction(h.ctx, h.s, D, { type: 'door', approachId: 'A1', closed: true }, h.rng);
     expect(projectMonsterView(h.ctx, h.s, clock).knownDoors).toEqual([]);
     applyAction(h.ctx, h.s, M, { type: 'command', command: 'ATTACK', approachId: 'A1' }, h.rng);
+    h.runUntil((s) => !!s.monster.moving && s.monster.moving.to === 'b' && s.monster.moving.elapsed / s.monster.moving.duration > 0.95);
+    applyAction(h.ctx, h.s, D, { type: 'door', approachId: 'A1', closed: true }, h.rng);
     h.runUntil((s) => s.monster.nodeId === 'b');
     const door = projectMonsterView(h.ctx, h.s, clock).knownDoors.find((d) => d.approachId === 'A1');
     expect(door?.closed).toBe(true);
