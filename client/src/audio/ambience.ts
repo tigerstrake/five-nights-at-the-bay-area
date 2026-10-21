@@ -5,12 +5,12 @@ import { smooth, Voice, type AudioGraph, type SynthResources } from './synthesis
 import type { AmbienceKind } from './types';
 
 const ROOM = {
-  lobby: { hz: [65.41, 98, 130.97], level: 0.018, cutoff: 440, lfoHz: 0.057, depth: 0.009 },
-  defender: { mains: [50, 60, 120], level: 0.012, fan: 0.025, fanHz: 670, fanQ: 0.45 },
-  monster: { hz: [28.5, 42.8], level: 0.025, breath: 0.044, breathHz: 410, breathQ: 2.2, lfoHz: 0.19, depth: 0.019 },
+  lobby: { hz: [65.41, 98, 130.97], level: 0.032, cutoff: 440, lfoHz: 0.057, depth: 0.02 },
+  defender: { mains: [50, 60, 120], level: 0.026, fan: 0.055, fanHz: 670, fanQ: 0.45 },
+  monster: { hz: [28.5, 42.8], level: 0.04, breath: 0.07, breathHz: 410, breathQ: 2.2, lfoHz: 0.19, depth: 0.04 },
   fadeSeconds: MIX.roomFade, lowpassQ: 0.7,
   tensionWet: 0.24, lobbyWet: 0.55, roomWet: 0.18,
-  droneMinimum: 0.2, droneTension: 1.5, bedMinimum: 0.2, bedTension: 1.8,
+  droneMinimum: 0.22, droneTension: 1.0, bedMinimum: 0.2, bedTension: 1.15,
   whineBandwidth: 5, whineLfoHz: 0.31, whineDetune: 13,
   beatMinimum: 0.015, beatTension: 0.13, beatSecondLevel: 0.55, beatEndHz: 29,
   beatWet: 0.05,

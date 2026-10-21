@@ -7,6 +7,8 @@ export const MIX = {
   noiseSeconds: 4, impulseSeconds: 2.6, impulseDecay: 3.4,
   compressorThreshold: -12, compressorKnee: 12, compressorRatio: 5,
   compressorAttack: 0.006, compressorRelease: 0.22,
+  limiterThreshold: -4, limiterRelease: 0.12,
+  masterHighpassHz: 22, masterLowpassHz: 8500,
   defaultRepeatMs: 100, stingerRepeatMs: 1500,
   maximumOverrideSeconds: 30, maximumAmbienceSeconds: 120,
   maximumFileBytes: 20 * 1024 * 1024, assetTimeoutMs: 8000,
@@ -17,9 +19,9 @@ export const STORAGE_KEYS = {
 } as const;
 
 export const ATMOSPHERE = {
-  droneHz: [39, 39.23, 58.5] as const, droneGain: 0.022,
-  droneLfoHz: 0.085, droneLfoDepth: 0.008,
-  bedGain: 0.011, bedCutoff: 290,
+  droneHz: [39, 39.23, 58.5] as const, droneGain: 0.05,
+  droneLfoHz: 0.085, droneLfoDepth: 0.018,
+  bedGain: 0.026, bedCutoff: 290,
   heartbeatBaseHz: 0.63, heartbeatRiseHz: 1.35,
   heartbeatTone: 46, heartbeatDuration: 0.19, heartbeatDoubleDelay: 0.17,
   whineHz: 2730, whineGain: 0.012, whineThreshold: 0.58,

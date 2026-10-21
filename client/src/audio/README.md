@@ -111,3 +111,20 @@ Unit tests use a minimal fake context for graph plumbing and source lifetime, no
 ## Wiring in the game
 
 Call unlock in an explicit join/start/audio-enable gesture, then apply the current room and tension. Map UI/server game events to `play` and authoritative outcomes to `playStinger`; do not infer gameplay from the randomized ambient creature cues. Subscribe settings controls to volume/mute changes and unsubscribe on unmount. Fade ambience to `none` when leaving a match. Keep the singleton across route changes; dispose only when intentionally tearing down audio.
+
+## Measured level guide
+
+Measured in Chromium (final master output, master volume 0.8, mono mix, RMS over audible region; harness and full CSV/tables are in the QA scratch dir `audio-qa/`). Each sound carries a `trim` (dB) in its design to hit these targets; file overrides bypass trims.
+
+| Category | Peak (dBFS) | RMS (dBFS) |
+| --- | --- | --- |
+| Ambience bed, tension 0 | -17 to -19 | -28 to -31 |
+| Ambience, tension 1 (bed + heartbeat/events) | -10 to -12 | -23 |
+| UI hover / click / tick | -30 / -22 / -17 | -40 / -36 / -33 |
+| Pings, repair, command, ability | -7 to -16 | -25 to -35 |
+| Mechanical doors, traps, power, monster | -4 to -13 | -22 to -29 |
+| Alarm / powerLow (sustained tones) | -11 | -22 |
+| Stingers | -2 to -7 | -21 to -22 |
+| 15 sfx + stinger + t=1 ambience at once | -1.2 | -19 |
+
+Master chain: 22 Hz high-pass, 8.5 kHz low-pass (tames noise-based highs), glue compressor, fast limiter (-4 dB), then a soft ceiling that tops out near -0.6 dBFS, so overlapping sounds cannot clip. Keep `MIX.limiterThreshold`/`ceilingCurve` in sync if the ceiling is changed. Every sound ends in silence (no runaways); the lone endless sources are the intentional beds, which fade on `setAmbience('none')`.

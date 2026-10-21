@@ -57,19 +57,54 @@ export class SynthResources {
   }
 }
 
+/** Identity below -3 dBFS, then a smooth knee that tops out near -0.6 dBFS at full scale. */
+function ceilingCurve(): Float32Array<ArrayBuffer> {
+  const knee = 0.708;
+  const curve = new Float32Array(SYNTH.shaperPoints * 2 + 1);
+  for (let i = 0; i < curve.length; i++) {
+    const x = i * 2 / (curve.length - 1) - 1;
+    const magnitude = Math.abs(x);
+    curve[i] = Math.sign(x) * (magnitude <= knee ? magnitude : knee + (1 - knee) * Math.tanh((magnitude - knee) / (1 - knee)));
+  }
+  return curve;
+}
+
 export function createGraph(context: AudioContext, resources: SynthResources, volume: number): AudioGraph {
   const nodes: AudioNode[] = [];
   const master = context.createGain();
   master.gain.value = volume;
+  // Chain: master -> DC/sub high-pass -> air low-pass -> glue compressor -> fast limiter
+  // -> soft ceiling. The ceiling guarantees no clipping however many voices overlap.
+  const highpass = context.createBiquadFilter();
+  highpass.type = 'highpass';
+  highpass.frequency.value = MIX.masterHighpassHz;
+  highpass.Q.value = 0.5;
+  const lowpass = context.createBiquadFilter();
+  lowpass.type = 'lowpass';
+  lowpass.frequency.value = Math.min(MIX.masterLowpassHz, context.sampleRate * SYNTH.nyquistRatio);
+  lowpass.Q.value = 0.6;
   const compressor = context.createDynamicsCompressor();
   compressor.threshold.value = MIX.compressorThreshold;
   compressor.knee.value = MIX.compressorKnee;
   compressor.ratio.value = MIX.compressorRatio;
   compressor.attack.value = MIX.compressorAttack;
   compressor.release.value = MIX.compressorRelease;
-  master.connect(compressor);
-  compressor.connect(context.destination);
-  nodes.push(master, compressor);
+  const limiter = context.createDynamicsCompressor();
+  limiter.threshold.value = MIX.limiterThreshold;
+  limiter.knee.value = 0;
+  limiter.ratio.value = 20;
+  limiter.attack.value = 0.001;
+  limiter.release.value = MIX.limiterRelease;
+  const ceiling = context.createWaveShaper();
+  ceiling.curve = ceilingCurve();
+  ceiling.oversample = '2x';
+  master.connect(highpass);
+  highpass.connect(lowpass);
+  lowpass.connect(compressor);
+  compressor.connect(limiter);
+  limiter.connect(ceiling);
+  ceiling.connect(context.destination);
+  nodes.push(master, highpass, lowpass, compressor, limiter, ceiling);
   const bus = (name: BusName): Bus => {
     const input = context.createGain();
     input.gain.value = MIX[name];
@@ -105,6 +140,7 @@ export interface Noise extends Shape { color?: 'white' | 'brown' }
  * when the tab throttles timers; sustained beds use the same path when faded out. */
 export class Voice {
   readonly level: GainNode;
+  private readonly trimNode: GainNode;
   readonly start: number;
   private readonly nodes = new Set<AudioNode>();
   private readonly sources = new Set<AudioScheduledSourceNode>();
@@ -129,7 +165,9 @@ export class Voice {
     panner.pan.value = clamp(pan, -1, 1);
     const dry = this.own(context.createGain());
     dry.gain.value = 1 - clamp(wet) * SYNTH.dryReduction;
-    this.level.connect(panner);
+    this.trimNode = this.own(context.createGain());
+    this.level.connect(this.trimNode);
+    this.trimNode.connect(panner);
     panner.connect(dry);
     dry.connect(bus.input);
     if (wet > 0) {
@@ -145,6 +183,9 @@ export class Voice {
     this.sentinel.start(this.start);
     if (Number.isFinite(duration)) this.sentinel.stop(this.start + duration + SYNTH.stopPadding);
   }
+
+  /** Static level trim in dB (may boost; `level` itself is clamped to 0-1). */
+  setTrim(db: number): void { this.trimNode.gain.value = Math.pow(10, db / 20); }
 
   get context(): AudioContext { return this.resources.context; }
   own<T extends AudioNode>(node: T): T { this.nodes.add(node); return node; }
