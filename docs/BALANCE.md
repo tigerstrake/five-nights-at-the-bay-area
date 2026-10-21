@@ -1,164 +1,147 @@
-# Balance measurements
+# Server hardening and balance measurements
 
-The authoritative values are in `shared/src/config.ts`. This experiment changes numbers and defender-count scaling only; it does not change engine rules, map data, camera availability, or the tactical brain. The eight-minute playable night still follows 20 seconds of preparation.
+Production values are in `shared/src/config.ts`. This wave fixes the transport/visibility/lifecycle findings and measures the resulting engine with responsive movement. The eight-minute playable night, 20 s preparation, 8 s bare trap hold, 15 s capture, 10 s repair and 15–60 s ability cooldowns retain their defaults. `MECHANICS.md` describes the rules and additive client fields.
 
-## Method
+## Method and sample sizes
 
-`server/src/balance/harness.ts` runs the production `TacticalBrain`, `createGame`, `step`, `applyAction`, and both visibility projections on the bundled network, without sockets, clocks, downloads, or camera services. Simulation uses the configured 100 ms tick. Bots request observations every 250 ms, rounded up to 300 ms at that tick rate. Actions still pass all engine validation, costs and cooldowns. Each match has independent seeded engine, defender and monster RNG streams. The public graph's immutable caches are reused; brains and bot memories are fresh per match.
+The harness runs production `TacticalBrain`, engine actions/steps and role projections at a 100 ms simulation tick. Bots observe every 250 ms rounded to 300 ms, use separate seeded RNG streams and act only on projected public information. The graph caches are shared; each match has a fresh brain and bots. Competent/novice defender rules and the five monster policies were held fixed during numeric tuning. Expert validation later exposed an unrealistic reservation rule: the bot let a low-power breach finish instead of buying a bare trap hold. The final expert policy now spends that battery on the reported approach (reclaiming a remote trap slot if needed), preserving its reaction/cadence and all information restrictions. Both full expert experiments were rerun with that correction; competent parity measurements are unchanged. Both bots and humans use the same continuous, rate-independent struggle mechanic.
 
-The bot module imports only shared public types/rules. Defender policies accept `DefenderView`; monster command policies accept `MonsterView`. Authoritative state is used only for running the engine and recording measurements. Defenders cannot read movement edges, monster stance, struggle progress, undisclosed sightings or decoy truth. Monsters cannot read armed traps, undiscovered sensors, exact power or unobserved doors. A regression test changes hidden authoritative data and checks projection and bot decision equivalence.
+The slow comparison uses the previous 45–65 s edge/15 s trap tuning with the **hardened** engine: 400 games per HQ/count cell, family 1, 6,400 total. `--preset slow` freezes its numeric configuration and scaling. Every field of five baseline trials was replayed exactly with that preset. The earlier published 51.4% slow-tuning figure predates the visibility/command fixes; the matched-engine baseline is 52.9%. The original pre-balance `--preset before` remains available separately.
 
-`--matches` means **matches per HQ × defender-count cell**, not a total across all cells. `mixed` cycles equally through five monster command policies. Before: 400 games per cell, seed family 1, 6,400 total. Final: 400 games per cell per seed family 1, 17, 91, 1337 and 65537, 32,000 total; every HQ/count cell therefore has 2,000 games, including 400 per monster policy. Each family derives distinct match seeds from its family and trial index. HQs/counts share trial seeds to aid comparisons; aggregate confidence intervals should be treated descriptively because those groups are correlated. Per-cell JSON reports include Wilson 95% intervals.
+Final parity: five families (1, 17, 91, 1337, 65537), **400 games per HQ/count/family**, 32,000 total. Equal cycling through five policies yields **400 games per HQ × defender-count × monster-policy cell**, spread across all five families; each HQ/count has 2,000 games. Families 17 and 91 informed small pilots. The first full matrix exposed Oakland/solo misses; SF/Oakland were then remeasured in all five families after selecting 0.98/0.96 HQ breach multipliers. Stanford/San Jose cells were retained only after effective-configuration equality checks and deterministic replay; their effective settings did not change. The derived per-family inputs preserve original/corrected provenance. These families are not an untouched holdout after that correction. HQ/count comparisons share trial seeds, so aggregate intervals are descriptive rather than independent-population estimates. Wilson 95% intervals are in the JSON.
 
-The original defaults and scaling are frozen under `server/src/balance/before.*`; `--preset before` reproduces the baseline with the same policies, verified by replaying all measurements of five baseline trials exactly. Trial configurations were tested on families 17 and 91 before the final runs. Families 1337 and 65537 were held out until tuning finished. Bot rules were held fixed during numeric tuning.
+Expert/rusher and novice/adaptive checks each use 6,400 games (400 per HQ/count), matching the earlier validation scale. The corrected expert policy has a direct low-power-breach regression test. Extra same-policy-mixture skill comparisons each use 6,400 games; these provide 1,280 games per monster policy pooled across HQ/counts. HIDE and lockdown checks each use 800 games (50 per HQ/count); their invariants also have deterministic engine regressions.
 
-## Policies and attention
+Policy assumptions: novice defenders react after 3–6 s and act about every 2.4 s; competent after 1.2–3.6 s with 1.1 s cadence; experts after 0.35–1 s with 0.65 s cadence. Team attention scales by `1 + 0.22(count−1)`, affecting reaction, cadence and feed coverage. Non-watched camera notifications are noticed once with probabilities 18% / 65% / 95%; trap/breach/sensor alerts remain explicit. All teams share power and device limits. Rusher attacks directly; stalker hides first; flanker uses FLANK before committing; trickster uses sabotage/decoys; adaptive reacts to legitimate observations. HIDE alone never attacks. Bots receive no secret trap positions, decoy truth, hidden movement or exact opposing resources.
 
-Defenders process map notifications and selected camera feeds, rather than tracking every feed simultaneously. One operator watches two chosen feeds (novice: one), with diminishing attention gains of `1 + 0.22 × (defenders − 1)`. Extra operators shorten reaction/action delays and cover more feeds; they share power, device limits and cooldowns. Camera notifications outside watched feeds are noticed once with probabilities 18% / 65% / 95%; sensors, trap and breach alerts remain explicit notifications. False sightings remain believable until a scan flags them. Memory expires and reports are acted on only after reaction delay.
+## Outcomes
 
-| Defender | Reaction before attention scaling | Actions and priorities |
-| --- | --- | --- |
-| Novice | 3–6 s, plus action cadence | Random feed rotation every 10 s; one randomly placed sensor/trap; 2.4 s action cadence; wasteful scans, repairs and door toggles; slow containment. |
-| Competent | 1.2–3.6 s, plus action cadence | Three approach sensors, two shuffled approach traps; six-second feed rotation; 1.1 s action cadence; reacts to pings/sightings/breaches, adds corridor traps, repairs nearby sabotage, closes the attacked door, reserves power for containment. |
-| Expert | 0.35–1 s, plus action cadence | Three approach traps; three-second feed rotation; 0.65 s action cadence; predicts routes from public graph and vague sensor contacts, conserves capture power, combines traps/lures/scans and prioritizes containment over optional actions. |
-
-Cadences have seeded jitter; reacting to an alert also requires an available action slot. The defender team has coordinated priorities and no simultaneous conflicting actions, which is more organized than many human teams.
-
-| Monster | Command policy |
-| --- | --- |
-| Rusher | ATTACK immediately; no targeted abilities; slow 2–5 s struggle reaction. Represents an inexperienced, committed attacker. |
-| Stalker | HIDE for the first 32%, HUNT until 72%, then ATTACK; sabotages reachable feeds. |
-| Flanker | FLANK until 65%, then ATTACK; sabotages reachable feeds to create blind corridors. |
-| Trickster | HUNT until 68%, then ATTACK; frequent legal SABOTAGE and DECOY, with 1–2.5 s struggle reaction. |
-| Adaptive | Uses notified exposures to hide, observed sealed doors/trap encounters to flank, low/out power or final assault to attack; sabotages discovered sensors or working feeds and sends decoys. |
-
-Non-rusher/non-trickster struggle reactions are 0.25–1.25 s before the monster action cadence. Released monsters recover briefly before resuming their policy. Ability targets use only the monster's projected camera/sensor information and legal graph range. Two additional adversarial policies, `lockdown` and `hide`, test closing every door and HIDE without ever attacking.
-
-## Results
-
-Monster win rates, before → final (defender capture/timer wins are the complement):
+Monster win rates, slow → final:
 
 | HQ | 1 defender | 2 defenders | 3 defenders | 4 defenders |
 | --- | ---: | ---: | ---: | ---: |
-| Stanford | 77.3% → 50.5% | 80.5% → 52.7% | 82.5% → 48.3% | 83.3% → 51.9% |
-| San Francisco | 71.0% → 53.0% | 75.5% → 53.1% | 79.3% → 49.1% | 76.8% → 52.4% |
-| Oakland | 68.0% → 51.6% | 73.0% → 51.9% | 82.3% → 50.8% | 77.3% → 51.3% |
-| San Jose | 68.5% → 52.0% | 71.3% → 54.5% | 74.5% → 49.2% | 76.0% → 51.2% |
-| All HQs | 71.2% → 51.8% | 75.1% → 53.0% | 79.6% → 49.3% | 78.3% → 51.7% |
+| Stanford | 56.8% → 50.0% | 55.5% → 52.9% | 52.5% → 58.8% | 52.8% → 56.1% |
+| San Francisco | 51.2% → 51.8% | 52.0% → 55.2% | 51.5% → 47.6% | 50.2% → 45.1% |
+| Oakland | 53.8% → 57.0% | 51.2% → 52.5% | 52.8% → 48.8% | 54.3% → 44.8% |
+| San Jose | 53.8% → 42.0% | 54.8% → 49.2% | 51.0% → 50.5% | 51.7% → 50.0% |
+| All HQs | 53.9% → 50.2% | 53.4% → 52.5% | 51.9% → 51.4% | 52.3% → 49.0% |
 
-Overall monster wins: **76.0% → 51.4%**. Final defender-count means are all within 45–55%; all sixteen HQ/count means also fall in that band. HQ means are stanford: 50.8%, sf: 51.9%, oakland: 51.4%, sanjose: 51.7%, comfortably within ±10 percentage points of the overall mean. Each final HQ/count has 2,000 trials; a 95% per-cell interval near 50% has a roughly ±2.2 pp margin.
+| HQ mean | Slow | Final |
+| --- | ---: | ---: |
+| Stanford | 54.4% | 54.4% |
+| San Francisco | 51.2% | 49.9% |
+| Oakland | 53.0% | 50.8% |
+| San Jose | 52.8% | 47.9% |
 
-| Competent vs monster policy | Before monster wins | Final monster wins | Final N |
+Overall monster wins: **52.9% → 50.8%**. HQ 45–55% band: **met**. Defender-count band: **met**. All sixteen individual HQ/count bands: **not all met**; the full table exposes subgroup differences rather than hiding them in the overall mean. Every final HQ/count has 2,000 trials, with a Wilson interval near 50% of roughly ±2.2 percentage points.
+
+All values below are monster win rates; stronger defender play should reduce them:
+
+| Monster policy | Slow competent | Final competent | Final expert | Final novice |
+| --- | ---: | ---: | ---: | ---: |
+| rusher | 24.6% | 64.1% | 5.8% | 99.8% |
+| stalker | 62.6% | 19.6% | 1.0% | 58.5% |
+| flanker | 63.9% | 48.0% | 5.6% | 79.5% |
+| trickster | 40.2% | 40.2% | 14.9% | 79.1% |
+| adaptive | 73.0% | 81.9% | 23.8% | 98.4% |
+
+| Pairing/adversary | Games | Monster wins | Defender wins |
 | --- | ---: | ---: | ---: |
-| rusher | 27.7% | 23.6% | 6,400 |
-| stalker | 86.8% | 59.0% | 6,400 |
-| flanker | 90.4% | 62.4% | 6,400 |
-| trickster | 77.3% | 38.8% | 6,400 |
-| adaptive | 98.0% | 73.4% | 6,400 |
+| Expert vs rusher | 6400 | 5.8% | 94.2% |
+| Novice vs adaptive | 6400 | 98.8% | 1.2% |
+| Expert vs equal policy mixture | 6400 | 10.2% | 89.8% |
+| Novice vs equal policy mixture | 6400 | 83.1% | 16.9% |
+| Lockdown vs rush | 800 | 100.0% | 0.0% |
+| Competent vs pure HIDE | 800 | 0.0% | 100.0% |
 
-Equal-mixture parity does not mean every policy has a 50% win rate. Rush is counterable; adaptive play is materially stronger than the mixture.
+The skill comparisons use the same five command policies for experts and novices, in addition to the original extreme pairings. No claim that human strategies are equally strong follows from mixture parity. The policy rows show which strategies need further human testing; HIDE and permanent lockdown are explicitly losing adversaries.
 
-| Metric | Before (6,400) | Final (32,000) |
+Every tested monster policy loses most games against the corrected expert response. Adaptive remains strongest
+against competent defenders (81.9% monster wins); spending low-power reserves on bare trap holds counters it
+(23.8% monster wins against experts). This is evidence of counterplay in the tested policies, rather than a
+proof about every human strategy.
+
+## Pacing and capture
+
+| Metric | Slow (6,400) | Final (32,000) |
 | --- | ---: | ---: |
-| Breach / capture / timer counts | 4867 / 1362 / 171 | 16462 / 15340 / 198 |
-| Successful breach p10 / median / p90, s | 141.7 / 224.4 / 312.0 | 251.7 / 331.3 / 430.2 |
-| Containment attempts | 6,563 | 28,696 |
-| Successful captures / containment attempts | 20.8% | 53.5% |
-| Median trapped time per match, s | 18.1 | 17.2 |
-| Triggered / armed traps | 39.0% | 27.8% |
-| Any blackout | 2.3% | 1.5% |
-| Mean closed-door uptime | 1.5% | 0.6% |
-| Sabotage → completed repair median, s | 10.9 | 20.5 |
-| Median distance actually traveled, km | 94.3 | 63.7 |
-| Sightings/min: infiltration / escalation / final | 3.4 / 2.9 / 4.7 | 3.2 / 3.6 / 3.5 |
-| Ends before escalation | 37.8% | 15.1% |
-| Monster wins in last third | 8.1% | 55.8% |
+| Monster wins | 52.9% | 50.8% |
+| Breach / capture / timer counts | 3383 / 2987 / 30 | 16247 / 6096 / 9657 |
+| Median match length, playable seconds | 292.1 | 427.7 |
+| Successful breach p10 / median / p90, seconds | 251.7 / 333.8 / 431.2 | 325.7 / 417.3 / 460.7 |
+| Median completed edges per match | 6.0 | 10.0 |
+| Edge duration p10 / median / p90, seconds | 34.1 / 44.2 / 54.0 | 11.9 / 18.4 / 23.1 |
+| Maximum edge duration, seconds | 104.0 | 40.0 |
+| Real camera sightings ≥3 per match | 83.7% | 94.7% |
+| Public camera sightings ≥3 (includes decoys) | 89.7% | 95.5% |
+| Containment engagements | 5767 | 52329 |
+| Capture success / containment engagements | 51.8% | 11.6% |
+| Median trapped seconds per match | 17.1 | 28.7 |
+| Reached escalation | 85.1% | 93.7% |
+| Reached final assault | 24.5% | 76.0% |
+| Monster breaches in last third | 56.6% | 90.6% |
+| Triggered / armed traps | 28.0% | 48.4% |
+| Any blackout | 1.7% | 67.4% |
+| Mean closed-door uptime | 0.6% | 5.2% |
+| Median sabotage → completed repair, seconds | 20.5 | 10.9 |
+| Median distance traveled, km | 63.0 | 109.8 |
+| Sightings/min infiltration / escalation / final | 3.1 / 3.5 / 3.5 | 3.9 / 7.2 / 9.0 |
 
-Median power (alive sample count), conditional on the match still running:
+Match length excludes preparation and includes breach, capture and timer outcomes. Edge counts record completed edge arrivals, including a turnback arrival; edge duration is the nominal full-edge duration at completion after stance retiming. Actual fractional distance is integrated separately, including unfinished/reversed travel. The movement cap is a per-edge traversal cap, not a limit on a player's repeated reversals. Real sightings count camera detections only; the public alternative includes decoys. Scan/sensor/trap/breach contacts are not counted as camera detections. Capture success is completed captures divided by accepted containment engagements, including failed fields; multiple attempts in one match count separately.
 
-| Playable time | Before | Final |
-| --- | ---: | ---: |
-| 0 s | 95.0 (6,400) | 74.0 (32,000) |
-| 120 s | 62.2 (5,139) | 64.6 (29,435) |
-| 240 s | 26.7 (2,205) | 62.2 (22,702) |
-| 360 s | 18.7 (291) | 44.1 (7,627) |
-| 480 s | 14.3 (171) | 13.1 (198) |
+Phase reach means the simulation entered escalation/final assault. Last-third breaches mean ≥320 playable seconds, while final assault begins at 360 s. Camera-sighting rates include convincing decoys and divide by actual time alive in each phase. Power curves in the JSON are conditional on still-running games, with alive sample counts; ended games are not carried forward as fake samples. Repair latency counts completed repair work after camera sabotage; natural recovery and unresolved sabotage remain unrepaired.
 
-**Remaining pacing gap:** 4,806 early captures and 20 early breaches (0.1% of all games). 23.8% of all games reach the actual final-assault phase. The last-third breach target is met; the stronger interpretation that almost every match should reach escalation/final assault is not. Capture remains a viable early victory under the current engine rules.
+## Final settings and rationale
 
-Additional final checks:
+| Setting | Slow | Final | Rationale |
+| --- | ---: | ---: | ---: |
+| Edge base / km term / cap | 45 s / 0.4 s/km / 65 s | 18 s / 0.2 s/km / 25 s | Responsive hops; HIDE ×1.6 makes the actual maximum 40 s. |
+| Trap arming / cost | 15 s / 10 | 6 s / 8 | Allow useful responses and repeated corridor contests. |
+| Base power by defender count (1–4) | 100 / 106 / 112 / 118 | 94 / 114 / 136 / 142 | Fund operator attention and the extra trap without linear surplus. |
+| HQ reserve offsets | 0 everywhere | Stanford +24; SF −8; Oakland −8; San Jose 0 | Compensate for route topology with a public resource budget. |
+| Power regeneration | 0.22/s | 0.24/s | Support repeated defense while reserves still decline in final assault. |
+| Containment start / drain | 5 / 2.5 per second | 4 / 1.6 per second | Make multiple escape/capture races affordable. |
+| Contained struggle phase multiplier | 1 / 1 / 1 | 1.4 / 1.1 / 0.8 | Early traps buy time; the field stabilizes through escalation and final assault. |
+| Breach channel base | 5 s | 16 s; SF ×0.98, Oakland ×0.96 | Give defenders a response window, with small HQ channel adjustments for route topology. |
+| Edge acceleration divisor per extra operator | 0.04 | 0.025 | More operators no longer require large movement acceleration. |
+| Struggle acceleration coefficients | 0.06 / 0.03 | 0.04 / 0.02 | Keep capture timing fair under diminishing reaction delays. |
+| Breach acceleration per extra operator | 0.05 | 0.03 | Reduce the speed advantage against larger teams. |
 
-| Pairing / adversary | Games | Outcome |
-| --- | ---: | --- |
-| Expert vs novice-ish rusher | 6,400 | 100.0% defender wins |
-| Novice vs adaptive monster | 6,400 | 100.0% monster wins |
-| Close every door vs rush | 160 | 100.0% monster wins; blackouts in 100.0%, 840 door jams |
-| Competent vs pure HIDE | 160 | 100.0% defender wins |
+Power count bonuses are 0/20/42/48/62 for 0/1/2/3/≥4 extra operators. Sensor, trap and repair capacity scaling retains its earlier values. Detection cadence/probabilities, doors' drain/heat/jam rules, sensor range, scan cost/cooldown, repair time and ability cooldowns otherwise retain defaults. Real/decoy confidence and cadence now share generation rules; public IDs are opaque and same-time ordering is neutral. Those security fixes change observation sequences legitimately and are included in every new experiment.
 
-The skill checks each use 400 games per HQ/count cell. Adversarial HIDE/lockdown checks use ten games per cell because their invariants are also covered by deterministic engine tests. No permanent-lockdown exploit requiring an engine edit was found. The original multiplayer struggle numbers could make capture impossible against immediate struggle even with immediate containment; the numeric scaling change removes that cliff for one through four defenders.
+Containment progresses only through elapsed ticks after one accepted RETREAT. Duplicates have no effect. The final phase multiplier gives an attentive defender a meaningful capture opportunity: at one defender, a field started 2 s after immediate struggle captures; waiting 5 s permits escape. Earlier fields are intentionally less stable, so trapping an alert monster usually buys time instead of ending the night early. Measured engagement conversion is reported explicitly, including those early failed races.
 
-Machine-readable summaries, configurations, input paths and source hashes are preserved in [`server/src/balance/results.json`](../server/src/balance/results.json). Full raw trials are in `/tmp/fnab-balance-*.json`; they can be regenerated with the commands below.
+## Reproduce and evidence
 
-## Final numeric changes
-
-| Setting | Before → final | Rationale |
-| --- | --- | --- |
-| `monster.baseEdgeMs` | 12,000 → 45,000 ms | Make the five-to-six-hop opening consume a meaningful part of the night. |
-| `monster.msPerKm` | 600 → 400 ms/km | Reduce the spread caused by geographically long edges while increasing overall travel time. |
-| `monster.maxEdgeMs` | 40,000 → 65,000 ms | Allow the slower opening to apply to long edges while retaining a finite travel cap. |
-| `power.regenPerSec` | 0.15 → 0.22 | Support surveillance and one serious capture opportunity during the longer approach. |
-| `traps.armDelayMs` | 3,000 → 15,000 ms | Reward anticipating a corridor; reduce emergency traps dropped onto a reported moving target. Preparation traps remain immediately live under the existing rule. |
-| `containment.struggleBreakMs` | 11,000 → 12,300 ms | Give attentive solo defenders a realistic capture window while preserving RETREAT counterplay. |
-| Movement scaling | divisor `1 + 0.08e` → `1 + 0.04e` | Additional human attention needs less travel acceleration once openings are longer (`e` capped at 5). |
-| Power scaling | +20 → +6 per extra defender | Extra attention/devices should not also fund several free containment attempts (bonus capped at four extras). |
-| Struggle scaling | divisor `1 + 0.06e` → `1 + 0.06 min(e,2) + 0.03 max(0,min(e,5)−2)` | Stronger struggle for the first extra operators, then diminishing gains matching attention; avoids the three-defender advantage and the four-defender capture cliff. |
-
-For one through four defenders, max power is 100 / 106 / 112 / 118, base edge time is 45,000 / 43,269 / 41,667 / 40,179 ms, and struggle break time is 12,300 / 11,604 / 10,982 / 10,696 ms. The 480 s night, 20 s prep, 8 s trap hold, 15 s uninterrupted capture, 10 s repair, ability cooldowns, door heat/drain, detection and breach rules retain their defaults. A struggling monster held without containment still releases after eight seconds; the struggle number determines its progress once containment extends that hold.
-
-## Metric definitions
-
-Every scratch JSON includes per-match measurements and summaries by HQ, defender count, skill/policy pairing, HQ/count and HQ/count/policy. Breach percent is monster wins; capture and timer survival are separate defender outcomes. Breach times exclude preparation; quantiles use linear interpolation. Late means the last third (≥320 s), rather than the narrower final-assault phase (≥360 s).
-
-Capture attempts count successful containment engagements, with completed captures recorded separately. Time trapped includes both the bare trap and extended containment. Trap hit rate is triggered/armed; unused traps count against it. Door uptime divides summed closed-door seconds by all three doors × playable match duration. Blackout frequency is the share of matches with any outage; total outages per match are also recorded.
-
-Power is sampled every 30 seconds after preparation. Curves report the median **among matches still running**, plus the remaining sample count; winning matches are not carried forward as artificial power samples. Sabotage-to-repair latency measures camera sabotage → `repairDone`, including response, queue and ten-second work time. Natural recovery, canceled repairs and sabotage still unresolved at match end count as unrepaired, rather than disappearing from the denominator. Sensor sabotage is not repairable through the camera repair action and is excluded from this latency.
-
-Sightings/minute divide camera-sighting notifications (including convincing decoys) by actual time spent in each phase, not scheduled phase length. Distance integrates actual fractional travel on each edge, including reversals and unfinished final edges; this is more accurate than the engine's completed-edge distance statistic, which is retained separately in raw stats. Measurement sampling is quantized to the engine tick.
-
-## Limits and follow-up
-
-Bots are not human playtest data. Reaction distributions, notification attention and shared priorities are assumptions, not fitted measurements of players. The expert and novice policies deliberately bracket competence; their extreme matchup results are not human population forecasts. Spawn choices are seeded random legal choices, not optimal human-selected spawns. Tactical movement is the production brain, but human command creativity, team communication failures, visual ambiguity, UI friction and connection latency are not simulated. Camera source outages are not included; fictional game failures and sabotage are.
-
-This measures 480 s matches and one through four defenders. Five-to-ten-minute duration limits and larger groups remain supported, but were not calibrated here. Subgroup policy rates have smaller samples than pooled HQ/count rates. An equal mixture is an explicit test distribution; a lobby full of adaptive monster players will be harder than that mixture. The stronger command policies should be tested against human experts before claiming that no dominant human strategy exists.
-
-Early captures remain possible anywhere on the map under the existing remote-trap/containment rules. Slower travel and fifteen-second arming greatly reduce early finishes but do not impose a phase gate on captures. Early-end and final-phase reach rates are reported explicitly rather than hiding this remaining pacing limitation. Further preventing early captures would trade away useful trap counterplay or require an engine rule change outside numeric tuning.
-
-## Re-run
-
-No installation or network access is required with the existing workspace dependencies. From the repository root:
+Configurations, all report groups and source SHA-256 hashes persist in [results.json](../server/src/balance/results.json); complete raw matches are in the scratch files recorded there. Run from the repository root with installed dependencies, without downloads:
 
 ```sh
-npm run balance -- --matches 400 --hq all --defenders 1,2,3,4 --duration 480 --defender-skill competent --monster mixed --seed 1 --out /tmp/fnab-balance-after-1.json
-npm run balance -- --matches 400 --hq all --defenders 1,2,3,4 --seed 17 --out /tmp/fnab-balance-after-17.json
-npm run balance -- --matches 400 --hq all --defenders 1,2,3,4 --seed 91 --out /tmp/fnab-balance-after-91.json
-npm run balance -- --matches 400 --hq all --defenders 1,2,3,4 --seed 1337 --out /tmp/fnab-balance-after-1337.json
-npm run balance -- --matches 400 --hq all --defenders 1,2,3,4 --seed 65537 --out /tmp/fnab-balance-after-65537.json
-node --import tsx server/src/balance/aggregate.ts --out /tmp/fnab-balance-after.json /tmp/fnab-balance-after-1.json /tmp/fnab-balance-after-17.json /tmp/fnab-balance-after-91.json /tmp/fnab-balance-after-1337.json /tmp/fnab-balance-after-65537.json
-npm run balance -- --preset before --matches 400 --hq all --defenders 1,2,3,4 --seed 1 --out /tmp/fnab-balance-before.json
-npm run balance -- --matches 400 --hq all --defenders 1,2,3,4 --defender-skill expert --monster rusher --seed 17 --out /tmp/fnab-balance-expert-final.json
-npm run balance -- --matches 400 --hq all --defenders 1,2,3,4 --defender-skill novice --monster adaptive --seed 91 --out /tmp/fnab-balance-novice-final.json
-npm run balance -- --matches 10 --hq all --defenders 1,2,3,4 --defender-skill lockdown --monster rusher --seed 91 --out /tmp/fnab-balance-lockdown.json
-npm run balance -- --matches 10 --hq all --defenders 1,2,3,4 --monster hide --seed 91 --out /tmp/fnab-balance-hide.json
+npm run balance -- --preset slow --matches 400 --hq all --defenders 1,2,3,4 --seed 1 --out /tmp/fnab-hardening-slow-baseline.json
+for seed in 1 17 91 1337 65537; do
+  npm run balance -- --matches 400 --hq all --defenders 1,2,3,4 --seed "$seed" --out "/tmp/fnab-hardened-final-$seed.json"
+done
+node --import tsx server/src/balance/aggregate.ts --out /tmp/fnab-hardened-final.json /tmp/fnab-hardened-final-1.json /tmp/fnab-hardened-final-17.json /tmp/fnab-hardened-final-91.json /tmp/fnab-hardened-final-1337.json /tmp/fnab-hardened-final-65537.json
+npm run balance -- --matches 400 --hq all --defenders 1,2,3,4 --defender-skill expert --monster rusher --seed 17 --out /tmp/fnab-hardened-expert.json
+npm run balance -- --matches 400 --hq all --defenders 1,2,3,4 --defender-skill novice --monster adaptive --seed 91 --out /tmp/fnab-hardened-novice.json
+npm run balance -- --matches 400 --hq all --defenders 1,2,3,4 --defender-skill expert --monster mixed --seed 17 --out /tmp/fnab-hardened-expert-mixed.json
+npm run balance -- --matches 400 --hq all --defenders 1,2,3,4 --defender-skill novice --monster mixed --seed 91 --out /tmp/fnab-hardened-novice-mixed.json
+npm run balance -- --matches 50 --hq all --defenders 1,2,3,4 --defender-skill lockdown --monster rusher --seed 91 --out /tmp/fnab-hardened-lockdown.json
+npm run balance -- --matches 50 --hq all --defenders 1,2,3,4 --monster hide --seed 91 --out /tmp/fnab-hardened-hide.json
 npx vitest run
-npm run typecheck
+npm run typecheck -w @fnab/shared && npm run typecheck -w @fnab/server
 ```
 
-Use `--config /tmp/candidate.json` for a complete alternative unscaled `BalanceConfig`; it is then scaled using the selected current/before preset. A compact row prints after each cell; raw JSON is written only to the requested `--out`. Aggregation rejects duplicate trials and different base configurations. The frozen before preset is for comparisons, never production gameplay.
+Seed replay, hidden-information equivalence, outcome/pacing guards, skill ordering, HIDE/lockdown, quantiles and duplicate-trial rejection have harness tests. The 1–12 security/QA regressions live in `server/src/engine/hardening.test.ts`, `server/src/net/socket.test.ts`, `server/src/rooms/hardening.test.ts` and `server/test/cameras.service.test.ts`. `MECHANICS.md` specifies the new connection fields/events, bounded logs and guarded E2E rate-limit override. `client/` is outside this wave's ownership; its event consumers must treat IDs as opaque and its UI must display reconnection/forfeit state.
 
-## Verification and cross-boundary edits
+Completed measurements are detached into snapshots before subsequent simulations. The CLI rejects duplicate
+trials, checks JSON round trips and writes reports atomically after verifying file contents. Trial seed
+metadata has a multi-cell regression. Source hashes, raw-file hashes and verification results are recorded
+in `results.json`.
 
-The harness suite checks deterministic full matches, hidden-information equivalence, broad outcome/pacing guards, skill separation, HIDE/lockdown adversaries, quantiles, CLI validation and duplicate-seed rejection. Guards use wide bands, not 45–55% assertions on small samples.
+Final verification: `npx vitest run` — **21 files, 204 tests passed**. Shared, server and client workspace
+typechecks all passed. `git diff --check` passed. No client edits, package installation or server process
+was needed for this wave; the concurrent E2E hooks were preserved.
 
-The root `package.json` adds only the `balance` script. Existing engine and visibility tests now seal doors near arrival instead of assuming travel completes before door overheat. Four tactical AI test scenarios derive their scenario costs from config so that an asserted open-door detour or cautious route is actually preferable at the current travel speed. Production AI/engine/visibility files were not changed by this balance work. Other concurrent agents' changes to those files are independent.
+## Limits
 
-Verification: `npx vitest run` — **17 files, 162 tests passed** (about 4.3 s). The first full `npm run typecheck` passed all workspaces. A final recheck after concurrent client edits still passed **shared and server**, but client failed at `client/src/screens/MonsterScreen.tsx:34`: `TS2304 Cannot find name 'useDisplayFont'`. That UI file is outside balance ownership and was left to its owner. No dependency installation, production engine edit, server process, commit, checkout, stash or reset was needed.
+These are deterministic bot measurements, not a fitted model of human play. No camera-source outages, transport latency, UI friction, multi-person communication failures or optimal human spawn/command selection are simulated. The simulator measures connected play; reconnection and forfeits have separate deterministic lifecycle tests. All final settings are calibrated for one through four defenders and 480 s nights, with 20 s preparation. Larger teams and other supported durations have no parity claim. Longer late-game contests improve measured pacing, but their feel still needs human review. Policy win rates and low-confidence reports must remain visible when assessing whether a dominant human strategy exists.

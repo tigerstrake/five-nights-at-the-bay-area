@@ -59,6 +59,7 @@ export function PhaseAnnouncer({ phase }: { phase: DefenderView['phase'] }) {
 const TICKER_KINDS: GameEventKind[] = [
   'sighting', 'sensorPing', 'scan', 'decoyExposed', 'sabotage', 'cameraFailure', 'breachStart', 'doorJammed', 'doorBattered',
   'trapTriggered', 'powerLow', 'powerOut', 'powerRestored', 'struggle', 'freed', 'containmentBroken', 'repairDone', 'phase',
+  'connectionLost', 'connectionRestored',
 ];
 
 /** Single-line alert strip under the top bar: breach/hold status, else the newest notable event, else idle status. */

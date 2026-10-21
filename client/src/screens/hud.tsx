@@ -29,7 +29,12 @@ export function MatchClock({ view, className, accent }: { view: ViewBase; classN
   const urgent = prep && left < 5_000;
   return (
     <div className={clsx('flex items-baseline gap-2', className)}>
-      <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-dim">{prep ? 'Prep' : 'Dawn in'}</span>
+      <span
+        className={clsx('font-mono text-[10px] uppercase tracking-[0.2em]', view.pausedForReconnect ? 'text-warn' : 'text-dim')}
+        data-testid="clock-label"
+      >
+        {view.pausedForReconnect ? 'Paused' : prep ? 'Prep' : 'Dawn in'}
+      </span>
       <span
         className={clsx(
           'font-mono text-2xl font-semibold tabular-nums',

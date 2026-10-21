@@ -1,11 +1,13 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { DEFAULT_CONFIG, type BalanceConfig, type HqId } from '@fnab/shared';
 import { HQS, runBatch, type BatchOptions } from './harness';
 import { POLICIES, SKILLS, type DefenderSkill, type MonsterPolicy } from './bots';
 import { report, tableRow } from './report';
 import { BEFORE_CONFIG } from './before';
 import { SLOW_CONFIG } from './slow';
+import { mergeMeasurements } from './aggregate';
 
 export function parseArgs(args: string[]): BatchOptions & { out?: string; configPath?: string } {
   const values = new Map<string, string>();
@@ -41,11 +43,20 @@ function main() {
   console.log('HQ / defenders              N Monster%   Cap  Dawn Breach50  Late%');
   const started = performance.now();
   const matches = runBatch({ ...options, config }, cell => console.log(tableRow(`${cell[0].hq} / ${cell[0].defenders}`, cell)));
+  mergeMeasurements([matches]); // Never publish a duplicate-trial batch.
+  for (const match of matches) Object.freeze(match);
   console.log(tableRow('ALL', matches));
   console.log(`Each HQ/count cell has --matches games; policy: ${options.monster === 'mixed' ? POLICIES.join(', ') : options.monster}. ${(performance.now() - started).toFixed(0)} ms.`);
   if (options.out) {
     mkdirSync(dirname(options.out), { recursive: true });
-    writeFileSync(options.out, JSON.stringify({ schemaVersion: 1, options, config, reports: report(matches), matches }, null, 2) + '\n');
+    const payload = JSON.stringify({ schemaVersion: 1, options, config, reports: report(matches), matches }, null, 2) + '\n';
+    const roundTrip = JSON.parse(payload).matches;
+    mergeMeasurements([roundTrip]);
+    if (!isDeepStrictEqual(roundTrip, matches)) throw new Error('Balance report failed serialization integrity check');
+    const temporary = options.out + '.tmp';
+    writeFileSync(temporary, payload);
+    if (readFileSync(temporary, 'utf8') !== payload) throw new Error('Balance report failed write integrity check');
+    renameSync(temporary, options.out);
     console.log(`JSON: ${options.out}`);
   }
 }

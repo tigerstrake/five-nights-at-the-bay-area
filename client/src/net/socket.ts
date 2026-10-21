@@ -1,7 +1,7 @@
 // Socket.IO client singleton + session persistence + server clock sync.
 import { io, type Socket } from 'socket.io-client';
 import type { ClientToServerEvents, GameAction, JoinResult, ServerToClientEvents, ActionResult, Role, HqId } from '@fnab/shared';
-import { useGame } from '../state/store';
+import { normalizeResult, useGame } from '../state/store';
 
 export type ClientSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
@@ -77,7 +77,7 @@ export function getSocket(): ClientSocket {
     store().setRoom(room);
   });
   s.on('game:view', (view) => store().setView(view));
-  s.on('game:result', (result) => store().set({ result }));
+  s.on('game:result', (result) => store().set({ result: normalizeResult(result) }));
   s.on('cameras:status', (st) => store().setCameraStatuses(st));
   s.on('room:kicked', ({ reason }) => {
     // Forget the seat: otherwise this tab would auto-resume on its next reconnect and kick the replacement

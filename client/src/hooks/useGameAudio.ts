@@ -2,7 +2,7 @@
 import { useEffect, useRef } from 'react';
 import type { GameEventKind, PlayerView } from '@fnab/shared';
 import { audio, type SfxName } from '../audio';
-import { useGame } from '../state/store';
+import { SeenIds, useGame } from '../state/store';
 
 const EVENT_SFX: Partial<Record<GameEventKind, SfxName>> = {
   sighting: 'monsterDistant',
@@ -31,6 +31,10 @@ const EVENT_SFX: Partial<Record<GameEventKind, SfxName>> = {
   disturbance: 'alarm',
   struggle: 'monsterScreech',
   freed: 'monsterNear',
+  // reconnection grace: a dropped side is a jolt, a restored link a soft confirmation
+  connectionLost: 'staticBurst',
+  connectionRestored: 'repairDone',
+  forfeit: 'phaseChange',
 };
 
 function tensionOf(v: PlayerView): number {
@@ -45,7 +49,9 @@ export function useGameAudio() {
   const room = useGame((s) => s.room);
   const view = useGame((s) => s.view);
   const result = useGame((s) => s.result);
-  const lastEvent = useRef(0);
+  // Event ids are opaque: dedupe with a bounded seen-set, never `id > last`.
+  const seen = useRef(new SeenIds<number>(1024));
+  const primed = useRef(false);
   const lastResultKey = useRef<string | null>(null);
   const lastCountdown = useRef<number | null>(null);
 
@@ -91,14 +97,15 @@ export function useGameAudio() {
   // events + tension
   useEffect(() => {
     if (!view) {
-      lastEvent.current = 0;
+      seen.current.clear();
+      primed.current = false;
       return;
     }
     audio.setTension(tensionOf(view));
-    const fresh = view.events.filter((e) => e.id > lastEvent.current);
-    if (lastEvent.current === 0) {
+    const fresh = view.events.filter((e) => seen.current.add(e.id));
+    if (!primed.current) {
       // first view after (re)join: don't replay history
-      lastEvent.current = view.events.at(-1)?.id ?? 0;
+      primed.current = true;
       return;
     }
     let played = 0;
@@ -111,7 +118,6 @@ export function useGameAudio() {
         played++;
       }
     }
-    lastEvent.current = Math.max(lastEvent.current, view.events.at(-1)?.id ?? 0);
   }, [view]);
 
   // stingers

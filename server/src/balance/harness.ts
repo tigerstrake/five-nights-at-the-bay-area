@@ -110,11 +110,18 @@ export function runBatch(o: BatchOptions, onCell?: (cell: MatchMeasurement[]) =>
   const all: MatchMeasurement[] = [];
   for (const hq of o.hqs) for (const defenders of o.defenders) {
     const cell: MatchMeasurement[] = [];
-    for (let i = 0; i < o.matches; i++) cell.push(playMatch({
-      hq, defenders, duration: o.duration, skill: o.skill,
-      monster: o.monster === 'mixed' ? POLICIES[i % POLICIES.length] : o.monster,
-      seed: hashString(`${o.seed}:${i}`), config: o.config, preset: o.preset,
-    }));
+    for (let i = 0; i < o.matches; i++) {
+      const seed = hashString(`${o.seed}:${i}`);
+      const measurement = playMatch({
+        hq, defenders, duration: o.duration, skill: o.skill,
+        monster: o.monster === 'mixed' ? POLICIES[i % POLICIES.length] : o.monster,
+        seed, config: o.config, preset: o.preset,
+      });
+      // Detach completed measurements before subsequent simulations or report callbacks can reuse anything.
+      const snapshot = structuredClone(measurement);
+      if (snapshot.seed !== seed) throw new Error('Trial seed metadata changed during simulation');
+      cell.push(snapshot);
+    }
     all.push(...cell);
     onCell?.(cell);
   }

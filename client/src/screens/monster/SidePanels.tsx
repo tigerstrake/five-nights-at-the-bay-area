@@ -158,7 +158,7 @@ export function EmergencePanel({
 
 // ── intent stream ─────────────────────────────────────────────────────
 
-type Kind = 'intent' | 'order' | 'act' | 'door' | 'seen' | 'sense' | 'phase' | 'grid' | 'alarm' | 'note';
+type Kind = 'intent' | 'order' | 'act' | 'door' | 'seen' | 'sense' | 'phase' | 'grid' | 'link' | 'alarm' | 'note';
 
 function classify(e: VisibleEvent): Kind {
   if (e.kind === 'command') return e.text.startsWith('Command:') ? 'order' : 'intent';
@@ -168,6 +168,8 @@ function classify(e: VisibleEvent): Kind {
   if (e.kind === 'phase') return 'phase';
   // Their power failing is an opening for the creature, not pain.
   if (e.kind === 'powerOut' || e.kind === 'powerLow' || e.kind === 'powerRestored') return 'grid';
+  // Signal loss / restore on either side (and the forfeit itself): a network note, never "pain".
+  if (e.kind === 'connectionLost' || e.kind === 'connectionRestored' || e.kind === 'forfeit') return 'link';
   if (['breachStart', 'breachStalled', 'breached', 'doorBattered', 'doorJammed', 'doorClosed', 'doorOpened'].includes(e.kind))
     return 'door';
   if (e.severity === 'alert' || e.kind === 'trapTriggered' || e.kind === 'containmentStart' || e.kind === 'struggle') return 'alarm';
@@ -183,6 +185,7 @@ const KIND_TAG: Record<Kind, { tag: string; color: string }> = {
   sense: { tag: 'sense', color: '#c4d2d6' },
   phase: { tag: 'night', color: '#8f847a' },
   grid: { tag: 'grid', color: '#d98a3a' },
+  link: { tag: 'link', color: '#c4d2d6' },
   alarm: { tag: 'pain', color: '#ff3a4f' },
   note: { tag: '', color: '#8f847a' },
 };

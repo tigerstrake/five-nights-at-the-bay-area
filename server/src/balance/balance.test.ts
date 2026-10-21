@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_CONFIG, Graph, NETWORK, createRng, type BalanceConfig } from '@fnab/shared';
+import { DEFAULT_CONFIG, Graph, NETWORK, createRng, hashString, type BalanceConfig } from '@fnab/shared';
 import { TacticalBrain } from '../ai/tacticalBrain';
 import { createGame } from '../engine/state';
 import { projectDefenderView, projectMonsterView } from '../visibility';
@@ -103,4 +103,14 @@ describe('balance harness', () => {
     expect(quantile([10, 0, 20, 30], 0.5)).toBe(15);
     expect(quantile([], 0.5)).toBeNull();
   });
+
+  it('preserves trial seed metadata across multi-cell batches and JSON encoding', () => {
+    const games = runBatch({ ...batch, matches: 50, hqs: ['hq-sf'], defenders: [1, 2], skill: 'lockdown', monster: 'rusher', seed: 91 });
+    const encoded = JSON.parse(JSON.stringify(games)) as typeof games;
+    for (let i = 0; i < games.length; i++) {
+      expect(games[i].seed).toBe(hashString(`91:${i % 50}`));
+      expect(encoded[i]).toEqual(games[i]);
+    }
+    expect(mergeMeasurements([encoded])).toHaveLength(100);
+  }, 60_000);
 });

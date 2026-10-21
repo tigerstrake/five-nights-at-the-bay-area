@@ -6,7 +6,7 @@ import { mmss } from '../../lib/format';
 import { Bay, FOCUS, type RoomCtx } from './common';
 
 const INTEL: GameEventKind[] = ['sighting', 'sensorPing', 'scan', 'scanClear', 'decoyExposed', 'trapTriggered', 'struggle', 'freed', 'containmentStart', 'containmentBroken', 'containmentCancelled', 'captured', 'breachStart', 'breachStalled', 'doorBattered'];
-const SYSTEMS: GameEventKind[] = ['doorClosed', 'doorOpened', 'doorJammed', 'sabotage', 'cameraFailure', 'cameraRestored', 'repairStart', 'repairDone', 'powerLow', 'powerOut', 'powerRestored'];
+const SYSTEMS: GameEventKind[] = ['doorClosed', 'doorOpened', 'doorJammed', 'sabotage', 'cameraFailure', 'cameraRestored', 'repairStart', 'repairDone', 'powerLow', 'powerOut', 'powerRestored', 'connectionLost', 'connectionRestored', 'forfeit'];
 
 type Filter = 'all' | 'alerts' | 'intel' | 'systems' | 'team';
 const FILTERS: Array<{ id: Filter; label: string; test: (e: VisibleEvent) => boolean }> = [

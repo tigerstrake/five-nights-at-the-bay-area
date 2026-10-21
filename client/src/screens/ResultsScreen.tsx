@@ -158,6 +158,11 @@ export function ResultsScreen({ room, result }: { room: RoomView; result: MatchR
             {copy.title}
           </h1>
           <p className="mt-3 max-w-[620px] text-[15px] leading-snug text-text/90 motion-safe:animate-rise">{copy.line}</p>
+          {result.reason === 'forfeit' && result.reasonText && (
+            <p className="mt-1.5 max-w-[620px] font-mono text-[11px] tracking-[0.04em] text-mute" data-testid="result-reason">
+              {result.reasonText}
+            </p>
+          )}
           <div className="mt-5 flex flex-wrap items-center gap-2">
             {me?.isHost ? (
               <Button

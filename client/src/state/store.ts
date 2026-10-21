@@ -36,6 +36,46 @@ interface GameStore {
 
 let toastId = 1;
 
+// Event / sighting ids are opaque (not monotonic; order within a tick is shuffled server-side). Normalise once:
+// lists are ordered by match time `t` (stable), so "newest" = last everywhere. Never compare ids numerically.
+const byT = <T extends { t: number }>(a: T[]): T[] => {
+  for (let i = 1; i < a.length; i++) if (a[i - 1]!.t > a[i]!.t) return [...a].sort((x, y) => x.t - y.t);
+  return a;
+};
+export function normalizeView(v: PlayerView): PlayerView {
+  const events = byT(v.events);
+  if (v.role === 'monster') return events === v.events ? v : { ...v, events };
+  const sightings = byT(v.sightings);
+  return events === v.events && sightings === v.sightings ? v : { ...v, events, sightings };
+}
+export function normalizeResult(r: MatchResult): MatchResult {
+  const timeline = byT(r.timeline);
+  const monsterPath = byT(r.monsterPath);
+  return timeline === r.timeline && monsterPath === r.monsterPath ? r : { ...r, timeline, monsterPath };
+}
+
+/** Bounded "seen" set for opaque ids (detect new events without numeric comparisons). */
+export class SeenIds<K = number> {
+  private set = new Set<K>();
+  constructor(private readonly max = 512) {}
+  has(id: K): boolean {
+    return this.set.has(id);
+  }
+  /** Marks `id` seen; returns true if it was new. */
+  add(id: K): boolean {
+    if (this.set.has(id)) return false;
+    this.set.add(id);
+    if (this.set.size > this.max) this.set.delete(this.set.values().next().value as K);
+    return true;
+  }
+  clear(): void {
+    this.set.clear();
+  }
+  get size(): number {
+    return this.set.size;
+  }
+}
+
 export const useGame = create<GameStore>((set, get) => ({
   connection: 'connecting',
   room: null,
@@ -58,12 +98,12 @@ export const useGame = create<GameStore>((set, get) => ({
       if (prev?.stage === 'results' || prev?.stage === 'playing') patch.view = null;
       patch.result = null;
     }
-    if (room.result) patch.result = room.result;
+    if (room.result) patch.result = normalizeResult(room.result);
     // rough offset until the first ping lands
     if (!get().rtt) patch.clockOffset = room.serverNow - Date.now();
     set(patch);
   },
-  setView: (v) => set({ view: v, viewAt: Date.now() }),
+  setView: (v) => set({ view: normalizeView(v), viewAt: Date.now() }),
   setCameraStatuses: (s) => set({ cameraStatuses: Object.fromEntries(s.map((x) => [x.cameraId, x])) }),
   toast: (text, kind = 'info') => {
     const id = toastId++;
@@ -79,8 +119,9 @@ export function serverNow(): number {
 }
 
 /** Current match time estimate (ms) for a view, interpolated between snapshots. */
-export function matchNow(view: { t: number; t0Epoch: number; ended: boolean } | null): number {
+export function matchNow(view: { t: number; t0Epoch: number; ended: boolean; pausedForReconnect?: boolean } | null): number {
   if (!view) return 0;
-  if (view.ended) return view.t;
+  // Ended, or paused for a whole-team reconnection grace: the night clock is frozen at the server's t.
+  if (view.ended || view.pausedForReconnect) return view.t;
   return Math.max(view.t, serverNow() - view.t0Epoch);
 }
