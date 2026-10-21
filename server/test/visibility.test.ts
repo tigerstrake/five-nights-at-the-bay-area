@@ -26,6 +26,7 @@ describe('defender view (anti-cheat)', () => {
     });
     h.run(20_500);
     applyAction(h.ctx, h.s, M, { type: 'command', command: 'HIDE' }, h.rng);
+    h.run(h.s.cfg.monster.globalCommandGapMs);
     applyAction(h.ctx, h.s, M, { type: 'decoy', nodeId: 'b' }, h.rng);
     h.run(3_000);
     for (const v of [projectDefenderView(h.ctx, h.s, clock), projectSpectatorView(h.ctx, h.s, clock)]) {
@@ -65,6 +66,7 @@ describe('defender view (anti-cheat)', () => {
     });
     h.run(22_000); // real sightings at s1
     applyAction(h.ctx, h.s, M, { type: 'decoy', nodeId: 'b' }, h.rng);
+    h.run(h.s.cfg.detection.rollEveryMs);
     const v = projectDefenderView(h.ctx, h.s, clock);
     const real = v.sightings.find((x) => x.nodeId === 's1')!;
     const fake = v.sightings.find((x) => x.nodeId === 'b')!;

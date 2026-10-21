@@ -6,6 +6,7 @@ import { createGame } from '../engine/state';
 import { projectDefenderView, projectMonsterView } from '../visibility';
 import { DefenderBot, MonsterBot, POLICIES, type DefenderSkill, type MonsterPolicy } from './bots';
 import { BEFORE_CONFIG, scaleBefore } from './before';
+import { SLOW_CONFIG, scaleSlow } from './slow';
 
 export const PHASES: MatchPhase[] = ['preparation', 'infiltration', 'escalation', 'final'];
 export const HQS = NETWORK.headquarters.map(h => h.id);
@@ -13,7 +14,7 @@ const graph = new Graph(NETWORK); // immutable graph caches are shared; brains a
 
 export interface MatchOptions {
   hq: HqId; defenders: number; duration: number; skill: DefenderSkill; monster: MonsterPolicy; seed: number;
-  config?: BalanceConfig; preset?: 'before' | 'current';
+  config?: BalanceConfig; preset?: 'before' | 'current' | 'slow';
 }
 export interface MatchMeasurement {
   hq: HqId; defenders: number; skill: DefenderSkill; monster: MonsterPolicy; seed: number;
@@ -23,18 +24,25 @@ export interface MatchMeasurement {
   phaseMs: Record<MatchPhase, number>; sightings: Record<MatchPhase, number>;
   repairLatencyMs: number[]; unrepairedSabotages: number; doorJams: number;
   actions: { defenders: number; monster: number; rejectedDefenders: number; rejectedMonster: number };
+  edgesTravelled: number;
+  edgeTravelMs: number[];
+  realCameraSightings: number;
+  reachedFinal: boolean;
 }
 
 export function playMatch(o: MatchOptions): MatchMeasurement {
-  const cfg = o.preset === 'before' ? scaleBefore(o.defenders, o.config ?? BEFORE_CONFIG) : scaleForDefenders(o.defenders, o.config ?? DEFAULT_CONFIG);
-  const s = createGame({ graph, cfg, hqId: o.hq, durationMs: o.duration * 1000, defenderCount: o.defenders, seed: o.seed });
+  const scaled = o.preset === 'before' ? scaleBefore(o.defenders, o.config ?? BEFORE_CONFIG)
+    : o.preset === 'slow' ? scaleSlow(o.defenders, o.config ?? SLOW_CONFIG) : scaleForDefenders(o.defenders, o.config ?? DEFAULT_CONFIG);
+  const s = createGame({ graph, cfg: scaled, hqId: o.hq, durationMs: o.duration * 1000, defenderCount: o.defenders, seed: o.seed });
+  const cfg = s.cfg;
   const ctx: EngineCtx = { graph, brain: new TacticalBrain(), placementCount: () => 2 };
   const rng = createRng(o.seed);
   const defenders = new DefenderBot(o.skill, graph, cfg, createRng(hashString(`${o.seed}:defenders`)), o.defenders);
   const monster = new MonsterBot(o.monster, graph, cfg, createRng(hashString(`${o.seed}:monster`)));
   const phaseMs = Object.fromEntries(PHASES.map(p => [p, 0])) as Record<MatchPhase, number>;
   const sightings = { ...phaseMs };
-  let trappedMs = 0, distanceKm = 0, nextObserve = 0, nextPower = s.prepMs, eventIndex = 0;
+  let trappedMs = 0, distanceKm = 0, nextObserve = 0, nextPower = s.prepMs, lastEventId = 0, edgesTravelled = 0;
+  const edgeTravelMs: number[] = [];
   const power: MatchMeasurement['power'] = [];
   const actions = { defenders: 0, monster: 0, rejectedDefenders: 0, rejectedMonster: 0 };
   while (!s.result && s.t <= s.prepMs + s.durationMs) {
@@ -57,9 +65,12 @@ export function playMatch(o: MatchOptions): MatchMeasurement {
     if (s.monster.held) trappedMs += dt;
     const moving = s.monster.moving;
     if (moving) distanceKm += (graph.edges.get(moving.edgeId)?.lengthKm ?? 0) * Math.min(dt, moving.duration - moving.elapsed) / moving.duration;
+    if (moving && moving.elapsed + dt >= moving.duration) { edgesTravelled++; edgeTravelMs.push(moving.duration); }
     step(ctx, s, dt, rng);
     phaseMs[s.phase] += dt;
-    for (; eventIndex < s.events.length; eventIndex++) if (s.events[eventIndex].kind === 'sighting') sightings[s.phase]++;
+    for (let i = s.events.length - 1; i >= 0 && s.events[i].id > lastEventId; i--)
+      if (s.events[i].kind === 'sighting') sightings[s.phase]++;
+    lastEventId = s.events.at(-1)?.id ?? lastEventId;
     if (s.t >= nextPower) {
       power.push({ second: Math.round((s.t - s.prepMs) / 1000), value: s.power.value });
       nextPower += 30_000;
@@ -86,12 +97,14 @@ export function playMatch(o: MatchOptions): MatchMeasurement {
     lastThirdBreach: result.reason === 'breach' && result.stats.durationMs >= s.durationMs * 2 / 3,
     phaseMs, sightings, power, repairLatencyMs, unrepairedSabotages: unrepairedSabotages + pending.size,
     doorJams: s.events.filter(e => e.kind === 'doorJammed').length, actions,
+    edgesTravelled, edgeTravelMs, realCameraSightings: s.stats.sightings - s.stats.falseSightings,
+    reachedFinal: phaseMs.final > 0,
   };
 }
 
 export interface BatchOptions {
   matches: number; hqs: HqId[]; defenders: number[]; duration: number; skill: DefenderSkill;
-  monster: MonsterPolicy | 'mixed'; seed: number; config?: BalanceConfig; preset?: 'before' | 'current';
+  monster: MonsterPolicy | 'mixed'; seed: number; config?: BalanceConfig; preset?: 'before' | 'current' | 'slow';
 }
 export function runBatch(o: BatchOptions, onCell?: (cell: MatchMeasurement[]) => void): MatchMeasurement[] {
   const all: MatchMeasurement[] = [];

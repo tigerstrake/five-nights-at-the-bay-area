@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
+import { DEFAULT_CONFIG } from '@fnab/shared';
 import { audio } from '../audio';
 import { isReducedMotion, setFxReducedMotion } from '../fx';
+import { subscribeFxSettings } from '../fx/core/settings';
 import { useGame } from '../state/store';
 
 /** Re-render whenever volume / mute change. */
@@ -78,7 +80,11 @@ export function useReduceFlashing(): boolean {
   useEffect(() => {
     const l = () => setOn(isReducedMotion());
     flashListeners.add(l);
-    return () => void flashListeners.delete(l);
+    const off = subscribeFxSettings(l); // OS prefers-reduced-motion changes too
+    return () => {
+      flashListeners.delete(l);
+      off();
+    };
   }, []);
   return on;
 }
@@ -101,7 +107,19 @@ export function FlashToggle() {
   );
 }
 
-function Switch({ on, onChange, label, hint, testId }: { on: boolean; onChange: (v: boolean) => void; label: string; hint?: string; testId?: string }) {
+function Switch({
+  on,
+  onChange,
+  label,
+  hint,
+  testId,
+}: {
+  on: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+  hint?: string;
+  testId?: string;
+}) {
   return (
     <button
       role="switch"
@@ -114,7 +132,9 @@ function Switch({ on, onChange, label, hint, testId }: { on: boolean; onChange: 
         <span className="block text-[13px] text-text">{label}</span>
         {hint && <span className="block text-[11px] text-dim">{hint}</span>}
       </span>
-      <span className={clsx('relative h-4 w-8 shrink-0 border transition-colors', on ? 'border-cyan/70 bg-cyan-dim' : 'border-edge-hi bg-ink')}>
+      <span
+        className={clsx('relative h-4 w-8 shrink-0 border transition-colors', on ? 'border-cyan/70 bg-cyan-dim' : 'border-edge-hi bg-ink')}
+      >
         <span className={clsx('absolute top-0.5 h-2.5 w-2.5 transition-[left]', on ? 'left-[17px] bg-cyan' : 'left-0.5 bg-dim')} />
       </span>
     </button>
@@ -167,7 +187,8 @@ export function SettingsMenu({
       window.removeEventListener('keydown', onKey);
     };
   }, [open]);
-  const btn = 'flex h-7 items-center gap-1.5 border border-edge bg-black/30 px-2 text-mute transition-colors hover:border-edge-hi hover:text-text';
+  const btn =
+    'flex h-7 items-center gap-1.5 border border-edge bg-black/30 px-2 text-mute transition-colors hover:border-edge-hi hover:text-text';
   return (
     <div ref={ref} className={clsx('relative flex items-center gap-1', className)}>
       <button
@@ -230,7 +251,13 @@ export function SettingsMenu({
               }}
               label="Mute all sound"
             />
-            <Switch on={flash} onChange={setReduceFlashing} label="Reduce flashing" hint="Softer static, no screen shake or strobes" testId="reduce-flashing" />
+            <Switch
+              on={flash}
+              onChange={setReduceFlashing}
+              label="Reduce flashing"
+              hint="Softer static, no screen shake or strobes"
+              testId="reduce-flashing"
+            />
           </div>
         </div>
       )}
@@ -247,7 +274,7 @@ export function ConnectionBadge({ textClassName }: { textClassName?: string } = 
       title={c === 'online' ? `Connected to the game server · ${Math.round(rtt)} ms` : 'Connection to the game server'}
     >
       <span className={clsx('h-1.5 w-1.5 rounded-full', c === 'online' ? 'bg-ok' : 'animate-pulse bg-warn')} />
-      <span className={clsx(c === 'online' ? 'text-mute' : 'text-warn', c === 'online' && textClassName)}>
+      <span className={clsx('whitespace-nowrap', c === 'online' ? ['text-mute', textClassName] : 'text-warn')}>
         {c === 'online' ? `LINK ${Math.round(rtt)}ms` : c === 'reconnecting' ? 'RECONNECTING…' : 'CONNECTING…'}
       </span>
     </div>
@@ -277,7 +304,9 @@ export function ReconnectBanner() {
         <span className="relative font-mono text-[11px] uppercase tracking-[0.22em] text-[#f3d28d]">
           {c === 'reconnecting' ? 'Signal lost — reconnecting' : 'Contacting server'}
         </span>
-        <span className="relative text-[11px] text-mute">Your seat is held for 60 seconds.</span>
+        <span className="relative text-[11px] text-mute">
+          Your seat is held for {Math.round(DEFAULT_CONFIG.room.reconnectGraceMs / 1000)} seconds.
+        </span>
       </div>
     </div>
   );
@@ -291,7 +320,10 @@ export function AudioUnlockPrompt({ className }: { className?: string }) {
   if (unlocked || dismissed || muted) return null;
   return (
     <div
-      className={clsx('pointer-events-auto flex items-center gap-3 border border-edge bg-black/70 py-1.5 pl-3 pr-1.5 backdrop-blur', className)}
+      className={clsx(
+        'pointer-events-auto flex items-center gap-3 border border-edge bg-black/70 py-1.5 pl-3 pr-1.5 backdrop-blur',
+        className,
+      )}
       data-testid="audio-unlock"
     >
       <SpeakerIcon muted />
@@ -365,7 +397,10 @@ export function ScreenGrain() {
             'repeating-linear-gradient(0deg, rgba(255,255,255,0.018) 0px, rgba(255,255,255,0.018) 1px, transparent 1px, transparent 3px), radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.55) 100%)',
         }}
       />
-      <div aria-hidden className={clsx('pointer-events-none fixed inset-0 z-40 opacity-[0.035] mix-blend-screen', !reduced && 'fnab-noise')} />
+      <div
+        aria-hidden
+        className={clsx('pointer-events-none fixed inset-0 z-40 opacity-[0.035] mix-blend-screen', !reduced && 'fnab-noise')}
+      />
     </>
   );
 }

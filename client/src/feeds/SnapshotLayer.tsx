@@ -6,6 +6,10 @@ import { serverNow } from '../state/store';
 
 const FADE_MS = 800;
 const RETRY_MS = 5_000;
+/** One deadline for request + body + decode: a hanging Caltrans response must not stall the feed forever. */
+const LOAD_DEADLINE_MS = 15_000;
+const MAX_FAILS_INITIAL = 2;
+const MAX_FAILS_AFTER_SHOWN = 3;
 const IMG_CLASS = 'absolute inset-0 h-full w-full object-cover [filter:grayscale(0.35)_contrast(1.08)_brightness(0.9)]';
 
 interface Frame {
@@ -53,23 +57,58 @@ export function SnapshotLayer(p: SnapshotLayerProps) {
 
   useEffect(() => {
     let cancelled = false;
-    const ctl = new AbortController();
     const st = state.current;
+    const timers = new Set<ReturnType<typeof setTimeout>>();
+    const later = (fn: () => void, ms: number) => {
+      const id = setTimeout(() => {
+        timers.delete(id);
+        if (!cancelled) fn();
+      }, ms);
+      timers.add(id);
+    };
 
-    let inflight = '';
-    const load = async (target: string) => {
+    // At most ONE request is outstanding per feed; a newer target requested meanwhile waits (only the latest).
+    let inflight: { target: string; ctl: AbortController } | null = null;
+    let queued: string | null = null;
+    const fail = (): void => {
+      st.fails++;
+      // Bounded: after a few consecutive failures the parent falls back (server status can re-arm it).
+      if (st.fails >= (st.shown ? MAX_FAILS_AFTER_SHOWN : MAX_FAILS_INITIAL)) return cb.current.onFail('error');
+      later(() => void load(queued ?? p.url), RETRY_MS);
+    };
+    const load = async (target: string): Promise<void> => {
       // `lastKey` only records frames that were actually shown, so an aborted run (React StrictMode remount,
       // dependency change) is retried by the next run instead of being skipped.
-      if (target === st.lastKey || target === inflight) return;
-      inflight = target;
+      if (target === st.lastKey || target === inflight?.target) return;
+      if (inflight) {
+        queued = target;
+        return;
+      }
+      queued = null;
+      const ctl = new AbortController();
+      inflight = { target, ctl };
+      // One deadline over the whole attempt: request, body read and decode.
+      let timedOut = false;
+      const deadline = setTimeout(() => {
+        timedOut = true;
+        ctl.abort();
+      }, LOAD_DEADLINE_MS);
+      let objectUrl: string | null = null;
       try {
+        const abortable = <T,>(work: Promise<T>): Promise<T> =>
+          new Promise<T>((resolve, reject) => {
+            const onAbort = () => reject(new DOMException('aborted', 'AbortError'));
+            if (ctl.signal.aborted) return onAbort();
+            ctl.signal.addEventListener('abort', onAbort, { once: true });
+            work.then(resolve, reject).finally(() => ctl.signal.removeEventListener('abort', onAbort));
+          });
         const res = await fetch(target, { mode: 'cors', cache: 'no-store', credentials: 'omit', signal: ctl.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const blob = await res.blob();
-        const objectUrl = URL.createObjectURL(blob);
+        const blob = await abortable(res.blob());
+        objectUrl = URL.createObjectURL(blob);
         const img = new Image();
         img.src = objectUrl;
-        await img.decode();
+        await abortable(img.decode());
         // Pixel check on a tiny downscale (blob is same-origin, canvas is never tainted).
         const c = document.createElement('canvas');
         c.width = 40;
@@ -80,10 +119,11 @@ export function SnapshotLayer(p: SnapshotLayerProps) {
           g.drawImage(img, 0, 0, c.width, c.height);
           bad = looksUnavailable(g.getImageData(0, 0, c.width, c.height).data, c.width, c.height);
         }
-        if (cancelled) return URL.revokeObjectURL(objectUrl);
-        if (bad) {
+        c.width = c.height = 0;
+        if (cancelled || bad) {
           URL.revokeObjectURL(objectUrl);
-          return cb.current.onFail(bad);
+          if (!cancelled && bad) cb.current.onFail(bad);
+          return;
         }
         st.lastKey = target;
         st.fails = 0;
@@ -110,13 +150,13 @@ export function SnapshotLayer(p: SnapshotLayerProps) {
           });
         }, FADE_MS + 150);
       } catch (e) {
-        if (cancelled || (e as Error).name === 'AbortError') return;
-        st.fails++;
-        if (st.fails >= (st.shown ? 3 : 2)) return cb.current.onFail('error');
-        inflight = '';
-        setTimeout(() => !cancelled && void load(target), RETRY_MS);
+        if (objectUrl && !st.urls.has(objectUrl)) URL.revokeObjectURL(objectUrl);
+        if (cancelled || ((e as Error).name === 'AbortError' && !timedOut)) return;
+        fail();
       } finally {
-        if (inflight === target) inflight = '';
+        clearTimeout(deadline);
+        if (inflight?.ctl === ctl) inflight = null;
+        if (!cancelled && queued && queued !== target) void load(queued);
       }
     };
 
@@ -131,7 +171,9 @@ export function SnapshotLayer(p: SnapshotLayerProps) {
     }
     return () => {
       cancelled = true;
-      ctl.abort();
+      inflight?.ctl.abort();
+      inflight = null;
+      timers.forEach(clearTimeout);
       if (timer) clearInterval(timer);
     };
   }, [p.url, p.refreshMs, p.active]);

@@ -12,13 +12,18 @@ export interface SimulatedFeedProps {
   tags: string[];
   variant: 'thumb' | 'main';
   className?: string;
+  /**
+   * Draw the persistent "SIMULATED FEED" stamp (default true). Only pass false when the host draws its own
+   * equally unmistakable simulated label on top (e.g. CameraFeed thumbnails), so small tiles carry one label.
+   */
+  stamp?: boolean;
 }
 
 const FPS = { thumb: 10, main: 15 } as const; // CCTV-ish cadence
 const RES = { thumb: 240, main: 480 } as const; // internal width: deliberately low-res
 
 /** Procedural CCTV-style scene used when no real imagery is available. Always labelled SIMULATED. */
-export function SimulatedFeed({ cameraId, seed, tags, variant, className }: SimulatedFeedProps) {
+export function SimulatedFeed({ cameraId, seed, tags, variant, className, stamp = true }: SimulatedFeedProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const tagKey = tags.join(',');
@@ -33,8 +38,21 @@ export function SimulatedFeed({ cameraId, seed, tags, variant, className }: Simu
     let simImg: ReturnType<typeof simImageFor> = null;
     const publishPlacement = () => {
       // tell the overlay where the creature can stand in *this* picture
-      const regions = simImg?.placement ? scene.mapImagePlacement(simImg.placement) : getSimulatedPlacement(cameraId, seed, tags, scene.W / Math.max(1, scene.H));
-      canvas.setAttribute('data-fx-placement', JSON.stringify(regions.map((r) => ({ x: +r.x.toFixed(4), y: +r.y.toFixed(4), w: +r.w.toFixed(4), h: +r.h.toFixed(4), scale: +r.scale.toFixed(4) }))));
+      const regions = simImg?.placement
+        ? scene.mapImagePlacement(simImg.placement)
+        : getSimulatedPlacement(cameraId, seed, tags, scene.W / Math.max(1, scene.H));
+      canvas.setAttribute(
+        'data-fx-placement',
+        JSON.stringify(
+          regions.map((r) => ({
+            x: +r.x.toFixed(4),
+            y: +r.y.toFixed(4),
+            w: +r.w.toFixed(4),
+            h: +r.h.toFixed(4),
+            scale: +r.scale.toFixed(4),
+          })),
+        ),
+      );
     };
     loadSimImages().then(() => {
       if (disposed) return;
@@ -87,39 +105,41 @@ export function SimulatedFeed({ cameraId, seed, tags, variant, className }: Simu
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block', filter: 'contrast(1.06) saturate(0.82)' }}
       />
       {/* Persistent label: simulated imagery must never pass as live (spec §4, §16). */}
-      <div
-        role="note"
-        style={{
-          position: 'absolute',
-          right: main ? 10 : 4,
-          bottom: main ? 10 : 4,
-          zIndex: 4,
-          display: 'flex',
-          alignItems: 'center',
-          gap: main ? 6 : 4,
-          padding: main ? '3px 8px 3px 6px' : '1px 4px 1px 3px',
-          background: 'rgba(6,7,8,0.78)',
-          border: '1px solid rgba(212,154,42,0.55)',
-          color: '#e0a83a',
-          fontFamily: FX_FONT_MONO,
-          fontSize: main ? 11 : 8,
-          fontWeight: 600,
-          letterSpacing: main ? '0.18em' : '0.12em',
-          lineHeight: 1.3,
-          pointerEvents: 'none',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        <span
+      {stamp && (
+        <div
+          role="note"
           style={{
-            width: main ? 10 : 6,
-            height: main ? 10 : 6,
-            background: 'repeating-linear-gradient(135deg, #e0a83a 0 2px, transparent 2px 4px)',
-            flex: 'none',
+            position: 'absolute',
+            right: main ? 10 : 4,
+            bottom: main ? 10 : 4,
+            zIndex: 4,
+            display: 'flex',
+            alignItems: 'center',
+            gap: main ? 6 : 4,
+            padding: main ? '3px 8px 3px 6px' : '1px 4px 1px 3px',
+            background: 'rgba(6,7,8,0.78)',
+            border: '1px solid rgba(212,154,42,0.55)',
+            color: '#e0a83a',
+            fontFamily: FX_FONT_MONO,
+            fontSize: main ? 11 : 8,
+            fontWeight: 600,
+            letterSpacing: main ? '0.18em' : '0.12em',
+            lineHeight: 1.3,
+            pointerEvents: 'none',
+            whiteSpace: 'nowrap',
           }}
-        />
-        SIMULATED FEED
-      </div>
+        >
+          <span
+            style={{
+              width: main ? 10 : 6,
+              height: main ? 10 : 6,
+              background: 'repeating-linear-gradient(135deg, #e0a83a 0 2px, transparent 2px 4px)',
+              flex: 'none',
+            }}
+          />
+          SIMULATED FEED
+        </div>
+      )}
     </div>
   );
 }

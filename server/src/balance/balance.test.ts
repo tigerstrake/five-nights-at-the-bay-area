@@ -42,6 +42,25 @@ describe('balance harness', () => {
       .toEqual(new MonsterBot('adaptive', graph, cfg, createRng(2)).act(mv2));
   });
 
+  it('expert spends a low-power breach budget on a bare trap instead of an impossible capture reserve', () => {
+    const graph = new Graph(NETWORK), cfg = structuredClone(DEFAULT_CONFIG);
+    const ctx = { graph, brain: new TacticalBrain(), placementCount: () => 2 };
+    const s = createGame({ graph, cfg, hqId: HQS[0], durationMs: cfg.match.durationMs, defenderCount: 1, seed: 1 });
+    s.t = s.prepMs + s.durationMs * 0.9; s.phase = 'final';
+    const approach = graph.hqs.get(s.hqId)!.approaches[0];
+    s.breach = { approachId: approach.id, progress: 0.5, stalled: false };
+    s.power.value = cfg.power.trapArmCost + 1;
+    for (const full of [false, true]) {
+      const v = projectDefenderView(ctx, s, { t0Epoch: 0, serverNow: s.t });
+      if (full) v.traps = graph.data.nodes.filter(n => n.id !== approach.fromNode).slice(0, v.limits.traps)
+        .map((n, i) => ({ id: `remote-${i}`, nodeId: n.id, armedAt: 0, live: true }));
+      const bot = new DefenderBot('expert', graph, s.cfg, createRng(7), 1);
+      bot.act(v);
+      const action = bot.act({ ...v, t: v.t + 2000 });
+      expect(action).toMatchObject(full ? { type: 'disarmTrap' } : { type: 'armTrap', nodeId: approach.fromNode });
+    }
+  });
+
   it('keeps both outcomes possible and most successful breaches late, with wide regression bounds', () => {
     const games = runBatch(batch), r = summarize(games);
     expect(games).toHaveLength(80);
@@ -52,7 +71,12 @@ describe('balance harness', () => {
     expect(r.earlyEndRate).toBeLessThan(0.4);
     expect(games.every(g => g.durationMs <= 480_000 && g.distanceKm >= 0 && g.power.every(p => p.value >= 0))).toBe(true);
     expect(r.rejectedActions.defenders).toBe(0);
-  });
+    expect(r.edgeTravelSeconds.median).toBeGreaterThanOrEqual(15);
+    expect(r.edgeTravelSeconds.median).toBeLessThanOrEqual(25);
+    expect(r.maxEdgeTravelSeconds).toBeLessThanOrEqual(40);
+    expect(r.reachedFinalRate).toBeGreaterThan(0.3);
+    expect(DEFAULT_CONFIG.traps.armDelayMs).toBeLessThanOrEqual(8000);
+  }, 60_000);
 
   it('rewards expert play against rush and punishes novice play against adaptive commands', () => {
     const options = { ...batch, matches: 3, defenders: [1, 4] };
@@ -60,7 +84,7 @@ describe('balance harness', () => {
     const novices = summarize(runBatch({ ...options, skill: 'novice', monster: 'adaptive' }));
     expect(experts.monsterWinRate).toBeLessThan(0.35);
     expect(novices.monsterWinRate).toBeGreaterThan(0.65);
-  });
+  }, 30_000);
 
   it('HIDE alone cannot win and closing every door loses with heat or blackouts', () => {
     const options = { ...batch, matches: 1, defenders: [1, 4] };
@@ -70,7 +94,7 @@ describe('balance harness', () => {
     expect(lockdown.monsterWinRate).toBeGreaterThan(0.8);
     expect(lockdown.doorJams).toBeGreaterThan(0);
     expect(lockdown.blackoutFrequency).toBeGreaterThan(0.8);
-  });
+  }, 30_000);
 
   it('validates CLI cells and computes interpolated quantiles', () => {
     expect(parseArgs(['--matches', '400', '--hq', 'all', '--defenders', '1,2,3,4']).matches).toBe(400);

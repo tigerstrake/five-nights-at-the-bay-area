@@ -8,6 +8,7 @@ import type { ClientToServerEvents, ServerToClientEvents } from '@fnab/shared';
 import { CAMERAS, CAMERA_BY_ID, DEFAULT_CONFIG, getGraph, validateNetwork, NETWORK } from '@fnab/shared';
 import { RoomManager } from './rooms/RoomManager';
 import { attachSockets } from './net/socket';
+import { attachTestHooks, testConfig, testHooksEnabled } from './net/testHooks';
 import { cameraConfigFromEnv, createCameraService, parseCameraMode } from './cameras';
 
 const PORT = Number(process.env.PORT ?? 3001);
@@ -24,7 +25,8 @@ if (process.env.CAMERA_MODE && cameraMode === 'simulation' && process.env.CAMERA
 }
 // Real-world camera health only: independent of the game loop and of fictional sabotage. Never throws into the game.
 const cameras = createCameraService(cameraMode, CAMERAS, console.log, cameraConfigFromEnv(process.env));
-const rooms = new RoomManager({ graph, placementCount: (id) => CAMERA_BY_ID.get(id)?.placement.length ?? 1 });
+// `testConfig` is undefined (default balance) unless FNAB_TEST_HOOKS=1; it throws under NODE_ENV=production.
+const rooms = new RoomManager({ graph, placementCount: (id) => CAMERA_BY_ID.get(id)?.placement.length ?? 1, cfg: testConfig() });
 
 const app = express();
 app.get('/api/health', (_req, res) => {
@@ -51,6 +53,8 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(http, {
   transports: ['websocket', 'polling'],
 });
 const detach = attachSockets(io as never, rooms, cameras, DEFAULT_CONFIG.tickMs);
+// Test-only hooks (e2e). Off unless FNAB_TEST_HOOKS=1; throws at startup under NODE_ENV=production.
+if (testHooksEnabled()) attachTestHooks(io as never, rooms);
 await cameras.start();
 
 http.listen(PORT, () => {

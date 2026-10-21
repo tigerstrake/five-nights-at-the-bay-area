@@ -1,6 +1,6 @@
 // ALL balance tunables live here (spec §13). Engine code must not hard-code gameplay numbers.
 // Times in ms, power in abstract units, rates per second unless noted.
-import type { MonsterCommand, MonsterStance, MatchPhase, ManifestationKind } from './types';
+import type { MonsterCommand, MonsterStance, MatchPhase, ManifestationKind, HqId } from './types';
 
 /** Utility weights for the tactical brain only; these do not change simulation balance. */
 export interface TacticalAiConfig {
@@ -110,6 +110,8 @@ export interface BalanceConfig {
   };
   power: {
     max: number;
+    /** Small HQ reserve offsets compensate for graph approach topology. */
+    hqBonus?: Partial<Record<HqId, number>>;
     regenPerSec: number;
     lowThreshold: number;
     outageMs: number;
@@ -155,6 +157,8 @@ export interface BalanceConfig {
     struggleBreakMs: number;
     /** Struggle rate multiplier while containment is engaged (<1 = containment holds better). */
     containedStruggleMult: number;
+    /** Early containment is less stable; later phases improve the field without changing the 15 s capture timer. */
+    phaseStruggleMult?: Record<MatchPhase, number>;
   };
   repair: { durationMs: number; maxConcurrent: number };
   lure: { cooldownMs: number; durationMs: number; maxActive: number };
@@ -165,11 +169,17 @@ export interface BalanceConfig {
   };
   breach: {
     durationMs: number;
+    /** HQ security channel adjustment, applied once at match creation. */
+    hqMult?: Partial<Record<HqId, number>>;
     phaseMult: Record<MatchPhase, number>; // multiplier on duration
     decayPerSecWhenStalled: number; // fraction of progress lost per second when door closed
   };
   threat: { steps: number; horizonHops: number; phaseFloor: Record<MatchPhase, number>; hideDampen: number };
   visibility: {
+    /** Bounds on authoritative retained logs, including events emitted between ticks. */
+    maxRetainedEvents?: number;
+    maxRetainedSightings?: number;
+    maxRetainedPath?: number;
     eventsInView: number;
     sightingsInView: number;
     phaseInterference: Record<MatchPhase, number>;
@@ -185,6 +195,14 @@ export interface BalanceConfig {
     maxPlayers: number;
     maxNameLength: number;
   };
+  /** Transport token buckets; optional so saved balance configurations remain compatible. */
+  net?: {
+    socketBurst: number; socketPerSecond: number;
+    ipBurst: number; ipPerSecond: number;
+    joinBurst: number; joinPerSecond: number;
+    failedJoinBurst: number; failedJoinPerSecond: number;
+    ipIdleTtlMs: number; maxTrackedIps: number;
+  };
 }
 
 export const DEFAULT_CONFIG: BalanceConfig = {
@@ -199,10 +217,10 @@ export const DEFAULT_CONFIG: BalanceConfig = {
     countdownMs: 5_000,
   },
   monster: {
-    baseEdgeMs: 45_000,
-    msPerKm: 400,
+    baseEdgeMs: 18_000,
+    msPerKm: 200,
     minEdgeMs: 8_000,
-    maxEdgeMs: 65_000,
+    maxEdgeMs: 25_000,
     stanceSpeed: { HUNT: 1.0, HIDE: 1.6, FLANK: 1.1, ATTACK: 0.8, RETREAT: 0.75 },
     phaseSpeed: { preparation: 1, infiltration: 1.0, escalation: 0.9, final: 0.8 },
     cooldownMs: { HUNT: 0, HIDE: 15_000, FLANK: 15_000, ATTACK: 20_000, RETREAT: 30_000, SABOTAGE: 30_000, DECOY: 25_000 },
@@ -233,20 +251,21 @@ export const DEFAULT_CONFIG: BalanceConfig = {
     manifestationMs: [2_500, 5_000],
   },
   power: {
-    max: 100,
-    regenPerSec: 0.22,
+    max: 94,
+    hqBonus: { 'hq-stanford': 24, 'hq-sf': -8, 'hq-oakland': -8, 'hq-sanjose': 0 },
+    regenPerSec: 0.24,
     lowThreshold: 25,
     outageMs: 12_000,
     restoreTo: 15,
     doorDrainPerSec: 0.8,
     sensorPlaceCost: 5,
     sensorUpkeepPerSec: 0.03,
-    trapArmCost: 10,
+    trapArmCost: 8,
     scanCost: 12,
     repairCost: 8,
     lureCost: 6,
-    containmentDrainPerSec: 2.5,
-    containmentStartCost: 5,
+    containmentDrainPerSec: 1.6,
+    containmentStartCost: 4,
   },
   doors: {
     heatPerSecClosed: 1 / 25,
@@ -257,13 +276,17 @@ export const DEFAULT_CONFIG: BalanceConfig = {
   },
   sensors: { maxCount: 4, pingCooldownMs: 6_000, hideDetectChance: 0.5, revealChance: 0.5 },
   scan: { cooldownMs: 20_000, radiusHops: 1, decoyExposeWindowMs: 40_000 },
-  traps: { maxCount: 3, armDelayMs: 15_000, holdMs: 8_000 },
-  containment: { captureMs: 15_000, struggleBreakMs: 12_300, containedStruggleMult: 0.7 },
+  traps: { maxCount: 3, armDelayMs: 6_000, holdMs: 8_000 },
+  containment: {
+    captureMs: 15_000, struggleBreakMs: 12_300, containedStruggleMult: 0.7,
+    phaseStruggleMult: { preparation: 1, infiltration: 1.4, escalation: 1.1, final: 0.8 },
+  },
   repair: { durationMs: 10_000, maxConcurrent: 2 },
   lure: { cooldownMs: 25_000, durationMs: 25_000, maxActive: 2 },
   failures: { perMinute: 1.2, durationMs: [6_000, 14_000] },
   breach: {
-    durationMs: 5_000,
+    durationMs: 16_000,
+    hqMult: { 'hq-sf': 0.98, 'hq-oakland': 0.96 },
     phaseMult: { preparation: 99, infiltration: 1.8, escalation: 1.2, final: 1.0 },
     decayPerSecWhenStalled: 0.08,
   },
@@ -274,13 +297,23 @@ export const DEFAULT_CONFIG: BalanceConfig = {
     hideDampen: 0.75,
   },
   visibility: {
+    maxRetainedEvents: 4096,
+    maxRetainedSightings: 256,
+    maxRetainedPath: 512,
     eventsInView: 60,
     sightingsInView: 20,
     phaseInterference: { preparation: 0.05, infiltration: 0.1, escalation: 0.2, final: 0.35 },
     monsterMemoryMs: 45_000,
     doorObserveHops: 1,
   },
-  room: { codeLength: 4, reconnectGraceMs: 60_000, emptyRoomTtlMs: 120_000, maxPlayers: 12, maxNameLength: 20 },
+  room: { codeLength: 4, reconnectGraceMs: 45_000, emptyRoomTtlMs: 120_000, maxPlayers: 12, maxNameLength: 20 },
+  net: {
+    socketBurst: 40, socketPerSecond: 12,
+    ipBurst: 160, ipPerSecond: 48,
+    joinBurst: 12, joinPerSecond: 0.5,
+    failedJoinBurst: 8, failedJoinPerSecond: 0.1,
+    ipIdleTtlMs: 600_000, maxTrackedIps: 10_000,
+  },
 };
 
 /**
@@ -292,17 +325,17 @@ export function scaleForDefenders(count: number, base: BalanceConfig = DEFAULT_C
   const n = Math.max(1, Math.floor(count));
   const extra = n - 1;
   const c: BalanceConfig = JSON.parse(JSON.stringify(base)) as BalanceConfig;
-  const speed = 1 / (1 + 0.04 * Math.min(extra, 5)); // up to ~17% faster
+  const speed = 1 / (1 + 0.025 * Math.min(extra, 5));
   c.monster.baseEdgeMs = Math.round(base.monster.baseEdgeMs * speed);
   c.monster.msPerKm = base.monster.msPerKm * speed;
   c.monster.minEdgeMs = Math.round(base.monster.minEdgeMs * speed);
   c.detection.baseChance = base.detection.baseChance / (1 + 0.1 * Math.min(extra, 5));
-  c.power.max = base.power.max + 6 * Math.min(extra, 4);
+  c.power.max = base.power.max + [0, 20, 42, 48, 62][Math.min(extra, 4)]!;
   c.sensors.maxCount = base.sensors.maxCount + Math.min(extra, 3);
   c.traps.maxCount = base.traps.maxCount + Math.floor(Math.min(extra, 4) / 2);
   c.repair.maxConcurrent = base.repair.maxConcurrent + Math.floor(Math.min(extra, 2) / 2);
-  c.containment.struggleBreakMs = Math.round(base.containment.struggleBreakMs / (1 + 0.06 * Math.min(extra, 2) + 0.03 * Math.max(0, Math.min(extra, 5) - 2)));
-  c.breach.durationMs = Math.round(base.breach.durationMs / (1 + 0.05 * Math.min(extra, 5)));
+  c.containment.struggleBreakMs = Math.round(base.containment.struggleBreakMs / (1 + 0.04 * Math.min(extra, 2) + 0.02 * Math.max(0, Math.min(extra, 5) - 2)));
+  c.breach.durationMs = Math.round(base.breach.durationMs / (1 + 0.03 * Math.min(extra, 5)));
   return c;
 }
 

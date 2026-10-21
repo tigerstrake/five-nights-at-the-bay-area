@@ -64,14 +64,23 @@ export function HqCard({
           draggable={false}
           className={clsx(
             'pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-300',
-            selected ? 'opacity-30' : 'opacity-15 grayscale',
+            selected ? 'opacity-40' : 'opacity-20 grayscale',
           )}
+        />
+      )}
+      {artOk && (
+        // Keep the title (top) and the door list (bottom) legible over the photograph.
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(10,12,14,0.85)_0%,rgba(10,12,14,0.1)_32%,rgba(10,12,14,0.15)_55%,rgba(10,12,14,0.92)_100%)]"
         />
       )}
       <div className="relative flex min-w-0 flex-1 flex-col">
         <div className="flex items-start justify-between gap-2 px-3 pt-3">
           <div className="min-w-0">
-            <div className={clsx('font-display text-[15px] font-extrabold leading-tight', selected ? 'text-bright' : 'text-text')}>{hq.name}</div>
+            <div className={clsx('font-display text-[15px] font-extrabold leading-tight', selected ? 'text-bright' : 'text-text')}>
+              {hq.name}
+            </div>
             <div className="mt-0.5 text-[11px] text-mute">{hqRegion(hq)}</div>
           </div>
           {selected ? (

@@ -24,7 +24,9 @@ function captureNode(r: MatchResult): string | null {
 
 export function endingCopy(r: MatchResult, p: Perspective): EndingCopy {
   const hq = hqById(r.hqId)?.name ?? 'headquarters';
-  const door = r.approachId ? (hqById(r.hqId)?.approaches.find((a) => a.id === r.approachId)?.door ?? approachLabel(r.hqId, r.approachId)) : 'a door';
+  const door = r.approachId
+    ? (hqById(r.hqId)?.approaches.find((a) => a.id === r.approachId)?.door ?? approachLabel(r.hqId, r.approachId))
+    : 'a door';
   const at = mmss(r.endedAtT);
   const nodeId = captureNode(r);
   const at_ = nodeId ? ` at ${nodeName(nodeId)}` : '';
@@ -35,23 +37,81 @@ export function endingCopy(r: MatchResult, p: Perspective): EndingCopy {
     case 'breach':
       return monsterSide
         ? { verdict, title: 'Inside', line: `You came through the ${door} at ${at}. ${hq} has gone dark.`, mood: 'devoured' }
-        : { verdict, title: 'Breached', line: `It came through the ${door} at ${at}. The control room went quiet after that.`, mood: 'breached' };
+        : {
+            verdict,
+            title: 'Breached',
+            line: `It came through the ${door} at ${at}. The control room went quiet after that.`,
+            mood: 'breached',
+          };
     case 'capture':
       return monsterSide
         ? { verdict, title: 'Caged', line: `They held you${at_} until the locks closed. The cameras watch you now.`, mood: 'caged' }
-        : { verdict, title: 'Contained', line: `Trapped${at_} and held for ${Math.round(DEFAULT_CONFIG.containment.captureMs / 1000)} seconds. It isn't going anywhere.`, mood: 'contained' };
+        : {
+            verdict,
+            title: 'Contained',
+            line: `Trapped${at_} and held for ${Math.round(DEFAULT_CONFIG.containment.captureMs / 1000)} seconds. It isn't going anywhere.`,
+            mood: 'contained',
+          };
     case 'timer':
       return monsterSide
-        ? { verdict, title: 'Daylight', line: `The sun came up before you reached ${hq}. You fade into the morning traffic, for now.`, mood: 'burned' }
+        ? {
+            verdict,
+            title: 'Daylight',
+            line: `The sun came up before you reached ${hq}. You fade into the morning traffic, for now.`,
+            mood: 'burned',
+          }
         : { verdict, title: 'Dawn', line: `${hq} held through the night. Whatever it was went back into the dark.`, mood: 'dawn' };
     case 'forfeit':
-    default:
-      return {
-        verdict,
-        title: 'Line dropped',
-        line: r.winner === 'monster' ? 'The defenders left the control room. The night belongs to the monster.' : 'The monster left the network. The defenders hold the night by default.',
-        mood: 'forfeit',
-      };
+    default: {
+      // Two forfeits: a team left (Leave / Abort), or a team's signal never came back within the reconnect grace.
+      const signal = /reconnect|signal|grace/i.test(r.reasonText ?? '');
+      if (r.winner === 'defenders') {
+        if (monsterSide)
+          return signal
+            ? {
+                verdict,
+                title: 'Signal lost',
+                line: 'Your connection dropped and did not come back in time. The defenders keep the night.',
+                mood: 'forfeit',
+              }
+            : { verdict, title: 'Line dropped', line: 'You left the network. The defenders keep the night by default.', mood: 'forfeit' };
+        return signal
+          ? {
+              verdict,
+              title: 'Signal lost',
+              line: `The entity's signal never came back. ${hq} holds the night by default.`,
+              mood: 'forfeit',
+            }
+          : {
+              verdict,
+              title: 'Line dropped',
+              line: 'The monster left the network. The defenders hold the night by default.',
+              mood: 'forfeit',
+            };
+      }
+      if (monsterSide)
+        return signal
+          ? {
+              verdict,
+              title: 'Dead air',
+              line: 'Every screen in the control room went dark and stayed dark. The night is yours by default.',
+              mood: 'forfeit',
+            }
+          : { verdict, title: 'Abandoned', line: `The defenders walked out of ${hq}. The night is yours by default.`, mood: 'forfeit' };
+      return signal
+        ? {
+            verdict,
+            title: 'Signal lost',
+            line: 'The control room lost its link and no one got back in time. The monster takes the night by default.',
+            mood: 'forfeit',
+          }
+        : {
+            verdict,
+            title: 'Line dropped',
+            line: 'The defenders left the control room. The night belongs to the monster.',
+            mood: 'forfeit',
+          };
+    }
   }
 }
 
@@ -73,6 +133,9 @@ const KEY_KINDS = new Set<GameEventKind>([
   'doorJammed',
   'freed',
   'timer',
+  'forfeit',
+  'connectionLost',
+  'connectionRestored',
 ]);
 
 export function isKeyEvent(e: VisibleEvent): boolean {
@@ -94,15 +157,7 @@ const PHASE_NAMES: Record<string, string> = {
 };
 
 /** Horizontal night strip: phase bands + event markers, click to scrub. */
-export function TimelineStrip({
-  result,
-  cursorT,
-  onSeek,
-}: {
-  result: MatchResult;
-  cursorT: number;
-  onSeek: (t: number) => void;
-}) {
+export function TimelineStrip({ result, cursorT, onSeek }: { result: MatchResult; cursorT: number; onSeek: (t: number) => void }) {
   const end = Math.max(1, result.endedAtT);
   const ref = useRef<HTMLDivElement>(null);
   const phases = useMemo(() => {
@@ -153,7 +208,9 @@ export function TimelineStrip({
             className={clsx('absolute inset-y-0 border-r border-edge/80', i % 2 ? 'bg-white/[0.025]' : 'bg-transparent')}
             style={{ left: `${(p.from / end) * 100}%`, width: `${((p.to - p.from) / end) * 100}%` }}
           >
-            <span className="absolute left-1.5 top-0.5 truncate font-mono text-[9px] uppercase tracking-[0.12em] text-dim">{PHASE_NAMES[p.name]}</span>
+            <span className="absolute left-1.5 top-0.5 truncate font-mono text-[9px] uppercase tracking-[0.12em] text-dim">
+              {PHASE_NAMES[p.name]}
+            </span>
           </div>
         ))}
         {key.map((e) => (
@@ -168,7 +225,10 @@ export function TimelineStrip({
             }}
           />
         ))}
-        <div className="pointer-events-none absolute inset-y-[-3px] w-px bg-bright shadow-[0_0_8px_rgba(255,255,255,0.6)]" style={{ left: `${(cursorT / end) * 100}%` }} />
+        <div
+          className="pointer-events-none absolute inset-y-[-3px] w-px bg-bright shadow-[0_0_8px_rgba(255,255,255,0.6)]"
+          style={{ left: `${(cursorT / end) * 100}%` }}
+        />
       </div>
       <div className="mt-1 flex justify-between font-mono text-[10px] text-dim">
         <span>0:00</span>
@@ -179,7 +239,17 @@ export function TimelineStrip({
   );
 }
 
-export function TimelineList({ result, cursorT, onSeek, all }: { result: MatchResult; cursorT: number; onSeek: (t: number) => void; all: boolean }) {
+export function TimelineList({
+  result,
+  cursorT,
+  onSeek,
+  all,
+}: {
+  result: MatchResult;
+  cursorT: number;
+  onSeek: (t: number) => void;
+  all: boolean;
+}) {
   const list = all ? result.timeline : result.timeline.filter(isKeyEvent);
   const activeRef = useRef<HTMLLIElement>(null);
   const activeId = [...list].reverse().find((e) => e.t <= cursorT)?.id;
@@ -295,16 +365,24 @@ export function RouteReplay({ result, t, perspective }: { result: MatchResult; t
         breachApproachId={ended && result.reason === 'breach' ? result.approachId : null}
         held={ended && result.reason === 'capture' ? here : null}
         monster={here ? { nodeId: here, moving: null } : null}
+        // The viewer's own console palette: the revealed route is drawn on the defenders' map for them.
+        theme={perspective === 'monster' ? 'monster' : 'defender'}
+        attackPaths={false}
+        noLegend
+        // The legend sits top-left (open ocean on the tactical map); keep the fit clear of it using the spare width.
+        inset={{ left: 236 }}
       />
-      <div className="pointer-events-none absolute bottom-2 left-2 flex flex-col gap-1 border border-edge bg-black/70 px-2.5 py-1.5 text-[11px] text-mute backdrop-blur">
+      <div className="pointer-events-none absolute left-2 top-2 flex w-[220px] flex-col gap-1 border border-edge bg-black/70 px-2.5 py-1.5 text-[11px] text-mute backdrop-blur">
         <span className="flex items-center gap-2">
           <span className="h-0.5 w-4 bg-[#e04a62]" /> where it actually went
         </span>
         <span className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full border border-bone" /> {perspective === 'monster' ? 'where they saw you' : 'where the cameras saw it'}
+          <span className="h-2 w-2 rounded-full border border-bone" />{' '}
+          {perspective === 'monster' ? 'where they saw you' : 'where the cameras saw it'}
         </span>
         <span className="text-dim">
-          {path.length ? `Now: ${nodeName(here)}` : 'Not on the map yet'} · {sightings.length} sighting{sightings.length === 1 ? '' : 's'} so far
+          {path.length ? `Now: ${nodeName(here)}` : 'Not on the map yet'} · {sightings.length} sighting{sightings.length === 1 ? '' : 's'}{' '}
+          so far
         </span>
       </div>
     </div>
@@ -333,8 +411,16 @@ export function StatsBoard({ result }: { result: MatchResult }) {
       items: [
         { label: 'Traps sprung', value: `${s.trapsTriggered}/${s.trapsArmed}`, sub: 'sprung / armed' },
         { label: 'Containment attempts', value: s.containmentAttempts },
-        { label: 'Power spent', value: Math.round(s.powerSpent), sub: s.powerOutages ? `${s.powerOutages} blackout${s.powerOutages > 1 ? 's' : ''}` : 'no blackouts' },
-        { label: 'Doors sealed', value: `${Math.round(s.doorCloseSeconds)} s`, sub: `${s.repairs} camera repair${s.repairs === 1 ? '' : 's'}` },
+        {
+          label: 'Power spent',
+          value: Math.round(s.powerSpent),
+          sub: s.powerOutages ? `${s.powerOutages} blackout${s.powerOutages > 1 ? 's' : ''}` : 'no blackouts',
+        },
+        {
+          label: 'Doors sealed',
+          value: `${Math.round(s.doorCloseSeconds)} s`,
+          sub: `${s.repairs} camera repair${s.repairs === 1 ? '' : 's'}`,
+        },
       ],
     },
     {

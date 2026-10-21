@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import type { ReactNode } from 'react';
-import type { HqId, MatchPhase, RoomView, VisibleEvent, ViewBase } from '@fnab/shared';
-import { matchNow } from '../state/store';
+import type { HqId, MatchPhase, RoomView, TeamConnectionView, VisibleEvent, ViewBase } from '@fnab/shared';
+import { matchNow, serverNow } from '../state/store';
 import { useNow } from '../hooks/useNow';
 import { mmss, PHASE_LABEL } from '../lib/format';
 import { ConnectionBadge, SettingsMenu } from '../ui/chrome';
@@ -33,7 +33,15 @@ export function MatchClock({ view, className, accent }: { view: ViewBase; classN
       <span
         className={clsx(
           'font-mono text-2xl font-semibold tabular-nums',
-          !prep && left < 60_000 ? (accent === 'monster' ? 'text-[#e36b74]' : 'text-ok') : urgent ? 'text-warn' : accent === 'monster' ? 'text-bone' : 'text-bright',
+          !prep && left < 60_000
+            ? accent === 'monster'
+              ? 'text-[#e36b74]'
+              : 'text-ok'
+            : urgent
+              ? 'text-warn'
+              : accent === 'monster'
+                ? 'text-bone'
+                : 'text-bright',
         )}
         data-testid="match-timer"
       >
@@ -56,7 +64,15 @@ export function PhaseBadge({ view }: { view: ViewBase }) {
             key={p}
             className={clsx(
               'h-2.5 w-1',
-              i < idx ? 'bg-mute/60' : i === idx ? (view.phase === 'final' ? 'bg-alert' : view.phase === 'escalation' ? 'bg-warn' : 'bg-cyan') : 'bg-edge',
+              i < idx
+                ? 'bg-mute/60'
+                : i === idx
+                  ? view.phase === 'final'
+                    ? 'bg-alert'
+                    : view.phase === 'escalation'
+                      ? 'bg-warn'
+                      : 'bg-cyan'
+                  : 'bg-edge',
             )}
           />
         ))}
@@ -72,13 +88,83 @@ export function PhaseBadge({ view }: { view: ViewBase }) {
 export function SpectatorBanner({ className }: { className?: string }) {
   return (
     <div
-      className={clsx('flex items-center gap-2 border border-warn/60 bg-[#211807] px-2 py-0.5', className)}
+      className={clsx('flex shrink-0 items-center gap-2 border border-warn/60 bg-[#211807] px-2 py-0.5', className)}
       data-testid="spectating-banner"
       title="You see what the defenders see. You cannot act."
     >
       <span className="h-1.5 w-1.5 rounded-full bg-warn motion-safe:animate-blink" />
       <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.24em] text-[#f3d28d]">Spectating</span>
-      <span className="hidden text-[11px] text-mute xl:inline">read-only · defender view</span>
+      <span className="hidden text-[11px] text-mute min-[1720px]:inline">read-only · defender view</span>
+    </div>
+  );
+}
+
+/**
+ * Whole-team signal loss during a match (server reconnection grace; the simulation is paused meanwhile).
+ * Defenders / spectators see the entity's signal; the monster sees the control room's. Counts down to the forfeit.
+ */
+export function TeamSignalBanner({ view, perspective }: { view: ViewBase; perspective: 'defenders' | 'monster' }) {
+  useNow(250);
+  if (view.ended) return null;
+  const lostTeam = (c: TeamConnectionView | undefined) => !!c && !c.connected;
+  const monsterLost = lostTeam(view.monsterConnection);
+  const defendersLost = lostTeam(view.defenderConnection);
+  // Our own team's drop is covered by the socket ReconnectBanner; show the OTHER side first, then a pause notice.
+  const other = perspective === 'defenders' ? (monsterLost ? 'monster' : null) : defendersLost ? 'defenders' : null;
+  const own = perspective === 'defenders' ? (defendersLost ? 'defenders' : null) : monsterLost ? 'monster' : null;
+  const team = other ?? own ?? (view.pausedForReconnect ? (monsterLost ? 'monster' : defendersLost ? 'defenders' : null) : null);
+  if (!team && !view.pausedForReconnect) return null;
+  const conn = team === 'monster' ? view.monsterConnection : team === 'defenders' ? view.defenderConnection : undefined;
+  const deadline = conn?.reconnectDeadlineEpoch ?? null;
+  const left = deadline !== null ? Math.max(0, Math.ceil((deadline - serverNow()) / 1000)) : null;
+  const monsterSide = perspective === 'monster';
+  const title =
+    team === 'monster'
+      ? monsterSide
+        ? 'Your signal dropped — the night is paused'
+        : 'The entity’s signal is lost — reconnecting…'
+      : team === 'defenders'
+        ? monsterSide
+          ? 'The control room has gone dark — waiting for them…'
+          : 'The control room lost its link — reconnecting…'
+        : 'Match paused — waiting for a player to reconnect…';
+  const sub =
+    team === 'monster'
+      ? 'The night is paused. If it does not return in time, the defenders win by forfeit.'
+      : team === 'defenders'
+        ? 'The night is paused. If no defender returns in time, the monster wins by forfeit.'
+        : 'The night is paused.';
+  return (
+    <div role="status" aria-live="polite" className="pointer-events-none absolute inset-x-0 top-14 z-40 flex justify-center px-3">
+      <div
+        className={clsx(
+          'relative flex max-w-full items-center gap-3 overflow-hidden border px-4 py-2 shadow-[0_10px_40px_rgba(0,0,0,0.65)]',
+          monsterSide ? 'border-blood-hi/70 bg-[#160709]/95' : 'border-warn/60 bg-[#191208]/95',
+        )}
+        data-testid={team === 'defenders' ? 'defenders-signal-lost' : 'monster-signal-lost'}
+        data-paused={view.pausedForReconnect ? '1' : '0'}
+      >
+        <div aria-hidden className="fnab-noise absolute inset-0 opacity-[0.12]" />
+        <span
+          className={clsx('relative h-2 w-2 shrink-0 rounded-full motion-safe:animate-blink', monsterSide ? 'bg-blood-hi' : 'bg-warn')}
+        />
+        <div className="relative min-w-0">
+          <div
+            className={clsx(
+              'whitespace-nowrap font-mono text-[11px] uppercase tracking-[0.2em]',
+              monsterSide ? 'text-[#ffb3bf]' : 'text-[#f3d28d]',
+            )}
+          >
+            {title}
+            {left !== null && (
+              <span className="ml-2 tabular-nums text-bright" data-testid="signal-lost-countdown">
+                {left}s
+              </span>
+            )}
+          </div>
+          <div className="text-[11px] text-mute">{sub}</div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -106,24 +192,32 @@ export function TopBar({
   return (
     <header
       className={clsx(
-        'relative z-30 flex flex-wrap items-center gap-x-4 gap-y-1 border-b px-3 py-1.5 min-[1400px]:gap-x-5',
+        'relative z-30 flex flex-nowrap items-center gap-x-3 border-b px-3 py-1.5 min-[1400px]:gap-x-5 [&>*]:shrink-0',
         monster ? 'border-blood/60 bg-[#0d0708]/95' : 'border-edge bg-panel/90',
       )}
       data-testid="top-bar"
     >
       <div className="flex items-center gap-2">
         <span
-          className={clsx('h-2 w-2', monster ? 'rotate-45 bg-blood-hi shadow-[0_0_8px_rgba(179,32,47,0.8)]' : 'rounded-full bg-cyan shadow-[0_0_8px_rgba(59,198,214,0.7)]')}
+          className={clsx(
+            'h-2 w-2',
+            monster
+              ? 'rotate-45 bg-blood-hi shadow-[0_0_8px_rgba(179,32,47,0.8)]'
+              : 'rounded-full bg-cyan shadow-[0_0_8px_rgba(59,198,214,0.7)]',
+          )}
         />
         <span className={clsx('font-mono text-[11px] uppercase tracking-[0.2em]', monster ? 'text-bone' : 'text-mute')}>
           {title ?? (monster ? 'Entity Command' : 'Security Control')}
         </span>
-        <span className="hidden font-mono text-[11px] text-dim min-[1400px]:inline">· {room.code}</span>
+        <span className="font-mono text-[11px] text-dim" title="Room code" data-testid="hud-room-code">
+          · {room.code}
+        </span>
       </div>
       {spectator && <SpectatorBanner />}
       <PhaseBadge view={view} />
       <MatchClock view={view} accent={accent} />
-      <div className="flex min-w-0 flex-1 items-center gap-5">{children}</div>
+      {/* Screen-specific readouts compress first (they clip rather than push the controls off-screen). */}
+      <div className="flex min-w-0 flex-1 shrink! items-center gap-3 overflow-hidden min-[1400px]:gap-5">{children}</div>
       {right}
       <ConnectionBadge textClassName="hidden min-[1400px]:inline" />
       <SettingsMenu labelClassName="hidden min-[1400px]:inline" />

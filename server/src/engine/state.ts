@@ -16,6 +16,7 @@ import type {
   SightingView,
 } from '@fnab/shared';
 import { MONSTER_COMMANDS } from '@fnab/shared';
+import { createHmac } from 'node:crypto';
 
 export interface CameraState {
   cameraId: string;
@@ -58,6 +59,11 @@ export interface Sighting extends SightingView {
   isDecoy: boolean;
 }
 
+export interface StoredEvent extends GameEvent {
+  /** Post-match annotation only. Never projected into a live view. */
+  decoy?: boolean;
+}
+
 export interface MonsterKnowledgeState {
   knownSensors: Record<string, { nodeId: string; seenAt: number; disabledUntil?: number | null }>;
   knownDoors: Record<string, { closed: boolean; jammed: boolean; seenAt: number }>;
@@ -91,6 +97,8 @@ export interface MonsterState {
 export interface GameState {
   cfg: BalanceConfig;
   seed: number;
+  /** Secret transport identifier key; injected by RoomManager, deterministic fallback for simulations. */
+  publicIdKey: string;
   t: number;
   phase: MatchPhase;
   prepMs: number;
@@ -110,11 +118,13 @@ export interface GameState {
   containment: { nodeId: string; startedAt: number; elapsed: number } | null;
   breach: { approachId: string; progress: number; stalled: boolean } | null;
   monster: MonsterState;
-  events: GameEvent[];
+  events: StoredEvent[];
   nextId: number;
   stats: MatchStats;
   monsterPath: Array<{ nodeId: string; t: number }>;
   result: MatchResult | null;
+  /** Set by the room lifecycle. The pure engine also honors this hold. */
+  monsterDisconnected: boolean;
 }
 
 export interface CreateGameOptions {
@@ -124,6 +134,7 @@ export interface CreateGameOptions {
   durationMs: number;
   defenderCount: number;
   seed: number;
+  publicIdKey?: string;
 }
 
 export function emptyStats(): MatchStats {
@@ -152,30 +163,36 @@ export function emptyStats(): MatchStats {
 export function createGame(o: CreateGameOptions): GameState {
   const hq = o.graph.hqs.get(o.hqId);
   if (!hq) throw new Error(`unknown HQ ${o.hqId}`);
-  const cameras: Record<string, CameraState> = {};
+  const cfg: BalanceConfig = {
+    ...o.cfg,
+    power: { ...o.cfg.power, max: o.cfg.power.max + (o.cfg.power.hqBonus?.[o.hqId] ?? 0) },
+    breach: { ...o.cfg.breach, durationMs: o.cfg.breach.durationMs * (o.cfg.breach.hqMult?.[o.hqId] ?? 1) },
+  };
+  const cameras: Record<string, CameraState> = Object.create(null);
   for (const n of o.graph.data.nodes) {
     if (!n.cameraId) continue;
     cameras[n.cameraId] = { cameraId: n.cameraId, nodeId: n.id, status: 'ok', until: null, repair: null };
   }
-  const doors: Record<string, DoorState> = {};
+  const doors: Record<string, DoorState> = Object.create(null);
   for (const ap of hq.approaches) doors[ap.id] = { approachId: ap.id, closed: false, heat: 0, jammedUntil: null, battering: false };
   const cooldowns = Object.fromEntries(MONSTER_COMMANDS.map((c) => [c, 0])) as Record<MonsterCommand, number>;
   return {
-    cfg: o.cfg,
+    cfg,
     seed: o.seed,
+    publicIdKey: o.publicIdKey ?? `simulation:${o.seed}`,
     t: 0,
     phase: 'preparation',
     prepMs: o.cfg.match.prepMs,
     durationMs: o.durationMs,
     hqId: o.hqId,
     defenderCount: o.defenderCount,
-    power: { value: o.cfg.power.max, outageUntil: null, lowWarned: false },
+    power: { value: cfg.power.max, outageUntil: null, lowWarned: false },
     doors,
     sensors: [],
     traps: [],
     lures: [],
     cameras,
-    manifestations: {},
+    manifestations: Object.create(null),
     sightings: [],
     scan: { readyAt: 0, last: null },
     lureReadyAt: 0,
@@ -198,7 +215,7 @@ export function createGame(o: CreateGameOptions): GameState {
       nextDetectAt: 0,
       arrivedAt: 0,
       lastReason: '',
-      knowledge: { knownSensors: {}, knownDoors: {}, disturbances: [], scanPulses: [], exposures: [] },
+      knowledge: { knownSensors: Object.create(null), knownDoors: Object.create(null), disturbances: [], scanPulses: [], exposures: [] },
       pendingDecoys: [],
       visited: [],
     },
@@ -207,6 +224,7 @@ export function createGame(o: CreateGameOptions): GameState {
     stats: emptyStats(),
     monsterPath: [],
     result: null,
+    monsterDisconnected: false,
   };
 }
 
@@ -216,10 +234,34 @@ export function pushEvent(
   audience: EventAudience,
   text: string,
   extra: Partial<Pick<GameEvent, 'nodeId' | 'cameraId' | 'approachId' | 'severity'>> = {},
-): GameEvent {
+): StoredEvent {
   const ev: GameEvent = { id: s.nextId++, t: s.t, kind, audience, text, severity: extra.severity ?? 'info', ...extra };
   s.events.push(ev);
+  const limit = s.cfg.visibility.maxRetainedEvents ?? 4096;
+  if (s.events.length > limit) s.events.splice(0, s.events.length - limit);
   return ev;
+}
+
+const idCaches = new WeakMap<GameState, { ids: Map<number, number>; used: Set<number> }>();
+
+/** Stable opaque safe-integer identifiers, independent of hidden counter ordering and gaps. No IO or random source. */
+export function publicId(s: GameState, id: number): number {
+  let cache = idCaches.get(s);
+  if (!cache) { cache = { ids: new Map(), used: new Set() }; idCaches.set(s, cache); }
+  const previous = cache.ids.get(id);
+  if (previous !== undefined) return previous;
+  let salt = 0, value: number;
+  do {
+    const digest = createHmac('sha256', s.publicIdKey).update(`${id}:${salt++}`).digest();
+    value = digest.readUIntBE(0, 6) * 32 + (digest[6]! & 31);
+  } while (cache.used.has(value));
+  cache.ids.set(id, value); cache.used.add(value);
+  const limit = (s.cfg.visibility.maxRetainedEvents ?? 4096) + (s.cfg.visibility.maxRetainedSightings ?? 256) + 1024;
+  if (cache.ids.size > limit) {
+    const oldest = cache.ids.keys().next().value!;
+    cache.used.delete(cache.ids.get(oldest)!); cache.ids.delete(oldest);
+  }
+  return value;
 }
 
 export function matchEndT(s: GameState): number {

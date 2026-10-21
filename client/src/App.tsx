@@ -3,13 +3,14 @@ import { DEFAULT_CONFIG } from '@fnab/shared';
 import { getSocket } from './net/socket';
 import { useGame } from './state/store';
 import { useGameAudio } from './hooks/useGameAudio';
+import { useConsoleZoom } from './hooks/useConsoleZoom';
 import { TitleScreen } from './screens/TitleScreen';
 import { LobbyScreen } from './screens/LobbyScreen';
 import { LoadingScreen } from './screens/LoadingScreen';
 import { DefenderScreen } from './screens/DefenderScreen';
 import { MonsterScreen } from './screens/MonsterScreen';
 import { ResultsScreen } from './screens/ResultsScreen';
-import { ReconnectBanner, ScreenGrain, Toasts } from './ui/chrome';
+import { ReconnectBanner, ScreenGrain, Toasts, useReduceFlashing } from './ui/chrome';
 import { ScreenTransition } from './screens/shell/ScreenTransition';
 import { resetUplink, startUplink, useUplink } from './screens/shell/uplink';
 
@@ -23,6 +24,8 @@ export function App() {
     getSocket();
   }, []);
   useGameAudio();
+  const { zoom, w: vw, h: vh } = useConsoleZoom();
+  const reduceFlash = useReduceFlashing();
   const room = useGame((s) => s.room);
   const view = useGame((s) => s.view);
   const result = useGame((s) => s.result);
@@ -102,12 +105,21 @@ export function App() {
     key = 'defender';
   }
 
-  const team = view?.role === 'monster' || (key !== 'title' && room?.players.find((p) => p.id === room.youId)?.role === 'monster') ? 'monster' : 'defender';
+  const team =
+    view?.role === 'monster' || (key !== 'title' && room?.players.find((p) => p.id === room.youId)?.role === 'monster')
+      ? 'monster'
+      : 'defender';
   // The breach / containment cinematics are their own transition.
   const skipTransition = key === 'results' && (result?.reason === 'breach' || result?.reason === 'capture');
 
   return (
-    <div className="h-full w-full overflow-hidden bg-void text-text" data-team={team}>
+    <div
+      className="h-full w-full overflow-hidden bg-void text-text"
+      data-team={team}
+      data-zoom={zoom}
+      data-reduce-flash={reduceFlash ? '1' : '0'}
+      style={zoom !== 1 ? { zoom, width: `${vw / zoom}px`, height: `${vh / zoom}px` } : undefined}
+    >
       <ScreenTransition screenKey={key} skip={skipTransition}>
         {screen}
       </ScreenTransition>

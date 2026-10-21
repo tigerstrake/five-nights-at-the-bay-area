@@ -5,6 +5,7 @@ import { HQS, runBatch, type BatchOptions } from './harness';
 import { POLICIES, SKILLS, type DefenderSkill, type MonsterPolicy } from './bots';
 import { report, tableRow } from './report';
 import { BEFORE_CONFIG } from './before';
+import { SLOW_CONFIG } from './slow';
 
 export function parseArgs(args: string[]): BatchOptions & { out?: string; configPath?: string } {
   const values = new Map<string, string>();
@@ -28,14 +29,15 @@ export function parseArgs(args: string[]): BatchOptions & { out?: string; config
   if (![...SKILLS, 'lockdown'].includes(skill)) throw new Error('Unknown defender skill');
   if (![...POLICIES, 'hide', 'mixed'].includes(monster)) throw new Error('Unknown monster policy');
   const preset = values.get('preset') ?? 'current';
-  if (preset !== 'before' && preset !== 'current') throw new Error('Preset must be before or current');
+  if (preset !== 'before' && preset !== 'current' && preset !== 'slow') throw new Error('Preset must be before, slow or current');
   return { matches: integer('matches', 400, 1, 1_000_000), hqs, defenders, duration: integer('duration', 480, 300, 600),
     skill, monster, preset, seed: integer('seed', 1, 0, 0xffffffff), out: values.get('out'), configPath: values.get('config') };
 }
 
 function main() {
   const options = parseArgs(process.argv.slice(2));
-  const config = options.configPath ? JSON.parse(readFileSync(options.configPath, 'utf8')) as BalanceConfig : options.preset === 'before' ? BEFORE_CONFIG : DEFAULT_CONFIG;
+  const config = options.configPath ? JSON.parse(readFileSync(options.configPath, 'utf8')) as BalanceConfig
+    : options.preset === 'before' ? BEFORE_CONFIG : options.preset === 'slow' ? SLOW_CONFIG : DEFAULT_CONFIG;
   console.log('HQ / defenders              N Monster%   Cap  Dawn Breach50  Late%');
   const started = performance.now();
   const matches = runBatch({ ...options, config }, cell => console.log(tableRow(`${cell[0].hq} / ${cell[0].defenders}`, cell)));

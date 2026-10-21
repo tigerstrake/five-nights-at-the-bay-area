@@ -8,7 +8,7 @@
 import type { CameraView, DefenderView, Graph, MonsterCommand, MonsterView, VisibleEvent, ViewBase, GameEvent } from '@fnab/shared';
 import { MONSTER_COMMANDS, spawnCandidates } from '@fnab/shared';
 import type { GameState } from '../engine/state';
-import { isOutage, matchEndT, phaseBounds } from '../engine/state';
+import { isOutage, matchEndT, phaseBounds, publicId } from '../engine/state';
 import { powerDrainPerSec, threatLevel, type EngineCtx } from '../engine/engine';
 import { buildMonsterKnowledge, coarsePower, publicCameraStatus } from '../ai/knowledge';
 
@@ -22,14 +22,14 @@ function visibleEvents(s: GameState, audience: 'defenders' | 'monster', limit: n
   for (let i = s.events.length - 1; i >= 0 && out.length < limit; i--) {
     const e: GameEvent = s.events[i]!;
     if (e.audience !== 'all' && e.audience !== audience) continue;
-    const v: VisibleEvent = { id: e.id, t: e.t, kind: e.kind, text: e.text, severity: e.severity };
+    const v: VisibleEvent = { id: publicId(s, e.id), t: e.t, kind: e.kind, text: e.text, severity: e.severity };
     if (e.nodeId !== undefined) v.nodeId = e.nodeId;
     if (e.cameraId !== undefined) v.cameraId = e.cameraId;
     if (e.approachId !== undefined) v.approachId = e.approachId;
     if (e.by !== undefined && audience === 'defenders') v.by = e.by;
     out.push(v);
   }
-  return out.reverse();
+  return out.sort((a, b) => a.t - b.t || a.id - b.id);
 }
 
 function base(s: GameState, clock: ViewClock, defenders: boolean): ViewBase {
@@ -76,8 +76,9 @@ export function projectDefenderView(
   });
   const visibleSightings = s.sightings
     .filter((x) => s.t - x.t < s.cfg.detection.sightingTtlMs)
-    .slice(-s.cfg.visibility.sightingsInView)
-    .map((x) => ({ id: x.id, nodeId: x.nodeId, t: x.t, confidence: x.confidence, source: x.source, flaggedFalse: x.flaggedFalse }));
+    .map((x) => ({ id: publicId(s, x.id), nodeId: x.nodeId, t: x.t, confidence: x.confidence, source: x.source, flaggedFalse: x.flaggedFalse }))
+    .sort((a, b) => a.t - b.t || a.id - b.id)
+    .slice(-s.cfg.visibility.sightingsInView);
   const lastReal = [...visibleSightings].reverse().find((x) => !x.flaggedFalse && x.source !== 'sensor');
   const m = s.monster;
   const hq = ctx.graph.hqs.get(s.hqId)!;

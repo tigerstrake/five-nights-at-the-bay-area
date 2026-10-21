@@ -2,6 +2,7 @@
 // ?s=<scenario>&mode=tactical|geo&w=<px>&h=<px> renders one map with canned layers for visual checks.
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import '../../fonts';
 import '../../index.css';
 import type { CameraGameStatus, HqId } from '@fnab/shared';
 import { DEFAULT_CONFIG, spawnCandidates } from '@fnab/shared';

@@ -103,7 +103,7 @@ describe('monster commands and cooldowns', () => {
     expect(h.s.cameras['cam-a']!.status).toBe('sabotaged');
     expect(applyAction(h.ctx, h.s, M, { type: 'sabotage', nodeId: 's1', target: 'camera' }, h.rng)).toMatchObject({
       ok: false,
-      error: 'SABOTAGE on cooldown',
+      error: 'Too fast — the beast needs a moment',
     });
     const p0 = h.s.power.value;
     expect(applyAction(h.ctx, h.s, D, { type: 'repair', cameraId: 'cam-a' }, h.rng).ok).toBe(true);
@@ -124,6 +124,7 @@ describe('monster commands and cooldowns', () => {
     });
     h.run(20_500);
     expect(applyAction(h.ctx, h.s, M, { type: 'decoy', nodeId: 'b' }, h.rng).ok).toBe(true);
+    h.run(h.s.cfg.detection.rollEveryMs);
     const sg = h.s.sightings.find((x) => x.nodeId === 'b');
     expect(sg?.isDecoy).toBe(true);
     expect(sg?.flaggedFalse).toBe(false);

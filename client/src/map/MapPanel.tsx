@@ -6,7 +6,7 @@ import clsx from 'clsx';
 import { TacticalMap } from './TacticalMap';
 import { resolveTheme, type MapProps } from './layers';
 
-export type { MapLayers, MarkKind, MapTheme, DoorState, MapProps } from './layers';
+export type { MapLayers, MarkKind, MapTheme, DoorState, MapProps, MapInset } from './layers';
 
 export interface MapMode {
   id: string;
@@ -36,6 +36,7 @@ export const MAP_MODES: MapMode[] = [
 ];
 
 const KEY = 'fnab.mapMode';
+const TOGGLE_INSET = 30;
 function initialMode(): string {
   try {
     const v = sessionStorage.getItem(KEY);
@@ -51,6 +52,9 @@ export function MapPanel(props: MapProps & { defaultMode?: string }) {
   const mode = MAP_MODES.find((m) => m.id === modeId) ?? MAP_MODES[0]!;
   const C = mode.component;
   const monster = resolveTheme(props) === 'monster';
+  // Keep the default fit clear of the mode toggle (top-right) on top of the screen's own overlay insets.
+  const toggle = MAP_MODES.length > 1;
+  const inset = toggle ? { ...props.inset, top: Math.max(props.inset?.top ?? 0, TOGGLE_INSET) } : props.inset;
   const choose = (id: string) => {
     setModeId(id);
     try {
@@ -61,7 +65,7 @@ export function MapPanel(props: MapProps & { defaultMode?: string }) {
   };
   return (
     <div className={clsx('relative h-full w-full', props.className)} data-map-mode={mode.id}>
-      <C {...props} className={undefined} />
+      <C {...props} inset={inset} className={undefined} />
       {MAP_MODES.length > 1 && (
         <div
           className="absolute right-2 top-2 z-10 flex border bg-black/75"
@@ -78,11 +82,7 @@ export function MapPanel(props: MapProps & { defaultMode?: string }) {
               data-testid={`map-mode-${m.id}`}
               className={clsx(
                 'px-2 py-1 font-mono text-[10px] uppercase tracking-widest transition-colors',
-                m.id === mode.id
-                  ? monster
-                    ? 'bg-[#2a0b10] text-[#ffb3bf]'
-                    : 'bg-cyan-dim text-cyan'
-                  : 'text-mute hover:text-text',
+                m.id === mode.id ? (monster ? 'bg-[#2a0b10] text-[#ffb3bf]' : 'bg-cyan-dim text-cyan') : 'text-mute hover:text-text',
               )}
             >
               {m.label}

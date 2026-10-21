@@ -106,11 +106,14 @@ export function CameraFeed(p: CameraFeedProps) {
   // simulated feed can never be mistaken for live footage.
   const imageAt = frameAt ?? source?.imageAt ?? source?.lastUpdated ?? null;
   const age = mode === 'snapshot' && imageAt ? (p.variant === 'main' ? ageLabel(now - imageAt) : ageShort(now - imageAt)) : null;
+  // Thumbnails never pull video (bandwidth), but a live-capable camera says so honestly: "◦ LIVE·SNAP".
+  const liveCapable = mode === 'snapshot' && serverMode === 'live' && !!source?.streamUrl && !failedStream;
+  const thumb = p.variant === 'thumb';
   const badgeTitle =
     mode === 'live'
       ? 'Caltrans CCTV, live HLS video (typically ~30 s behind real time)'
       : mode === 'snapshot'
-        ? `Caltrans CCTV still image${imageAt ? `, captured ${ageLabel(now - imageAt)}` : ''}; refreshed about every ${Math.round((source?.refreshMs ?? DEFAULT_REFRESH_MS) / 1000)} s (Caltrans updates every 5 min)`
+        ? `${liveCapable ? 'Live-capable camera: this tile shows a still; pick it for live video on the main monitor. ' : ''}Caltrans CCTV still image${imageAt ? `, captured ${ageLabel(now - imageAt)}` : ''}; refreshed about every ${Math.round((source?.refreshMs ?? DEFAULT_REFRESH_MS) / 1000)} s (Caltrans updates every 5 min)`
         : mode === 'simulated'
           ? `SIMULATED footage, not a real camera${source?.reason ? `: ${source.reason}` : ''}`
           : `Real camera offline${source?.reason ? `: ${source.reason}` : ''}`;
@@ -118,9 +121,10 @@ export function CameraFeed(p: CameraFeedProps) {
     <span
       data-testid="feed-source-badge"
       data-source-mode={mode}
+      data-live-capable={liveCapable ? '' : undefined}
       className={clsx(
-        'inline-flex shrink-0 items-center gap-1 px-1 py-px font-mono font-semibold tracking-[0.14em]',
-        p.variant === 'main' ? 'text-[10px]' : 'text-[8px]',
+        'inline-flex shrink-0 items-center gap-1 whitespace-nowrap px-1 py-px font-mono font-semibold',
+        thumb ? 'text-[8px] tracking-[0.1em]' : 'text-[10px] tracking-[0.14em]',
         mode === 'live' && 'bg-alert/90 text-white',
         mode === 'snapshot' && 'bg-cyan-dim/90 text-[#b5f3fa]',
         mode === 'simulated' && 'border border-dashed border-warn/70 bg-black/70 text-warn',
@@ -129,8 +133,20 @@ export function CameraFeed(p: CameraFeedProps) {
       title={badgeTitle}
     >
       {mode === 'live' && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />}
-      {mode === 'live' ? 'LIVE' : mode === 'snapshot' ? 'SNAPSHOT' : mode === 'simulated' ? 'SIMULATED' : 'OFFLINE'}
-      {age && <span className="font-normal tracking-normal opacity-80">· {age}</span>}
+      {liveCapable && <span aria-hidden className="h-1.5 w-1.5 rounded-full border border-[#ff6b75]" />}
+      {mode === 'live'
+        ? 'LIVE'
+        : mode === 'snapshot'
+          ? thumb
+            ? liveCapable
+              ? 'LIVE·SNAP'
+              : 'SNAP'
+            : 'SNAPSHOT'
+          : mode === 'simulated'
+            ? 'SIMULATED'
+            : 'OFFLINE'}
+      {/* Tiles stay compact: a live-capable tile's still age lives in the tooltip (and on the main monitor). */}
+      {age && !(thumb && liveCapable) && <span className="font-normal tracking-normal opacity-80">· {age}</span>}
     </span>
   );
 
@@ -159,7 +175,14 @@ export function CameraFeed(p: CameraFeedProps) {
       data-source-mode={mode}
     >
       {showSim && (
-        <SimulatedFeed cameraId={p.cameraId} seed={cameraSeed(p.cameraId)} tags={rec?.tags ?? node?.tags ?? []} variant={p.variant} />
+        // Thumbs carry ONE simulated label (the dashed SIMULATED badge below); main keeps the FX stamp too.
+        <SimulatedFeed
+          cameraId={p.cameraId}
+          seed={cameraSeed(p.cameraId)}
+          tags={rec?.tags ?? node?.tags ?? []}
+          variant={p.variant}
+          stamp={!thumb}
+        />
       )}
       {snapUrl && (
         <SnapshotLayer

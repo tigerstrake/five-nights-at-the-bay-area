@@ -80,6 +80,9 @@ export function getSocket(): ClientSocket {
   s.on('game:result', (result) => store().set({ result }));
   s.on('cameras:status', (st) => store().setCameraStatuses(st));
   s.on('room:kicked', ({ reason }) => {
+    // Forget the seat: otherwise this tab would auto-resume on its next reconnect and kick the replacement
+    // connection (e.g. the same player who reopened the game in another tab).
+    writeSession(null);
     store().toast(reason, 'warn');
     store().set({ room: null, view: null, result: null });
   });

@@ -21,6 +21,9 @@ export interface CaltransConfig {
   intervalMs: number;
   /** Per-request timeout (covers headers + body). */
   timeoutMs: number;
+  /** Caps apply independently to master and media playlists before HLS parsing. */
+  maxPlaylistBytes: number;
+  maxPlaylistLines: number;
   /** Max requests in flight (global). */
   concurrency: number;
   /** Minimum spacing between request starts (no startup storm). */
@@ -55,6 +58,8 @@ export interface CaltransConfig {
 export const DEFAULT_CALTRANS_CONFIG: CaltransConfig = {
   intervalMs: 300_000,
   timeoutMs: 8_000,
+  maxPlaylistBytes: 262_144,
+  maxPlaylistLines: 4096,
   concurrency: 3,
   minGapMs: 150,
   failThreshold: 2,
@@ -376,6 +381,7 @@ export class CaltransCameraService implements CameraService {
     };
     const top = await this.get(url, { text: true });
     if (top.status === null) {
+      if (/playlist exceeds/.test(top.error ?? '')) return fail(top.error!, 'oversize-playlist', true);
       const timeout = /timeout|abort/i.test(top.error ?? '');
       return fail(timeout ? 'stream playlist request timed out' : `stream unreachable (${top.error ?? 'network error'})`, timeout ? 'timeout' : 'network', false, true);
     }
@@ -385,6 +391,7 @@ export class CaltransCameraService implements CameraService {
     if (pl.kind === 'master') {
       mediaUrl = new URL(pl.uris[0]!, url).toString();
       const media = await this.get(mediaUrl, { text: true });
+      if (/playlist exceeds/.test(media.error ?? '')) return fail(media.error!, 'oversize-playlist', true);
       if (media.status === null) return fail('stream media playlist unreachable', 'network', false, true);
       if (media.status !== 200) return fail(`stream media playlist HTTP ${media.status}`, `http-${media.status}`, false);
       pl = parsePlaylist(media.text ?? '');
@@ -410,7 +417,17 @@ export class CaltransCameraService implements CameraService {
       const headers: Record<string, string> = { accept: o.text ? 'application/vnd.apple.mpegurl,*/*' : 'image/jpeg,*/*', 'user-agent': 'FiveNightsAtTheBayArea/0.1 (camera health check; polite, 5-min cadence)' };
       if (o.range) headers.range = `bytes=${o.range}`;
       const res = await this.fetchImpl()(target, { signal: ctl.signal, headers, redirect: 'follow' });
-      if (o.text) return { status: res.status, headers: res.headers, body: null, text: await res.text(), error: null };
+      if (o.text) {
+        const body = await readLimited(res, this.cfg.maxPlaylistBytes + 1);
+        if (body.byteLength > this.cfg.maxPlaylistBytes) {
+          ctl.abort();
+          return { status: null, headers: res.headers, body: null, error: 'playlist exceeds byte limit' };
+        }
+        const text = new TextDecoder().decode(body);
+        if (text.split(/\r\n|\r|\n/).length > this.cfg.maxPlaylistLines)
+          return { status: null, headers: res.headers, body: null, error: 'playlist exceeds line limit' };
+        return { status: res.status, headers: res.headers, body: null, text, error: null };
+      }
       const limit = o.maxBytes ?? MAX_IMAGE_BYTES + 1;
       const body = await readLimited(res, limit);
       return { status: res.status, headers: res.headers, body, error: null };
@@ -605,7 +622,7 @@ function stamp(url: string, at: number): string {
 
 /** Read at most `limit` bytes of a body, then cancel the rest (a Range-ignoring server cannot cost us a segment). */
 async function readLimited(res: Response, limit: number): Promise<Uint8Array> {
-  if (!res.body) return new Uint8Array(await res.arrayBuffer()).subarray(0, limit);
+  if (!res.body) return new Uint8Array();
   const reader = res.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;

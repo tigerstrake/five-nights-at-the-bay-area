@@ -15,7 +15,7 @@ import { graph, NETWORK } from '../lib/data';
 import { useGame } from '../state/store';
 import { approachShort, attackPathsFrom, HQ_BY_ID, HQ_SHORT, hopsToHq, NODE_BY_ID, type XY } from './derive';
 import { buildStyle, type GameSource } from './geoStyle';
-import { resolveTheme, SENSOR_RADIUS_HOPS, type MapLayers, type MapProps, type MapTheme } from './layers';
+import { resolveTheme, SENSOR_RADIUS_HOPS, type MapInset, type MapLayers, type MapProps, type MapTheme } from './layers';
 import { PALETTES, SEM } from './theme';
 import { NodeTooltip } from './TacticalMap';
 import { useMonsterMotion } from './useMonsterMotion';
@@ -40,6 +40,10 @@ const FIT: [LngLat, LngLat] = [
   [EXTENT.w - 0.04, EXTENT.s - 0.03],
   [EXTENT.e + 0.04, EXTENT.n + 0.03],
 ];
+/** Fit padding: 24 px all round plus whatever the screen's overlays cover. */
+function geoPadding(i: MapInset | undefined) {
+  return { top: 24 + (i?.top ?? 0), right: 24 + (i?.right ?? 0), bottom: 24 + (i?.bottom ?? 0), left: 24 + (i?.left ?? 0) };
+}
 const MAX_BOUNDS: [LngLat, LngLat] = [
   [EXTENT.w - 0.9, EXTENT.s - 0.6],
   [EXTENT.e + 0.9, EXTENT.n + 0.6],
@@ -138,7 +142,7 @@ export default function GeoMap(props: MapProps) {
       container: mapEl.current,
       style: buildStyle(theme),
       bounds: FIT,
-      fitBoundsOptions: { padding: 24 },
+      fitBoundsOptions: { padding: geoPadding(props.inset) },
       maxBounds: MAX_BOUNDS,
       minZoom: 7.5,
       maxZoom: 16,
@@ -208,8 +212,8 @@ export default function GeoMap(props: MapProps) {
 
     const ro = new ResizeObserver(() => {
       map.resize();
-      const r = rootRef.current?.getBoundingClientRect();
-      if (r) setSize({ w: r.width, h: r.height });
+      const el = rootRef.current; // layout px (the App may apply CSS zoom)
+      if (el) setSize({ w: el.clientWidth, h: el.clientHeight });
     });
     if (rootRef.current) ro.observe(rootRef.current);
     return () => {
@@ -598,7 +602,7 @@ export default function GeoMap(props: MapProps) {
         <button type="button" aria-label="Zoom out" onClick={() => mapRef.current?.zoomOut()}>
           −
         </button>
-        <button type="button" aria-label="Reset view" title="Fit whole Bay" style={{ fontSize: 11 }} onClick={() => mapRef.current?.fitBounds(FIT, { padding: 24 })}>
+        <button type="button" aria-label="Reset view" title="Fit whole Bay" style={{ fontSize: 11 }} onClick={() => mapRef.current?.fitBounds(FIT, { padding: geoPadding(latest.current.inset) })}>
           ⤢
         </button>
       </div>

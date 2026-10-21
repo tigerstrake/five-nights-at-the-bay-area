@@ -6,11 +6,11 @@ import { sendAction } from '../net/socket';
 import { MapPanel } from '../map/MapPanel';
 import type { MarkKind } from '../map/TacticalMap';
 import { Badge, Label } from '../ui/kit';
-import { TopBar, hqShortName } from './hud';
+import { TeamSignalBanner, TopBar, hqShortName } from './hud';
+import { useReduceFlashing } from '../ui/chrome';
 import { hqById, nodeName } from '../lib/data';
 import { useNow } from '../hooks/useNow';
 import { audio } from '../audio';
-import { isReducedMotion } from '../fx';
 import { situation, STANCE_INFO, STANCE_ORDER, ABILITY_INFO } from './monster/model';
 import { CommandDeck, useReadyEdges } from './monster/CommandDeck';
 import { LensPanel } from './monster/LensPanel';
@@ -18,32 +18,13 @@ import { EmergencePanel, IntentStream, NightBar, SituationPanel } from './monste
 import { BreachBanner, Legend, PositionPlate, TargetingBar, TrappedOverlay } from './monster/MapOverlays';
 import './monster/monster.css';
 
-const FONT_ID = 'mx-display-font';
-function useDisplayFont() {
-  useEffect(() => {
-    if (document.getElementById(FONT_ID)) return;
-    const l = document.createElement('link');
-    l.id = FONT_ID;
-    l.rel = 'stylesheet';
-    l.href = 'https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&display=swap';
-    document.head.appendChild(l);
-  }, []);
-}
-
-function useCalm(): boolean {
-  const [calm, setCalm] = useState(() => isReducedMotion());
-  useEffect(() => {
-    const id = setInterval(() => setCalm(isReducedMotion()), 1000);
-    return () => clearInterval(id);
-  }, []);
-  return calm;
-}
+/** Reduced flashing (OS preference or the in-app setting), reactive. */
+const useCalm = useReduceFlashing;
 
 type Pending = { nodeId: string; target: 'camera' | 'sensor' } | null;
 
 export function MonsterScreen({ room, view }: { room: RoomView; view: MonsterView }) {
   useNow(200);
-  useDisplayFont();
   const calm = useCalm();
   const t = matchNow(view);
   const tool = useGame((s) => s.monsterTool);
@@ -266,6 +247,10 @@ export function MonsterScreen({ room, view }: { room: RoomView; view: MonsterVie
     attackPaths: !prep,
     onNodeHover: prep ? setHoverSpawn : undefined,
     breachProgress: view.breach?.progress,
+    // This screen draws its own legend (bottom-left) and cards (top-left): keep the fit clear of both.
+    noLegend: true,
+    // The map is height-bound on landscape screens, so the cards sit in the spare width at the left.
+    inset: prep || (tool === 'move' && self.spawned) ? { left: 262, bottom: 30 } : { top: 46, bottom: 30 },
   };
 
   // lens: where the creature is (nearer endpoint while moving), or the emergence point in prep
@@ -281,7 +266,8 @@ export function MonsterScreen({ room, view }: { room: RoomView; view: MonsterVie
   const pendingInfo = pending && tool === 'sabotage' ? sit.sabotageTargets.get(pending.nodeId) : null;
 
   return (
-    <div className="mx flex h-full flex-col" data-calm={calm ? '1' : '0'} data-testid="monster-screen">
+    <div className="mx relative flex h-full flex-col" data-calm={calm ? '1' : '0'} data-testid="monster-screen">
+      <TeamSignalBanner view={view} perspective="monster" />
       <TopBar room={room} view={view} accent="monster">
         <div className="flex min-w-0 items-center gap-2">
           <Label>Prey</Label>
@@ -321,7 +307,7 @@ export function MonsterScreen({ room, view }: { room: RoomView; view: MonsterVie
             {...extraLayers}
           />
           {prep ? (
-            <div className="pointer-events-none absolute left-2 top-2 z-[2] max-w-[60%] border border-[var(--mx-scar)] bg-[#070404e6] px-2.5 py-1.5">
+            <div className="pointer-events-none absolute left-2 top-2 z-[2] w-[250px] max-w-[60%] border border-[var(--mx-scar)] bg-[#070404e6] px-2.5 py-1.5">
               <div className="mx-slab-title !text-[18px]">Choose where you emerge</div>
               <div className="text-[11px] text-[var(--mx-ash)]">
                 Click a ringed point, then pick an opening stance below.{' '}

@@ -1,5 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import '../../fonts';
 import { Lab } from './Lab';
 
 document.body.style.margin = '0';

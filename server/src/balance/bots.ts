@@ -89,6 +89,16 @@ export class DefenderBot {
     const contact = [...this.contacts].reverse().find(s => v.t - s.t >= this.reaction);
     const near = contact && graph.hopsToHq(contact.nodeId, v.hqId) <= 1;
     for (const d of v.doors) if (d.closed && (!v.breach || v.breach.approachId !== d.approachId) && (!near || v.power.value < reserve)) return { type: 'door', approachId: d.approachId, closed: false };
+    // A human expert spends the last battery on a bare hold when capture is no longer affordable.
+    // Keeping an impossible capture reserve while an observed breach completes would be an artificial bot weakness.
+    if (expert && v.breach && v.t >= this.breachAt && v.power.value >= cfg.power.trapArmCost && v.power.value < reserve + cfg.power.trapArmCost) {
+      const node = aps.find(a => a.id === v.breach!.approachId)!.fromNode;
+      if (!v.traps.some(t => t.nodeId === node)) {
+        if (v.traps.length < v.limits.traps) return { type: 'armTrap', nodeId: node };
+        const remote = v.traps.filter(t => t.nodeId !== node).sort((a, b) => graph.hops(b.nodeId, node) - graph.hops(a.nodeId, node))[0];
+        if (remote) return { type: 'disarmTrap', trapId: remote.id };
+      }
+    }
     if (v.breach && v.t >= this.breachAt) {
       const door = v.doors.find(d => d.approachId === v.breach!.approachId)!;
       if (!door.closed && door.jammedUntil === null && v.power.value > 2) return { type: 'door', approachId: door.approachId, closed: true };

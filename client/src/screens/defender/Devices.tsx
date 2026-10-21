@@ -65,7 +65,12 @@ export function ToolDock({ ctx, tool, setTool }: { ctx: RoomCtx; tool: MapTool; 
     },
   ];
   return (
-    <div className="grid shrink-0 grid-cols-5 gap-1 border-t border-edge bg-panel-2/70 p-1.5" data-testid="map-tools" role="toolbar" aria-label="Map tools">
+    <div
+      className="grid shrink-0 grid-cols-5 gap-1 border-t border-edge bg-panel-2/70 p-1.5"
+      data-testid="map-tools"
+      role="toolbar"
+      aria-label="Map tools"
+    >
       {tools.map((tl) => {
         const on = tool === tl.id;
         const poor = tl.cost !== undefined && view.power.value < tl.cost;
@@ -96,12 +101,23 @@ export function ToolDock({ ctx, tool, setTool }: { ctx: RoomCtx; tool: MapTool; 
               <span aria-hidden className="absolute inset-y-0 left-0 bg-white/[0.06]" style={{ width: `${tl.cool * 100}%` }} />
             )}
             <span className="flex w-full items-center gap-1">
-              <span className={clsx('font-mono text-[11px] font-semibold uppercase tracking-[0.1em]', on ? 'text-bright' : 'text-text')}>{tl.label}</span>
-              <Kbd className="ml-auto">{tl.key}</Kbd>
+              <span
+                className={clsx(
+                  'min-w-0 truncate font-mono text-[11px] font-semibold uppercase tracking-[0.04em] min-[1600px]:tracking-[0.1em]',
+                  on ? 'text-bright' : 'text-text',
+                )}
+              >
+                {tl.label}
+              </span>
+              {/* Narrow docks drop the key cap (it is in the tooltip and the ? sheet) rather than clip it. */}
+              <Kbd className="ml-auto shrink-0 max-[1359px]:hidden">{tl.key}</Kbd>
             </span>
             <span className="flex w-full items-center justify-between gap-1 font-mono text-[10px] tabular-nums">
               <span className={clsx('truncate', tl.blocked ? 'text-dim' : 'text-mute')}>{tl.stat}</span>
-              {tl.cost !== undefined && <span className={poor ? 'text-[#ff8a93]' : 'text-[#f3d28d]'}>{tl.cost}⚡</span>}
+              {/* Locked until nightfall: the cost is irrelevant, so give the word the room. */}
+              {tl.cost !== undefined && !(prep && tl.blocked === 'after prep') && (
+                <span className={clsx('shrink-0', poor ? 'text-[#ff8a93]' : 'text-[#f3d28d]')}>{tl.cost}⚡</span>
+              )}
             </span>
           </button>
         );
@@ -130,10 +146,15 @@ export function NodeInspector({ ctx, nodeId }: { ctx: RoomCtx; nodeId: string | 
   const lureLeft = Math.max(0, view.cooldowns.lureReadyAt - t);
   const btn = 'h-6 border px-1.5 font-mono text-[10.5px] uppercase tracking-[0.1em] disabled:cursor-not-allowed disabled:opacity-40';
   return (
-    <div className="flex min-h-[66px] shrink-0 flex-col justify-center gap-1 border-t border-edge px-2.5 py-1.5" data-testid="node-inspector">
+    <div
+      className="flex min-h-[66px] shrink-0 flex-col justify-center gap-1 border-t border-edge px-2.5 py-1.5"
+      data-testid="node-inspector"
+    >
       <div className="flex min-w-0 items-center gap-2">
         <span className="truncate text-[12.5px] font-semibold text-bright">{node.name}</span>
-        <span className="shrink-0 font-mono text-[10.5px] text-dim">{hops === 0 ? 'at an HQ door' : `${hops} hop${hops === 1 ? '' : 's'} to HQ`}</span>
+        <span className="shrink-0 font-mono text-[10.5px] text-dim">
+          {hops === 0 ? 'at an HQ door' : `${hops} hop${hops === 1 ? '' : 's'} to HQ`}
+        </span>
         <span className="ml-auto flex shrink-0 items-center gap-2 font-mono text-[10.5px]">
           {cam && (
             <span className="flex items-center gap-1 text-mute">
@@ -141,20 +162,22 @@ export function NodeInspector({ ctx, nodeId }: { ctx: RoomCtx; nodeId: string | 
               {camLabel(ctx.camNo.get(cam.cameraId))}
             </span>
           )}
-          {sensor && <span className={sensor.disabledUntil ? 'text-dim' : 'text-cyan'}>sensor{sensor.disabledUntil ? ' offline' : ''}</span>}
+          {sensor && (
+            <span className={sensor.disabledUntil ? 'text-dim' : 'text-cyan'}>sensor{sensor.disabledUntil ? ' offline' : ''}</span>
+          )}
           {trap && <span className="text-[#ff8a93]">trap {trap.live ? 'live' : `arming ${secs(trap.armedAt - t)}s`}</span>}
           {lure && <span className="text-[#f3d28d]">lure {secs(lure.expiresAt - t)}s</span>}
-          {last && (
-            <span className={last.flaggedFalse ? 'text-dim line-through' : 'text-[#f3d28d]'}>
-              seen {ago(t - last.t)}
-            </span>
-          )}
+          {last && <span className={last.flaggedFalse ? 'text-dim line-through' : 'text-[#f3d28d]'}>seen {ago(t - last.t)}</span>}
         </span>
       </div>
       {!spectator && (
         <div className="flex flex-wrap gap-1">
           {cam && (
-            <button type="button" className={clsx(btn, 'border-edge-hi bg-panel-2 text-text hover:border-mute', FOCUS)} onClick={() => ctx.selectCamera(cam.cameraId)}>
+            <button
+              type="button"
+              className={clsx(btn, 'border-edge-hi bg-panel-2 text-text hover:border-mute', FOCUS)}
+              onClick={() => ctx.selectCamera(cam.cameraId)}
+            >
               View feed
             </button>
           )}
@@ -170,7 +193,11 @@ export function NodeInspector({ ctx, nodeId }: { ctx: RoomCtx; nodeId: string | 
             </button>
           )}
           {sensor ? (
-            <button type="button" className={clsx(btn, 'border-edge text-mute hover:text-text', FOCUS)} onClick={() => void ctx.act({ type: 'removeSensor', sensorId: sensor.id })}>
+            <button
+              type="button"
+              className={clsx(btn, 'border-edge text-mute hover:text-text', FOCUS)}
+              onClick={() => void ctx.act({ type: 'removeSensor', sensorId: sensor.id })}
+            >
               Remove sensor
             </button>
           ) : (
@@ -184,7 +211,11 @@ export function NodeInspector({ ctx, nodeId }: { ctx: RoomCtx; nodeId: string | 
             </button>
           )}
           {trap ? (
-            <button type="button" className={clsx(btn, 'border-edge text-mute hover:text-text', FOCUS)} onClick={() => void ctx.act({ type: 'disarmTrap', trapId: trap.id })}>
+            <button
+              type="button"
+              className={clsx(btn, 'border-edge text-mute hover:text-text', FOCUS)}
+              onClick={() => void ctx.act({ type: 'disarmTrap', trapId: trap.id })}
+            >
               Disarm trap
             </button>
           ) : (

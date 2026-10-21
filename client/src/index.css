@@ -1,5 +1,4 @@
-/* Overpass descends from Highway Gothic, the typeface on Caltrans freeway signs: our display face. */
-@import url('https://fonts.googleapis.com/css2?family=Overpass:wght@500;700;800;900&display=swap');
+/* Webfonts are self-hosted: see src/fonts.ts (imported by main.tsx). Overpass = display face. */
 @import 'tailwindcss';
 
 /* Design tokens (spec §14): near-black, muted gray panels, restrained red, green/cyan status.
@@ -187,4 +186,21 @@ body {
   .fnab-motion {
     animation: none !important;
   }
+}
+
+/* In-app "Reduce flashing" (Settings) — App sets data-reduce-flash on the root. Mirrors the OS preference so
+   every screen honours the toggle, not only the canvases: no blinking, pulsing, grain or strobing loops. */
+[data-reduce-flash='1'] .fnab-noise,
+[data-reduce-flash='1'] .fnab-motion,
+[data-reduce-flash='1'] .animate-pulse,
+[data-reduce-flash='1'] .animate-ping,
+[data-reduce-flash='1'] [class*='animate-blink'],
+[data-reduce-flash='1'] [class*='animate-flicker'],
+[data-reduce-flash='1'] [class*='animate-scan'] {
+  animation: none !important;
+}
+[data-reduce-flash='1'] .fm-root *,
+[data-reduce-flash='1'] .fm-geo * {
+  animation-duration: 1ms !important;
+  animation-iteration-count: 1 !important;
 }

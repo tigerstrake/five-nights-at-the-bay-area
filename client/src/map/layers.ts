@@ -70,6 +70,15 @@ export interface MapLayers {
   noLegend?: boolean;
   /** Hide the tactical zoom controls (they show by default when the map is interactive). */
   noZoom?: boolean;
+  /** Pixels covered by the screen's own overlays (cards, legends). The default fit keeps the network clear of them. */
+  inset?: MapInset;
+}
+
+export interface MapInset {
+  top?: number;
+  right?: number;
+  bottom?: number;
+  left?: number;
 }
 
 export type MapProps = MapLayers & { className?: string };

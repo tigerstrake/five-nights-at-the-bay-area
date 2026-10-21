@@ -193,6 +193,9 @@ export type GameEventKind =
   | 'freed'
   | 'spawn'
   | 'timer'
+  | 'connectionLost'
+  | 'connectionRestored'
+  | 'forfeit'
   | 'info';
 
 export type EventAudience = 'all' | 'defenders' | 'monster';
@@ -228,7 +231,19 @@ export interface VisibleEvent {
 
 // ───────────────────────────── Per-role views (server → client) ─────────────────────────────
 
+export interface TeamConnectionView {
+  connected: boolean;
+  connectedPlayers: number;
+  totalPlayers: number;
+  /** Wall-clock deadline; null while at least one member of the team is online. */
+  reconnectDeadlineEpoch: number | null;
+}
+
 export interface ViewBase {
+  monsterConnection?: TeamConnectionView;
+  defenderConnection?: TeamConnectionView;
+  /** Simulation is paused during a whole-team reconnection grace period. */
+  pausedForReconnect?: boolean;
   t: number;
   /** Server epoch at match time 0. epoch(t) = t0Epoch + t. */
   t0Epoch: number;
@@ -381,6 +396,8 @@ export interface MatchStats {
 }
 
 export interface MatchResult {
+  /** Human-readable result detail, including which team failed to reconnect. */
+  reasonText?: string;
   winner: Team;
   reason: WinReason;
   hqId: HqId;

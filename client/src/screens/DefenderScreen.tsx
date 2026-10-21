@@ -9,7 +9,7 @@ import { useGame, matchNow } from '../state/store';
 import { sendAction } from '../net/socket';
 import { MapPanel } from '../map/MapPanel';
 import type { MarkKind } from '../map/TacticalMap';
-import { TopBar } from './hud';
+import { TeamSignalBanner, TopBar } from './hud';
 import { graph, hqById } from '../lib/data';
 import { useNow } from '../hooks/useNow';
 import { audio, type SfxName } from '../audio';
@@ -35,22 +35,6 @@ const ACTION_SFX: Partial<Record<DefenderAction['type'], SfxName>> = {
   disarmTrap: 'uiClick',
 };
 
-/** On very large CSS viewports (e.g. 2560×1440 at 1×), scale the whole console so type stays readable. */
-function useConsoleZoom(): { zoom: number; w: number; h: number } {
-  const calc = () => {
-    if (typeof window === 'undefined') return { zoom: 1, w: 0, h: 0 };
-    const z = Math.min(window.innerWidth / 1680, window.innerHeight / 1000);
-    return { zoom: z >= 1.15 ? Math.min(1.6, Math.round(z * 20) / 20) : 1, w: window.innerWidth, h: window.innerHeight };
-  };
-  const [z, setZ] = useState(calc);
-  useEffect(() => {
-    const on = () => setZ(calc());
-    window.addEventListener('resize', on);
-    return () => window.removeEventListener('resize', on);
-  }, []);
-  return z;
-}
-
 export function DefenderScreen({ room, view }: { room: RoomView; view: DefenderView }) {
   useNow(250);
   const t = matchNow(view);
@@ -67,7 +51,6 @@ export function DefenderScreen({ room, view }: { room: RoomView; view: DefenderV
   const outage = view.power.outageUntil !== null;
   const prep = view.phase === 'preparation';
   const reduced = isReducedMotion();
-  const { zoom, w: vw, h: vh } = useConsoleZoom();
 
   const camByNode = useMemo(() => new Map(view.cameras.map((c) => [c.nodeId, c])), [view.cameras]);
   const camById = useMemo(() => new Map(view.cameras.map((c) => [c.cameraId, c])), [view.cameras]);
@@ -146,7 +129,8 @@ export function DefenderScreen({ room, view }: { room: RoomView; view: DefenderV
   const locate = useCallback(
     (e: VisibleEvent) => {
       const ap = e.approachId ? hq.approaches.find((a) => a.id === e.approachId) : undefined;
-      const camId = e.cameraId ?? (e.nodeId ? camByNode.get(e.nodeId)?.cameraId : undefined) ?? (ap ? camByNode.get(ap.fromNode)?.cameraId : undefined);
+      const camId =
+        e.cameraId ?? (e.nodeId ? camByNode.get(e.nodeId)?.cameraId : undefined) ?? (ap ? camByNode.get(ap.fromNode)?.cameraId : undefined);
       if (camId) selectCamera(camId);
       if (e.nodeId) set({ selectedNode: e.nodeId });
     },
@@ -170,58 +154,65 @@ export function DefenderScreen({ room, view }: { room: RoomView; view: DefenderV
     prevHeld.current = heldAt;
   }, [heldAt, camByNode, selectCamera]);
 
-  // Keyboard: see SHORTCUTS in ./defender/Atmosphere.
+  // Keyboard: see SHORTCUTS in ./defender/Atmosphere. The handler is refreshed every render through a ref and
+  // the window listener is bound once (re-binding at the 10 Hz view rate churned listeners for nothing).
   const keyState = useRef({ bankCams, mainCam, view, pages });
   keyState.current = { bankCams, mainCam, view, pages };
+  const onKeyRef = useRef<(e: KeyboardEvent) => void>(() => undefined);
+  onKeyRef.current = (e: KeyboardEvent) => {
+    const el = e.target as HTMLElement | null;
+    if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const { bankCams: bc, mainCam: mc, view: v, pages: pg } = keyState.current;
+    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (k === 'Escape') {
+      setHelp(false);
+      set({ mapTool: 'inspect' });
+      return;
+    }
+    if (k === '?') return setHelp((h) => !h);
+    if (/^[1-9]$/.test(k)) {
+      const c = bc[Number(k) - 1];
+      if (c) selectCamera(c.cameraId);
+      return;
+    }
+    if (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'ArrowUp' || k === 'ArrowDown') {
+      if (el && el.closest('[role=tablist],[role=toolbar]')) return;
+      e.preventDefault();
+      const i = Math.max(
+        0,
+        bc.findIndex((c) => c.cameraId === mc?.cameraId),
+      );
+      const d = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -4, ArrowDown: 4 }[k];
+      const n = bc[(i + d + bc.length) % bc.length];
+      if (n) selectCamera(n.cameraId);
+      return;
+    }
+    if (k === '[' || k === ']') {
+      const order: BankPage[] = ['auto', ...Array.from({ length: pg }, (_, i) => i)];
+      setPage((p) => order[(order.indexOf(p) + (k === ']' ? 1 : -1) + order.length) % order.length]!);
+      audio.play('uiHover', { volume: 0.5 });
+      return;
+    }
+    if (k === 'o') return setCycle((c) => !c);
+    if (k === 'v') return jumpToLatest();
+    if (k === 'p' && mc) return togglePin(mc.cameraId);
+    if (spectator) return;
+    if (k in TOOL_KEYS) return set({ mapTool: TOOL_KEYS[k]! });
+    if (k === 'r' && mc && (mc.status === 'sabotaged' || mc.status === 'static'))
+      return void act({ type: 'repair', cameraId: mc.cameraId });
+    const di = DOOR_KEYS.indexOf(k);
+    if (di >= 0 && v.doors[di]) {
+      const d = v.doors[di]!;
+      return void act({ type: 'door', approachId: d.approachId, closed: !d.closed });
+    }
+    if (k === 'h' && v.held) return void act({ type: 'containment', engage: !v.containment });
+  };
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const el = e.target as HTMLElement | null;
-      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return;
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const { bankCams: bc, mainCam: mc, view: v, pages: pg } = keyState.current;
-      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-      if (k === 'Escape') {
-        setHelp(false);
-        set({ mapTool: 'inspect' });
-        return;
-      }
-      if (k === '?') return setHelp((h) => !h);
-      if (/^[1-9]$/.test(k)) {
-        const c = bc[Number(k) - 1];
-        if (c) selectCamera(c.cameraId);
-        return;
-      }
-      if (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'ArrowUp' || k === 'ArrowDown') {
-        if (el && el.closest('[role=tablist],[role=toolbar]')) return;
-        e.preventDefault();
-        const i = Math.max(0, bc.findIndex((c) => c.cameraId === mc?.cameraId));
-        const d = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -4, ArrowDown: 4 }[k];
-        const n = bc[(i + d + bc.length) % bc.length];
-        if (n) selectCamera(n.cameraId);
-        return;
-      }
-      if (k === '[' || k === ']') {
-        const order: BankPage[] = ['auto', ...Array.from({ length: pg }, (_, i) => i)];
-        setPage((p) => order[(order.indexOf(p) + (k === ']' ? 1 : -1) + order.length) % order.length]!);
-        audio.play('uiHover', { volume: 0.5 });
-        return;
-      }
-      if (k === 'o') return setCycle((c) => !c);
-      if (k === 'v') return jumpToLatest();
-      if (k === 'p' && mc) return togglePin(mc.cameraId);
-      if (spectator) return;
-      if (k in TOOL_KEYS) return set({ mapTool: TOOL_KEYS[k]! });
-      if (k === 'r' && mc && (mc.status === 'sabotaged' || mc.status === 'static')) return void act({ type: 'repair', cameraId: mc.cameraId });
-      const di = DOOR_KEYS.indexOf(k);
-      if (di >= 0 && v.doors[di]) {
-        const d = v.doors[di]!;
-        return void act({ type: 'door', approachId: d.approachId, closed: !d.closed });
-      }
-      if (k === 'h' && v.held) return void act({ type: 'containment', engage: !v.containment });
-    };
+    const onKey = (e: KeyboardEvent) => onKeyRef.current(e);
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [set, selectCamera, act, togglePin, jumpToLatest, spectator]);
+  }, []);
 
   const onNodeClick = (nodeId: string) => {
     if (spectator || tool === 'inspect') return selectNode(nodeId);
@@ -249,8 +240,21 @@ export function DefenderScreen({ room, view }: { room: RoomView; view: DefenderV
   }));
   const rings =
     view.lastScan && t - view.lastScan.t < 4000
-      ? [{ nodeId: view.lastScan.nodeId, hops: view.lastScan.radiusHops, tone: view.lastScan.found ? ('alert' as const) : ('cyan' as const) }]
+      ? [
+          {
+            nodeId: view.lastScan.nodeId,
+            hops: view.lastScan.radiusHops,
+            tone: view.lastScan.found ? ('alert' as const) : ('cyan' as const),
+          },
+        ]
       : [];
+  const doorClosed = Object.fromEntries(view.doors.map((d) => [d.approachId, d.closed]));
+  const doors = Object.fromEntries(
+    view.doors.map((d) => [
+      d.approachId,
+      { closed: d.closed, heat: d.heat, jammed: d.jammedUntil !== null && d.jammedUntil > t, battering: d.battering },
+    ]),
+  );
   const scanPreview = tool === 'scan' && selectedNode ? new Set(graph.within(selectedNode, CFG.scan.radiusHops)) : undefined;
 
   const ctx: RoomCtx = { view, t, hq, spectator, prep, outage, reduced, act, camById, camByNode, camNo, selectCamera, selectNode };
@@ -258,26 +262,25 @@ export function DefenderScreen({ room, view }: { room: RoomView; view: DefenderV
   const showConsole = !!view.held;
 
   return (
-    <div
-      className={clsx('relative flex flex-col', reduced && 'fnab-reduced')}
-      style={zoom !== 1 ? { zoom, width: `${vw / zoom}px`, height: `${vh / zoom}px` } : { height: '100%' }}
-      data-testid="defender-screen"
-    >
+    <div className={clsx('relative flex flex-col', reduced && 'fnab-reduced')} style={{ height: '100%' }} data-testid="defender-screen">
       <DefenderStyles />
       <TopBar room={room} view={view} accent="cyan">
-        <div className="flex min-w-[110px] flex-1 items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-dim">Power</span>
-          <div className="relative hidden h-2.5 max-w-[200px] flex-1 border border-edge bg-ink min-[1360px]:block">
+          <div className="relative h-2.5 w-14 min-w-8 max-w-[200px] shrink border border-edge bg-ink min-[1360px]:w-auto min-[1360px]:flex-1">
             <div
               className={clsx('h-full transition-[width] duration-200', outage ? 'bg-alert' : powerFrac < 0.25 ? 'bg-warn' : 'bg-ok')}
               style={{ width: `${Math.max(0, powerFrac) * 100}%` }}
             />
           </div>
-          <span className={clsx('font-mono text-[12px] tabular-nums', outage ? 'text-[#ff8a93]' : 'text-bright')} data-testid="power">
+          <span
+            className={clsx('shrink-0 whitespace-nowrap font-mono text-[12px] tabular-nums', outage ? 'text-[#ff8a93]' : 'text-bright')}
+            data-testid="power"
+          >
             {outage ? `OUT ${Math.ceil((view.power.outageUntil! - t) / 1000)}s` : `${Math.round(view.power.value)}/${view.power.max}`}
           </span>
         </div>
-        <div className="flex items-center gap-2" title="Threat from sightings and sensor reports">
+        <div className="flex shrink-0 items-center gap-2" title="Threat from sightings and sensor reports">
           <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-dim">Threat</span>
           <div className="flex gap-0.5" data-testid="threat">
             {[0.2, 0.4, 0.6, 0.8, 1].map((lv) => (
@@ -300,9 +303,6 @@ export function DefenderScreen({ room, view }: { room: RoomView; view: DefenderV
             {THREAT_WORD(view.threat)}
           </span>
         </div>
-        {spectator && (
-          <span className="border border-edge-hi px-1.5 py-px font-mono text-[10px] uppercase tracking-[0.14em] text-mute">Spectating</span>
-        )}
         <button
           type="button"
           onClick={() => setHelp(true)}
@@ -321,7 +321,12 @@ export function DefenderScreen({ room, view }: { room: RoomView; view: DefenderV
         {/* LEFT: monitors */}
         <div className="flex min-h-0 flex-col gap-1.5">
           <div className="flex min-h-0 flex-[1.2] flex-col">
-            <MainFeed ctx={ctx} cam={mainCam} pinned={!!mainCam && pinned.includes(mainCam.cameraId)} onPin={() => mainCam && togglePin(mainCam.cameraId)} />
+            <MainFeed
+              ctx={ctx}
+              cam={mainCam}
+              pinned={!!mainCam && pinned.includes(mainCam.cameraId)}
+              onPin={() => mainCam && togglePin(mainCam.cameraId)}
+            />
           </div>
           {showConsole ? (
             <ContainmentConsole ctx={ctx} className="flex-1" />
@@ -368,7 +373,11 @@ export function DefenderScreen({ room, view }: { room: RoomView; view: DefenderV
               rings={rings}
               highlight={scanPreview}
               breachApproachId={view.breach?.approachId ?? null}
-              doorClosed={Object.fromEntries(view.doors.map((d) => [d.approachId, d.closed]))}
+              breachProgress={view.breach?.progress}
+              doorClosed={doorClosed}
+              doors={doors}
+              threat={view.threat}
+              containmentProgress={view.containment?.active ? view.containment.progress : null}
               selectedNode={selectedNode}
               onNodeClick={onNodeClick}
               cursorHint={tool !== 'inspect' && !spectator ? `${tool.toUpperCase()}: click a node · Esc to cancel` : undefined}
@@ -387,6 +396,7 @@ export function DefenderScreen({ room, view }: { room: RoomView; view: DefenderV
         </div>
       </div>
 
+      <TeamSignalBanner view={view} perspective="defenders" />
       <ThreatVignette view={view} reduced={reduced} />
       <PhaseAnnouncer phase={view.phase} />
       {help && <HelpSheet onClose={() => setHelp(false)} />}

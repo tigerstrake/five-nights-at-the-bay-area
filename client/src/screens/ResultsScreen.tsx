@@ -9,12 +9,18 @@ import { useImageOk, useUiAssets } from '../ui/assets';
 import { hqById } from '../lib/data';
 import { mmss } from '../lib/format';
 import { BrandMark } from './shell/Brand';
-import { endingCopy, RouteReplay, StatsBoard, TimelineList, TimelineStrip, useReplayCursor, type EndingCopy, type Perspective } from './shell/results';
+import {
+  endingCopy,
+  RouteReplay,
+  StatsBoard,
+  TimelineList,
+  TimelineStrip,
+  useReplayCursor,
+  type EndingCopy,
+  type Perspective,
+} from './shell/results';
 
-const MOOD: Record<
-  EndingCopy['mood'],
-  { title: string; glow: string; grade: string }
-> = {
+const MOOD: Record<EndingCopy['mood'], { title: string; glow: string; grade: string }> = {
   // defenders survived: cold control room, first warm light at the bottom edge
   dawn: {
     title: 'text-[#f4efe6] [text-shadow:0_0_50px_rgba(255,190,120,0.35)]',
@@ -143,7 +149,10 @@ export function ResultsScreen({ room, result }: { room: RoomView; result: MatchR
             </span>
           </div>
           <h1
-            className={clsx('mt-2 font-display text-[clamp(56px,min(9vw,13vh),128px)] font-black leading-[0.86] tracking-[-0.02em] motion-safe:animate-rise', mood.title)}
+            className={clsx(
+              'mt-2 font-display text-[clamp(56px,min(9vw,13vh),128px)] font-black leading-[0.86] tracking-[-0.02em] motion-safe:animate-rise',
+              mood.title,
+            )}
             data-testid="ending-title"
           >
             {copy.title}
@@ -151,7 +160,12 @@ export function ResultsScreen({ room, result }: { room: RoomView; result: MatchR
           <p className="mt-3 max-w-[620px] text-[15px] leading-snug text-text/90 motion-safe:animate-rise">{copy.line}</p>
           <div className="mt-5 flex flex-wrap items-center gap-2">
             {me?.isHost ? (
-              <Button tone="cyan" size="lg" onClick={() => void lobby.restart()} data-testid="play-again">
+              <Button
+                tone={perspective === 'monster' ? 'blood' : 'cyan'}
+                size="lg"
+                onClick={() => void lobby.restart()}
+                data-testid="play-again"
+              >
                 Play again
               </Button>
             ) : (

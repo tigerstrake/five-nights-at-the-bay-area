@@ -19,7 +19,7 @@ import { DEFAULT_CONFIG, clampDurationMs, createRng, scaleForDefenders } from '@
 import type { MonsterBrain } from '../ai/types';
 import { defaultBrain } from '../ai/baselineBrain';
 import { applyAction, forfeit, step, type EngineCtx } from '../engine/engine';
-import { createGame, type GameState } from '../engine/state';
+import { createGame, pushEvent, type GameState } from '../engine/state';
 import { projectView } from '../visibility';
 
 const MONSTER_ACTIONS = new Set(['command', 'sabotage', 'decoy', 'chooseSpawn']);
@@ -43,6 +43,7 @@ export interface Match {
   t0Epoch: number;
   lastStepAt: number;
   roles: Map<string, Role>; // role snapshot at match start
+  connectionLostAt: { monster: number | null; defenders: number | null };
 }
 
 export interface Room {
@@ -161,7 +162,7 @@ export class RoomManager {
   private addPlayer(room: Room, name: string, token: string | undefined, role: Role): Player {
     const t = token && token.length >= 16 && !this.byToken.has(token) ? token : randomUUID();
     const p: Player = {
-      id: randomUUID().slice(0, 8),
+      id: randomUUID(),
       token: t,
       name: this.cleanName(name),
       role,
@@ -182,20 +183,30 @@ export class RoomManager {
     if (!room) return { ok: false, error: 'Room not found' };
     const p = this.findByToken(room, token);
     if (!p) return { ok: false, error: 'Session expired' };
+    if (!p.connected && p.disconnectedAt !== null && this.now() - p.disconnectedAt >= this.cfg.room.reconnectGraceMs)
+      return { ok: false, error: 'Session expired' };
+    // A resume between timer callbacks must not resurrect an already forfeited team.
+    this.updateConnections(room, this.now());
+    const lost = room.match?.connectionLostAt;
+    if (room.stage === 'playing' && lost && [lost.monster, lost.defenders].some(t => t !== null && this.now() - t >= this.cfg.room.reconnectGraceMs))
+      return { ok: false, error: 'Reconnection grace expired' };
+    const wasConnected = p.connected;
     p.connected = true;
     p.disconnectedAt = null;
     room.emptySince = null;
-    room.version++;
+    if (!wasConnected) room.version++;
+    this.updateConnections(room, this.now());
     return { ok: true, code: room.code, playerId: p.id, token: p.token };
   }
 
   disconnect(code: string, playerId: string): void {
     const room = this.rooms.get(code);
     const p = room?.players.get(playerId);
-    if (!room || !p) return;
+    if (!room || !p || !p.connected) return;
     p.connected = false;
     p.disconnectedAt = this.now();
     room.version++;
+    this.updateConnections(room, this.now());
     if (room.stage === 'countdown') this.cancelCountdown(room);
   }
 
@@ -224,6 +235,7 @@ export class RoomManager {
       room.hostId = next?.id ?? '';
     }
     this.cancelCountdown(room);
+    this.updateConnections(room, this.now());
   }
 
   locate(token: string): { room: Room; player: Player } | null {
@@ -248,7 +260,9 @@ export class RoomManager {
     const room = this.rooms.get(code);
     const p = room?.players.get(playerId);
     if (!room || !p) return { ok: false, error: 'Not in room' };
-    p.name = this.cleanName(name);
+    const cleaned = this.cleanName(name);
+    if (p.name === cleaned) return { ok: true };
+    p.name = cleaned;
     room.version++;
     return { ok: true };
   }
@@ -273,6 +287,7 @@ export class RoomManager {
   setReady(code: string, playerId: string, ready: boolean): ActionResult {
     const g = this.lobbyGuard(this.rooms.get(code), playerId);
     if ('ok' in g) return g;
+    if (g.p.ready === ready) return { ok: true };
     g.p.ready = ready;
     g.room.version++;
     if (!ready) this.cancelCountdown(g.room);
@@ -283,6 +298,8 @@ export class RoomManager {
     const g = this.lobbyGuard(this.rooms.get(code), playerId);
     if ('ok' in g) return g;
     if (g.room.hostId !== playerId) return { ok: false, error: 'Only the host can change settings' };
+    if (s.durationSec === undefined || g.room.settings.durationSec === clampDurationMs(s.durationSec * 1000, this.cfg) / 1000)
+      return { ok: true };
     if (s.durationSec !== undefined) g.room.settings.durationSec = clampDurationMs(s.durationSec * 1000, this.cfg) / 1000;
     g.room.version++;
     this.cancelCountdown(g.room);
@@ -294,6 +311,7 @@ export class RoomManager {
     if ('ok' in g) return g;
     if (g.p.role !== 'defender' && g.room.hostId !== playerId) return { ok: false, error: 'Defenders choose the headquarters' };
     if (!this.graph.hqs.has(hqId)) return { ok: false, error: 'Unknown headquarters' };
+    if (g.room.settings.hqId === hqId) return { ok: true };
     g.room.settings.hqId = hqId;
     g.room.version++;
     this.cancelCountdown(g.room);
@@ -304,6 +322,7 @@ export class RoomManager {
     const room = this.rooms.get(code);
     if (!room) return { ok: false, error: 'Room not found' };
     if (room.hostId !== playerId) return { ok: false, error: 'Only the host can restart' };
+    if (room.stage !== 'results') return { ok: false, error: 'Finish the current match before restarting' };
     const roles = room.match?.roles;
     room.stage = 'lobby';
     room.match = null;
@@ -345,6 +364,8 @@ export class RoomManager {
     const room = this.rooms.get(code);
     const m = room?.match;
     if (!room || !m || room.stage !== 'playing') return { ok: false, error: 'No match running' };
+    if (!room.players.get(playerId)?.connected) return { ok: false, error: 'Player disconnected' };
+    if (m.connectionLostAt.monster !== null || m.connectionLostAt.defenders !== null) return { ok: false, error: 'Waiting for reconnection' };
     const role = m.roles.get(playerId);
     if (role !== 'monster' && role !== 'defender') return { ok: false, error: 'Spectators cannot act' };
     const isMonsterAction = MONSTER_ACTIONS.has(action.type);
@@ -363,6 +384,7 @@ export class RoomManager {
       durationMs: clampDurationMs(room.settings.durationSec * 1000, cfg),
       defenderCount: defenders,
       seed,
+      publicIdKey: randomBytes(32).toString('hex'),
     });
     room.match = {
       state,
@@ -371,6 +393,7 @@ export class RoomManager {
       t0Epoch: now,
       lastStepAt: now,
       roles: new Map([...room.players.values()].map((p) => [p.id, p.role])),
+      connectionLostAt: { monster: null, defenders: null },
     };
     room.stage = 'playing';
     room.countdownEndsAt = null;
@@ -378,13 +401,56 @@ export class RoomManager {
     room.version++;
   }
 
+  private updateConnections(room: Room, now: number): void {
+    const m = room.match;
+    if (!m || room.stage !== 'playing' || m.state.result) return;
+    const wasPaused = m.connectionLostAt.monster !== null || m.connectionLostAt.defenders !== null;
+    for (const team of ['monster', 'defenders'] as const) {
+      const role = team === 'monster' ? 'monster' : 'defender';
+      const online = [...m.roles].some(([id, r]) => r === role && room.players.get(id)?.connected);
+      const previous = m.connectionLostAt[team];
+      if (!online && previous === null) {
+        m.connectionLostAt[team] = now;
+        pushEvent(m.state, 'connectionLost', 'all', team === 'monster'
+          ? "The entity's signal is lost — reconnecting…"
+          : 'All defenders disconnected — reconnecting…', { severity: 'warn' });
+        room.version++;
+      } else if (online && previous !== null) {
+        m.connectionLostAt[team] = null;
+        pushEvent(m.state, 'connectionRestored', 'all', team === 'monster'
+          ? "The entity's signal is restored."
+          : 'Defender connection restored.', { severity: 'good' });
+        room.version++;
+      }
+    }
+    m.state.monsterDisconnected = m.connectionLostAt.monster !== null;
+    // Resuming between tick callbacks must not replay the paused interval as simulation backlog.
+    if (wasPaused) {
+      m.lastStepAt = now;
+      m.t0Epoch = now - m.state.t;
+    }
+  }
+
   /** Advance every room to `now`. Fixed-step simulation (cfg.tickMs) with bounded catch-up. */
   tick(now: number = this.now()): TickOutput {
     const out: TickOutput = { changed: [], playing: [], ended: [] };
     for (const room of [...this.rooms.values()]) {
       const v0 = room.version;
+      this.updateConnections(room, now);
+      const lost = room.match?.connectionLostAt;
+      if (room.stage === 'playing' && lost) {
+        const expired = (['monster', 'defenders'] as const)
+          .filter(team => lost[team] !== null && now - lost[team]! >= this.cfg.room.reconnectGraceMs)
+          .sort((a, b) => lost[a]! - lost[b]!);
+        const team = expired[0];
+        if (team) forfeit(room.match!.state, team, team === 'monster'
+          ? 'Defenders win — the entity failed to reconnect before the grace period expired.'
+          : 'Monster wins — all defenders failed to reconnect before the grace period expired.');
+      }
       // reconnection grace
       for (const p of [...room.players.values()]) {
+        // Preserve the match roster so staggered defender losses get a full whole-team grace period.
+        if (room.stage === 'playing' && room.match?.roles.get(p.id) !== 'spectator' && room.match?.roles.has(p.id)) continue;
         if (!p.connected && p.disconnectedAt !== null && now - p.disconnectedAt > this.cfg.room.reconnectGraceMs)
           this.removePlayer(room, p.id);
       }
@@ -409,13 +475,17 @@ export class RoomManager {
       if (room.stage === 'playing' && room.match) {
         const m = room.match;
         const tick = m.state.cfg.tickMs;
+        const paused = m.connectionLostAt.monster !== null || m.connectionLostAt.defenders !== null;
+        if (paused) m.lastStepAt = now;
         let steps = 0;
         while (now - m.lastStepAt >= tick && steps < 10 && !m.state.result) {
           step(m.ctx, m.state, tick, m.rng);
           m.lastStepAt += tick;
           steps++;
         }
-        if (now - m.lastStepAt > tick * 10) m.lastStepAt = now; // drop backlog after a stall
+        if (steps === 10 && now - m.lastStepAt >= tick) m.lastStepAt = now; // drop backlog after a stall
+        // The clock mapping must follow simulation, including pauses and discarded backlog.
+        m.t0Epoch = m.lastStepAt - m.state.t;
         out.playing.push(room);
         if (m.state.result) {
           room.stage = 'results';
@@ -456,8 +526,19 @@ export class RoomManager {
 
   playerView(room: Room, playerId: string, now: number = this.now()): PlayerView | null {
     const m = room.match;
-    if (!m) return null;
+    if (!m || !room.players.has(playerId)) return null;
     const role = m.roles.get(playerId) ?? 'spectator';
-    return projectView(m.ctx, m.state, role, { t0Epoch: m.t0Epoch, serverNow: now });
+    const view = projectView(m.ctx, m.state, role, { t0Epoch: m.t0Epoch, serverNow: now });
+    for (const team of ['monster', 'defenders'] as const) {
+      const ids = [...m.roles].filter(([, r]) => r === (team === 'monster' ? 'monster' : 'defender')).map(([id]) => id);
+      const connectedPlayers = ids.filter(id => room.players.get(id)?.connected).length;
+      const lost = m.connectionLostAt[team];
+      view[team === 'monster' ? 'monsterConnection' : 'defenderConnection'] = {
+        connected: connectedPlayers > 0, connectedPlayers, totalPlayers: ids.length,
+        reconnectDeadlineEpoch: lost === null ? null : lost + this.cfg.room.reconnectGraceMs,
+      };
+    }
+    view.pausedForReconnect = !m.state.result && (m.connectionLostAt.monster !== null || m.connectionLostAt.defenders !== null);
+    return view;
   }
 }

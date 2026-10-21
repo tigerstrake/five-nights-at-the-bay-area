@@ -9,9 +9,9 @@ export function PositionPlate({ view, sit, hq }: { view: MonsterView; sit: Situa
   if (!self.spawned) return null;
   const target = self.targetApproachId ? hq.approaches.find((a) => a.id === self.targetApproachId) : null;
   return (
-    <div className="pointer-events-none absolute left-2 top-2 z-[2] max-w-[min(420px,60%)] border border-[var(--mx-scar)] bg-[#070404e6] px-2.5 py-1.5">
+    <div className="pointer-events-none absolute left-2 top-2 z-[2] w-[250px] max-w-[60%] border border-[var(--mx-scar)] bg-[#070404e6] px-2.5 py-1.5">
       <div className="text-[10px] text-[var(--mx-ash)]">{self.moving ? 'Moving' : 'You are at'}</div>
-      <div className="truncate text-[14px] font-medium text-[var(--mx-bone)]">
+      <div className="text-[14px] font-medium leading-tight text-[var(--mx-bone)]">
         {self.moving ? `${nodeName(self.moving.from)} → ${nodeName(self.moving.to)}` : nodeName(self.nodeId)}
       </div>
       {self.moving && (
@@ -60,7 +60,8 @@ export function TargetingBar({
   count: number;
 }) {
   return (
-    <div className="absolute inset-x-0 top-2 z-[3] flex justify-center px-2" data-testid="monster-targeting">
+    // Top-left, clear of the map-mode toggle (top-right) at every width.
+    <div className="absolute left-2 right-[176px] top-2 z-[3] flex justify-start" data-testid="monster-targeting">
       <div className="flex max-w-full flex-wrap items-center gap-x-3 gap-y-1 border border-[var(--mx-vein)] bg-[#12050ae8] px-3 py-1.5 shadow-[0_0_30px_-8px_#ff3a4f]">
         <span className="mx-slab-title text-[var(--mx-vein)]">{mode}</span>
         <span className="text-[12px] text-[var(--mx-bone)]">
@@ -78,7 +79,12 @@ export function TargetingBar({
           </button>
         )}
         {pendingName && (
-          <button type="button" className="mx-door !border-[var(--mx-vein)] !text-[var(--mx-bone)]" onClick={onConfirm} data-testid="target-confirm">
+          <button
+            type="button"
+            className="mx-door !border-[var(--mx-vein)] !text-[var(--mx-bone)]"
+            onClick={onConfirm}
+            data-testid="target-confirm"
+          >
             <span className="mx-key !h-4 !text-[9px]">Enter</span> {mode === 'sabotage' ? 'Sabotage' : 'Plant decoy'}
           </button>
         )}
@@ -129,7 +135,9 @@ export function BreachBanner({ view, hq }: { view: MonsterView; hq: Headquarters
         )}
       >
         <div className="flex items-baseline justify-between gap-2">
-          <span className="mx-slab-title !text-[20px]">{b.stalled ? `${ap?.door ?? 'Door'} is sealed` : `Tearing through ${ap?.door ?? 'the door'}`}</span>
+          <span className="mx-slab-title !text-[20px]">
+            {b.stalled ? `${ap?.door ?? 'Door'} is sealed` : `Tearing through ${ap?.door ?? 'the door'}`}
+          </span>
           <span className="mx-readout text-[13px]">{Math.round(b.progress * 100)}%</span>
         </div>
         <div className="mx-bar mt-1.5 !h-2.5">

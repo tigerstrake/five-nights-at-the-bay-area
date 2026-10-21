@@ -15,11 +15,11 @@ import type {
   Team,
   WinReason,
 } from '@fnab/shared';
-import { edgeTravelMs, spawnCandidates } from '@fnab/shared';
+import { edgeTravelMs, spawnCandidates, MONSTER_COMMANDS } from '@fnab/shared';
 import type { MonsterBrain } from '../ai/types';
 import { buildMonsterKnowledge } from '../ai/knowledge';
 import type { GameState, Sighting } from './state';
-import { isOutage, matchEndT, monsterEffectiveNode, phaseAt, pushEvent } from './state';
+import { isOutage, matchEndT, monsterEffectiveNode, phaseAt, pushEvent, publicId } from './state';
 
 export interface EngineCtx {
   graph: Graph;
@@ -41,7 +41,7 @@ function nodeName(ctx: EngineCtx, id: string): string {
 
 function cameraAtNode(ctx: EngineCtx, s: GameState, nodeId: string) {
   const camId = ctx.graph.nodes.get(nodeId)?.cameraId;
-  return camId ? (s.cameras[camId] ?? null) : null;
+  return camId && Object.hasOwn(s.cameras, camId) ? s.cameras[camId]! : null;
 }
 
 function camWorking(s: GameState, cam: { status: string; repair: unknown } | null): boolean {
@@ -86,7 +86,7 @@ export function threatLevel(ctx: EngineCtx, s: GameState): number {
   return Math.round(raw * steps) / steps;
 }
 
-function addManifestation(ctx: EngineCtx, s: GameState, cameraId: string, nodeId: string, confidence: number, rng: Rng) {
+function addManifestation(ctx: EngineCtx, s: GameState, cameraId: string, nodeId: string, confidence: number, sightingId: number, rng: Rng) {
   const hops = hopsToHq(ctx, s, nodeId);
   let kind: ManifestationKind = byHops(s.cfg.detection.manifestationByHops, hops);
   // Low-confidence glimpses are never clearer than a silhouette.
@@ -95,13 +95,17 @@ function addManifestation(ctx: EngineCtx, s: GameState, cameraId: string, nodeId
   const strength = Math.max(0.15, Math.min(1, (1 - Math.min(H, hops) / H) * 0.85 + confidence * 0.25));
   const regions = Math.max(1, ctx.placementCount(cameraId));
   const [dmin, dmax] = s.cfg.detection.manifestationMs;
+  const regionIndex = rng.int(0, regions - 1);
+  const durationMs = Math.round(rng.range(dmin, dmax));
+  // Preserve simulation draw cadence, but never expose a raw simulation RNG output as an FX seed.
+  rng.int(0, 2 ** 31 - 1);
   s.manifestations[cameraId] = {
     kind,
     strength: Math.round(strength * 100) / 100,
-    regionIndex: rng.int(0, regions - 1),
+    regionIndex,
     startedAtT: s.t,
-    durationMs: Math.round(rng.range(dmin, dmax)),
-    seed: rng.int(0, 2 ** 31 - 1),
+    durationMs,
+    seed: publicId(s, sightingId) % (2 ** 31),
   };
 }
 
@@ -116,6 +120,8 @@ function addSighting(s: GameState, nodeId: string, confidence: number, source: S
     isDecoy,
   };
   s.sightings.push(sg);
+  const limit = s.cfg.visibility.maxRetainedSightings ?? 256;
+  if (s.sightings.length > limit) s.sightings.splice(0, s.sightings.length - limit);
   if (source === 'camera') s.stats.sightings++;
   if (isDecoy) s.stats.falseSightings++;
   return sg;
@@ -127,11 +133,11 @@ function sightingText(ctx: EngineCtx, nodeId: string, confidence: number): strin
   return `${label} on CAM ${nodeName(ctx, nodeId)} (${Math.round(confidence * 100)}%)`;
 }
 
-export function endMatch(s: GameState, winner: Team, reason: WinReason, approachId: string | null = null): void {
+export function endMatch(s: GameState, winner: Team, reason: WinReason, approachId: string | null = null, reasonText?: string): void {
   if (s.result) return;
   const ev: GameEvent = pushEvent(
     s,
-    reason === 'breach' ? 'breached' : reason === 'capture' ? 'captured' : 'timer',
+    reason === 'breach' ? 'breached' : reason === 'capture' ? 'captured' : reason === 'forfeit' ? 'forfeit' : 'timer',
     'all',
     reason === 'breach'
       ? 'HEADQUARTERS BREACHED'
@@ -139,16 +145,15 @@ export function endMatch(s: GameState, winner: Team, reason: WinReason, approach
         ? 'MONSTER CONTAINED — capture complete'
         : reason === 'timer'
           ? 'Dawn breaks — the defenders survived'
-          : `${winner === 'monster' ? 'Defenders' : 'Monster'} forfeited`,
+          : reasonText ?? `${winner === 'monster' ? 'Defenders' : 'Monster'} forfeited`,
     { severity: winner === 'defenders' ? 'good' : 'alert', approachId: approachId ?? undefined },
   );
   void ev;
   s.stats.durationMs = Math.max(0, s.t - s.prepMs);
   s.stats.monsterNodesVisited = new Set(s.monster.visited).size;
   // Post-match reveal: annotate decoy sightings in the timeline.
-  const decoyIds = new Set(s.sightings.filter((x) => x.isDecoy).map((x) => x.t + ':' + x.nodeId));
-  const timeline = s.events.map(({ audience: _a, ...rest }) => {
-    if (rest.kind === 'sighting' && rest.nodeId && decoyIds.has(rest.t + ':' + rest.nodeId)) {
+  const timeline = s.events.map(({ audience: _a, decoy, ...rest }) => {
+    if (decoy) {
       return { ...rest, text: rest.text + ' [DECOY]' };
     }
     return rest;
@@ -156,6 +161,7 @@ export function endMatch(s: GameState, winner: Team, reason: WinReason, approach
   const result: MatchResult = {
     winner,
     reason,
+    reasonText: reasonText ?? ev.text,
     hqId: s.hqId,
     approachId,
     endedAtT: s.t,
@@ -166,14 +172,15 @@ export function endMatch(s: GameState, winner: Team, reason: WinReason, approach
   s.result = result;
 }
 
-export function forfeit(s: GameState, team: Team): void {
-  endMatch(s, team === 'monster' ? 'defenders' : 'monster', 'forfeit');
+export function forfeit(s: GameState, team: Team, reasonText?: string): void {
+  endMatch(s, team === 'monster' ? 'defenders' : 'monster', 'forfeit', null, reasonText);
 }
 
 // ───────────────────────────── step ─────────────────────────────
 
 export function step(ctx: EngineCtx, s: GameState, dtMs: number, rng: Rng): void {
   if (s.result) return;
+  if (s.monsterDisconnected) return;
   s.t += dtMs;
   const dt = dtMs / 1000;
 
@@ -200,8 +207,11 @@ export function step(ctx: EngineCtx, s: GameState, dtMs: number, rng: Rng): void
   if (s.result) return;
   stepContainment(ctx, s, dtMs);
   if (s.result) return;
-  stepDetection(ctx, s, rng);
-  stepDecoys(ctx, s, rng);
+  // Both kinds publish only at a camera roll boundary, including queued initial decoys.
+  if (s.monster.spawned && s.t >= s.monster.nextDetectAt) {
+    stepDetection(ctx, s, rng);
+    stepDecoys(ctx, s, rng);
+  }
   prune(s);
 }
 
@@ -276,7 +286,9 @@ function stepDoors(ctx: EngineCtx, s: GameState, dt: number) {
         door.heat = cfg.heatAfterJam;
         door.jammedUntil = s.t + cfg.jamMs;
         const ap = hq(ctx, s).approaches.find((a) => a.id === door.approachId);
-        pushEvent(s, 'doorJammed', 'all', `${ap?.door ?? 'Door'} overheated and jammed OPEN`, {
+        const node = monsterEffectiveNode(s);
+        const observed = !!ap && !!node && ctx.graph.hops(node, ap.fromNode) <= s.cfg.visibility.doorObserveHops;
+        pushEvent(s, 'doorJammed', observed ? 'all' : 'defenders', `${ap?.door ?? 'Door'} overheated and jammed OPEN`, {
           approachId: door.approachId,
           severity: 'alert',
         });
@@ -382,7 +394,7 @@ function stepMonster(ctx: EngineCtx, s: GameState, dtMs: number, rng: Rng) {
   if (m.held) {
     const h = m.held;
     if (h.struggling) {
-      const mult = s.containment ? s.cfg.containment.containedStruggleMult : 1;
+      const mult = s.containment ? s.cfg.containment.containedStruggleMult * (s.cfg.containment.phaseStruggleMult?.[s.phase] ?? 1) : 1;
       h.struggle = Math.min(1, h.struggle + (dtMs / s.cfg.containment.struggleBreakMs) * mult);
       if (h.struggle >= 1) {
         if (s.containment) breakContainment(s, 'The monster tore free of containment!');
@@ -447,6 +459,8 @@ function onArrive(ctx: EngineCtx, s: GameState, nodeId: string, rng: Rng) {
   m.visited.push(nodeId);
   if (m.visited.length > 200) m.visited.splice(0, m.visited.length - 200);
   s.monsterPath.push({ nodeId, t: s.t });
+  const pathLimit = s.cfg.visibility.maxRetainedPath ?? 512;
+  if (s.monsterPath.length > pathLimit) s.monsterPath.splice(0, s.monsterPath.length - pathLimit);
   m.nextDetectAt = Math.min(m.nextDetectAt, s.t + 200); // quick roll after arriving
 
   // Traps
@@ -483,7 +497,7 @@ function onArrive(ctx: EngineCtx, s: GameState, nodeId: string, rng: Rng) {
 
 function discoverSensor(ctx: EngineCtx, s: GameState, id: string, nodeId: string) {
   const k = s.monster.knowledge;
-  const isNew = !k.knownSensors[id];
+  const isNew = !Object.hasOwn(k.knownSensors, id);
   const sensor = s.sensors.find((sn) => sn.id === id);
   k.knownSensors[id] = { nodeId, seenAt: s.t, disabledUntil: sensor?.disabledUntil ?? null };
   if (isNew) pushEvent(s, 'sensorFound', 'monster', `You sense a motion sensor at ${nodeName(ctx, nodeId)}`, { nodeId, severity: 'warn' });
@@ -588,9 +602,10 @@ function stepContainment(ctx: EngineCtx, s: GameState, dtMs: number) {
 
 function stepDetection(ctx: EngineCtx, s: GameState, rng: Rng) {
   const m = s.monster;
-  if (!m.spawned || m.held || s.t < m.nextDetectAt) return;
+  if (!m.spawned || s.t < m.nextDetectAt) return;
   const justArrived = !m.moving && s.t - m.arrivedAt <= s.cfg.detection.rollEveryMs;
   m.nextDetectAt = s.t + s.cfg.detection.rollEveryMs;
+  if (m.held) return;
   const node = monsterEffectiveNode(s);
   if (!node) return;
   const cam = cameraAtNode(ctx, s, node);
@@ -601,10 +616,9 @@ function stepDetection(ctx: EngineCtx, s: GameState, rng: Rng) {
   if (m.moving) chance *= d.movingMult;
   if (justArrived) chance += d.arrivalBonus * d.stanceMult[m.stance];
   if (!rng.chance(Math.min(0.95, chance))) return;
-  const maxC = m.stance === 'HIDE' ? d.confidence.hideMax : d.confidence.max;
-  const conf = rng.range(d.confidence.min, maxC);
-  addSighting(s, node, conf, 'camera', false);
-  addManifestation(ctx, s, cam!.cameraId, node, conf, rng);
+  const conf = cameraConfidence(s, rng);
+  const sighting = addSighting(s, node, conf, 'camera', false);
+  addManifestation(ctx, s, cam!.cameraId, node, conf, sighting.id, rng);
   pushEvent(s, 'sighting', 'defenders', sightingText(ctx, node, conf), {
     nodeId: node,
     cameraId: cam!.cameraId,
@@ -630,20 +644,24 @@ function stepDecoys(ctx: EngineCtx, s: GameState, rng: Rng) {
 function emitDecoySighting(ctx: EngineCtx, s: GameState, nodeId: string, rng: Rng) {
   const cam = cameraAtNode(ctx, s, nodeId);
   if (!camWorking(s, cam)) return;
-  const d = s.cfg.detection;
-  const conf = rng.range(d.confidence.min + 0.1, d.confidence.max);
-  addSighting(s, nodeId, conf, 'camera', true);
-  addManifestation(ctx, s, cam!.cameraId, nodeId, conf, rng);
-  pushEvent(s, 'sighting', 'defenders', sightingText(ctx, nodeId, conf), {
+  const conf = cameraConfidence(s, rng);
+  const sighting = addSighting(s, nodeId, conf, 'camera', true);
+  addManifestation(ctx, s, cam!.cameraId, nodeId, conf, sighting.id, rng);
+  const event = pushEvent(s, 'sighting', 'defenders', sightingText(ctx, nodeId, conf), {
     nodeId,
     cameraId: cam!.cameraId,
     severity: conf >= 0.8 ? 'alert' : 'warn',
   });
+  event.decoy = true;
+}
+
+function cameraConfidence(s: GameState, rng: Rng): number {
+  const c = s.cfg.detection.confidence;
+  return rng.range(c.min, s.monster.stance === 'HIDE' ? c.hideMax : c.max);
 }
 
 function prune(s: GameState) {
   const ttl = s.cfg.detection.sightingTtlMs;
-  if (s.sightings.length > 200) s.sightings = s.sightings.slice(-200);
   s.sightings = s.sightings.filter((x) => s.t - x.t < ttl * 3);
   const k = s.monster.knowledge;
   const mem = s.cfg.visibility.monsterMemoryMs;
@@ -657,20 +675,40 @@ function prune(s: GameState) {
 export function applyAction(ctx: EngineCtx, s: GameState, actor: Actor, action: DefenderAction | MonsterAction, rng: Rng): ActionResult {
   if (s.result) return fail('Match is over');
   if (actor.team === 'monster') return applyMonsterAction(ctx, s, action as MonsterAction, rng);
-  const before = s.events.length;
+  const before = s.nextId;
   const res = applyDefenderAction(ctx, s, action as DefenderAction, rng);
   // Attribute events caused by this action to the acting defender (shown in the team log).
-  for (let i = before; i < s.events.length; i++) if (s.events[i]!.audience !== 'monster') s.events[i]!.by = actor.playerId;
+  for (let i = s.events.length - 1; i >= 0 && s.events[i]!.id >= before; i--)
+    if (s.events[i]!.audience !== 'monster') s.events[i]!.by = actor.playerId;
   return res;
 }
 
 function applyMonsterAction(ctx: EngineCtx, s: GameState, a: MonsterAction, rng: Rng): ActionResult {
+  const m = s.monster;
+  if (s.monsterDisconnected) return fail('Waiting for reconnection');
+  if (a.type === 'chooseSpawn' && m.spawnChoice === a.nodeId && s.phase === 'preparation') return ok;
+  // Validate even direct engine callers, then suppress identical commands before consuming a gap/cooldown.
+  if (a.type === 'command') {
+    if (!MONSTER_COMMANDS.includes(a.command) || a.command === ('SABOTAGE' as string) || a.command === ('DECOY' as string)) return fail('Unknown command');
+    if (a.approachId && !hq(ctx, s).approaches.some(x => x.id === a.approachId)) return fail('Unknown approach');
+    if (m.held && a.command === 'RETREAT' && m.held.struggling) return ok;
+    if (!m.held && a.command === m.stance && (a.approachId ?? null) === m.targetApproachId) return ok;
+  }
+  // One gate for stances, spawn selection and abilities; rejected actions never consume it.
+  if (s.t - m.lastCommandAt < s.cfg.monster.globalCommandGapMs) return fail('Too fast — the beast needs a moment');
+  const result = executeMonsterAction(ctx, s, a, rng);
+  if (result.ok) m.lastCommandAt = s.t;
+  return result;
+}
+
+function executeMonsterAction(ctx: EngineCtx, s: GameState, a: MonsterAction, rng: Rng): ActionResult {
   const m = s.monster;
   const g = ctx.graph;
   switch (a.type) {
     case 'chooseSpawn': {
       if (s.phase !== 'preparation') return fail('Spawn can only be chosen during preparation');
       if (!spawnCandidates(g, s.hqId, s.cfg.spawn).includes(a.nodeId)) return fail('Not a valid spawn point for this HQ');
+      if (m.spawnChoice === a.nodeId) return ok;
       m.spawnChoice = a.nodeId;
       pushEvent(s, 'info', 'monster', `You will emerge at ${nodeName(ctx, a.nodeId)}`, { nodeId: a.nodeId });
       return ok;
@@ -678,7 +716,6 @@ function applyMonsterAction(ctx: EngineCtx, s: GameState, a: MonsterAction, rng:
     case 'command': {
       const retarget = a.command === m.stance && !m.held;
       if (!retarget && m.cooldowns[a.command] > s.t) return fail(`${a.command} on cooldown`);
-      if (s.t - m.lastCommandAt < s.cfg.monster.globalCommandGapMs) return fail('Too fast — the beast needs a moment');
       if (a.approachId && !hq(ctx, s).approaches.some((x) => x.id === a.approachId)) return fail('Unknown approach');
       m.lastCommandAt = s.t;
       s.stats.commandsIssued++;
@@ -754,12 +791,13 @@ function applyMonsterAction(ctx: EngineCtx, s: GameState, a: MonsterAction, rng:
     }
     case 'decoy': {
       if (!m.spawned) return fail('Not on the map yet');
+      if (m.held) return fail('You are restrained');
       if (m.cooldowns.DECOY > s.t) return fail('DECOY on cooldown');
       if (!g.has(a.nodeId)) return fail('Unknown node');
       if (!withinRange(ctx, s, a.nodeId, s.cfg.monster.decoyRangeHops)) return fail('Target out of range');
       const cam = cameraAtNode(ctx, s, a.nodeId);
       if (!camWorking(s, cam)) return fail('That camera cannot be fooled (no working feed)');
-      emitDecoySighting(ctx, s, a.nodeId, rng);
+      m.pendingDecoys.push({ nodeId: a.nodeId, at: Math.max(s.t + s.cfg.tickMs, m.nextDetectAt) });
       const [lo, hi] = s.cfg.monster.decoyFollowupMs;
       m.pendingDecoys.push({ nodeId: a.nodeId, at: s.t + Math.round(rng.range(lo, hi)) });
       m.cooldowns.DECOY = s.t + s.cfg.monster.cooldownMs.DECOY;
@@ -788,7 +826,7 @@ function applyDefenderAction(ctx: EngineCtx, s: GameState, a: DefenderAction, rn
   if (s.phase === 'preparation' && !prepAllowed) return fail('Only sensors and traps can be set up during preparation');
   switch (a.type) {
     case 'door': {
-      const door = s.doors[a.approachId];
+      const door = Object.hasOwn(s.doors, a.approachId) ? s.doors[a.approachId] : undefined;
       if (!door) return fail('Unknown door');
       const ap = hq(ctx, s).approaches.find((x) => x.id === a.approachId)!;
       if (a.closed) {
@@ -809,7 +847,7 @@ function applyDefenderAction(ctx: EngineCtx, s: GameState, a: DefenderAction, rn
       if (s.sensors.length >= cfg.sensors.maxCount) return fail(`Sensor limit reached (${cfg.sensors.maxCount})`);
       if (s.sensors.some((x) => x.nodeId === a.nodeId)) return fail('Sensor already there');
       if (!spendPower(s, cfg.power.sensorPlaceCost)) return fail('Not enough power');
-      s.sensors.push({ id: `s${s.nextId++}`, nodeId: a.nodeId, disabledUntil: null, lastPingAt: null });
+      s.sensors.push({ id: `s${publicId(s, s.nextId++)}`, nodeId: a.nodeId, disabledUntil: null, lastPingAt: null });
       pushEvent(s, 'info', 'defenders', `Motion sensor placed at ${nodeName(ctx, a.nodeId)}`, { nodeId: a.nodeId });
       return ok;
     }
@@ -824,7 +862,7 @@ function applyDefenderAction(ctx: EngineCtx, s: GameState, a: DefenderAction, rn
       if (s.traps.some((x) => x.nodeId === a.nodeId)) return fail('Trap already there');
       if (!spendPower(s, cfg.power.trapArmCost)) return fail('Not enough power');
       const armDelay = s.phase === 'preparation' ? 0 : cfg.traps.armDelayMs;
-      s.traps.push({ id: `t${s.nextId++}`, nodeId: a.nodeId, armedAt: s.t + armDelay });
+      s.traps.push({ id: `t${publicId(s, s.nextId++)}`, nodeId: a.nodeId, armedAt: s.t + armDelay });
       s.stats.trapsArmed++;
       pushEvent(s, 'trapArmed', 'defenders', `Trap arming at ${nodeName(ctx, a.nodeId)}`, { nodeId: a.nodeId });
       return ok;
@@ -880,7 +918,7 @@ function applyDefenderAction(ctx: EngineCtx, s: GameState, a: DefenderAction, rn
       return ok;
     }
     case 'repair': {
-      const cam = s.cameras[a.cameraId];
+      const cam = Object.hasOwn(s.cameras, a.cameraId) ? s.cameras[a.cameraId] : undefined;
       if (!cam) return fail('Unknown camera');
       if (cam.status === 'ok') return fail('Camera is working');
       if (cam.repair) return fail('Already repairing');
@@ -900,7 +938,7 @@ function applyDefenderAction(ctx: EngineCtx, s: GameState, a: DefenderAction, rn
       if (s.lures.length >= cfg.lure.maxActive) return fail('Too many active lures');
       if (!spendPower(s, cfg.power.lureCost)) return fail('Not enough power');
       s.lureReadyAt = s.t + cfg.lure.cooldownMs;
-      const lure = { id: `l${s.nextId++}`, nodeId: a.nodeId, t: s.t, expiresAt: s.t + cfg.lure.durationMs };
+      const lure = { id: `l${publicId(s, s.nextId++)}`, nodeId: a.nodeId, t: s.t, expiresAt: s.t + cfg.lure.durationMs };
       s.lures.push(lure);
       s.monster.knowledge.disturbances.push({ nodeId: a.nodeId, t: s.t, expiresAt: lure.expiresAt });
       pushEvent(s, 'lure', 'defenders', `Alarm lure sounding at ${nodeName(ctx, a.nodeId)}`, { nodeId: a.nodeId });

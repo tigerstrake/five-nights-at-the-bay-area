@@ -27,7 +27,8 @@ export function SituationPanel({ view, sit, t, hq }: { view: MonsterView; sit: S
     else if (sit.focusNode) factors.push(sit.camByNode[sit.focusNode] ? 'Camera here is blind' : 'No camera on this spot');
     if (sit.sensorsInReach) factors.push(`${sit.sensorsInReach} known sensor${sit.sensorsInReach > 1 ? 's' : ''} in reach`);
     if (sit.scanNearby) factors.push('A scan swept nearby');
-    if (sit.seenRecently) factors.push(`Maybe seen at ${nodeName(sit.seenRecently.nodeId)} ${Math.round(sit.seenRecently.ago / 1000)}s ago`);
+    if (sit.seenRecently)
+      factors.push(`Maybe seen at ${nodeName(sit.seenRecently.nodeId)} ${Math.round(sit.seenRecently.ago / 1000)}s ago`);
   }
   return (
     <section className="mx-slab shrink-0" data-testid="monster-situation">
@@ -55,7 +56,12 @@ export function SituationPanel({ view, sit, t, hq }: { view: MonsterView; sit: S
             value={sit.pathAhead.length ? `${sit.pathWatched}/${sit.pathAhead.length}` : '—'}
             sub={sit.pathAhead.length ? 'live cameras ahead' : 'holding'}
           />
-          <Stat label="Blind spots" value={`${sit.blindNear}/${sit.camsNear}`} sub="dead cams ≤2 hops" tone={sit.blindNear ? '#e4d9c8' : undefined} />
+          <Stat
+            label="Blind spots"
+            value={`${sit.blindNear}/${sit.camsNear}`}
+            sub="dead cams ≤2 hops"
+            tone={sit.blindNear ? '#e4d9c8' : undefined}
+          />
         </div>
         <DoorsRow view={view} t={t} hq={hq} />
       </div>
@@ -128,7 +134,9 @@ export function EmergencePanel({
                   choice === n ? 'border-[var(--mx-vein)] bg-[#24070c]' : 'border-transparent hover:bg-[#170d0c]',
                 )}
               >
-                <span className={clsx('h-2 w-2 shrink-0 rotate-45', choice === n ? 'bg-[var(--mx-vein)]' : 'border border-[var(--mx-blood)]')} />
+                <span
+                  className={clsx('h-2 w-2 shrink-0 rotate-45', choice === n ? 'bg-[var(--mx-vein)]' : 'border border-[var(--mx-blood)]')}
+                />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[12px] text-[var(--mx-bone)]">{nodeName(n)}</span>
                   <span className="block truncate text-[10px] text-[var(--mx-ash-dim)]">
@@ -150,7 +158,7 @@ export function EmergencePanel({
 
 // ── intent stream ─────────────────────────────────────────────────────
 
-type Kind = 'intent' | 'order' | 'act' | 'door' | 'seen' | 'sense' | 'phase' | 'alarm' | 'note';
+type Kind = 'intent' | 'order' | 'act' | 'door' | 'seen' | 'sense' | 'phase' | 'grid' | 'alarm' | 'note';
 
 function classify(e: VisibleEvent): Kind {
   if (e.kind === 'command') return e.text.startsWith('Command:') ? 'order' : 'intent';
@@ -158,7 +166,10 @@ function classify(e: VisibleEvent): Kind {
   if (e.kind === 'exposed' || e.kind === 'sighting') return 'seen';
   if (e.kind === 'sensorFound' || e.kind === 'scanFelt' || e.kind === 'disturbance') return 'sense';
   if (e.kind === 'phase') return 'phase';
-  if (['breachStart', 'breachStalled', 'breached', 'doorBattered', 'doorJammed', 'doorClosed', 'doorOpened'].includes(e.kind)) return 'door';
+  // Their power failing is an opening for the creature, not pain.
+  if (e.kind === 'powerOut' || e.kind === 'powerLow' || e.kind === 'powerRestored') return 'grid';
+  if (['breachStart', 'breachStalled', 'breached', 'doorBattered', 'doorJammed', 'doorClosed', 'doorOpened'].includes(e.kind))
+    return 'door';
   if (e.severity === 'alert' || e.kind === 'trapTriggered' || e.kind === 'containmentStart' || e.kind === 'struggle') return 'alarm';
   return 'note';
 }
@@ -171,6 +182,7 @@ const KIND_TAG: Record<Kind, { tag: string; color: string }> = {
   seen: { tag: 'seen', color: '#d98a3a' },
   sense: { tag: 'sense', color: '#c4d2d6' },
   phase: { tag: 'night', color: '#8f847a' },
+  grid: { tag: 'grid', color: '#d98a3a' },
   alarm: { tag: 'pain', color: '#ff3a4f' },
   note: { tag: '', color: '#8f847a' },
 };
@@ -247,7 +259,10 @@ export function NightBar({ view, sit, t }: { view: MonsterView; sit: Situation; 
       <div className="flex shrink-0 items-baseline gap-2">
         <span className="mx-slab-title text-[var(--mx-vein)]">{PHASE_LABEL[view.phase]}</span>
         {view.phase !== 'preparation' && (
-          <span className="mx-readout text-[10px] text-[var(--mx-ash)]" title="This phase's multipliers on your speed and the AI's aggression">
+          <span
+            className="mx-readout text-[10px] text-[var(--mx-ash)]"
+            title="This phase's multipliers on your speed and the AI's aggression"
+          >
             pace ×{speed.toFixed(2)} · aggression ×{aggression.toFixed(1)}
           </span>
         )}
@@ -260,14 +275,7 @@ export function NightBar({ view, sit, t }: { view: MonsterView; sit: Situation; 
             style={{
               left: pct(s.from),
               width: `calc(${pct(s.to)} - ${pct(s.from)})`,
-              background:
-                s.id === view.phase
-                  ? '#3a0c13'
-                  : s.id === 'final'
-                    ? '#1f0a0c'
-                    : s.id === 'escalation'
-                      ? '#170c0b'
-                      : '#120b0a',
+              background: s.id === view.phase ? '#3a0c13' : s.id === 'final' ? '#1f0a0c' : s.id === 'escalation' ? '#170c0b' : '#120b0a',
             }}
             title={PHASE_LABEL[s.id]}
           />

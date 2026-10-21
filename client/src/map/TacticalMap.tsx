@@ -35,6 +35,7 @@ import { resolveTheme, SENSOR_RADIUS_HOPS, type DoorState, type MapLayers, type 
 import { PALETTES, SEM, type MapPalette } from './theme';
 import { useMonsterMotion } from './useMonsterMotion';
 import './map.css';
+import { rootZoom } from '../hooks/useConsoleZoom';
 
 export type { MapLayers, MarkKind, MapTheme, DoorState } from './layers';
 export { monsterXY } from './derive';
@@ -350,7 +351,8 @@ function useSize(ref: React.RefObject<HTMLDivElement | null>) {
     const el = ref.current;
     if (!el) return;
     const measure = () => {
-      const r = el.getBoundingClientRect();
+      // Layout pixels (not getBoundingClientRect): the App may apply CSS `zoom` on large screens.
+      const r = { width: el.clientWidth, height: el.clientHeight };
       setSize((s) => (Math.abs(s.w - r.width) < 1 && Math.abs(s.h - r.height) < 1 ? s : { w: r.width, h: r.height }));
     };
     measure();
@@ -377,9 +379,15 @@ export function TacticalMap(props: MapProps) {
   const sources = useGame((s) => s.cameraStatuses);
 
   // ---- viewport ----
-  const k0 = Math.min(W / BASE_BOX.w, H / BASE_BOX.h);
+  // Fit the network into the panel minus any overlay insets; (fx, fy) is the screen point the view centre maps to.
+  const ins = props.inset ?? {};
+  const iL = ins.left ?? 0, iR = ins.right ?? 0, iT = ins.top ?? 0, iB = ins.bottom ?? 0;
+  const fitW = Math.max(W * 0.5, W - iL - iR), fitH = Math.max(H * 0.5, H - iT - iB);
+  const fx = (iL * (W - fitW)) / (iL + iR || 1) + fitW / 2;
+  const fy = (iT * (H - fitH)) / (iT + iB || 1) + fitH / 2;
+  const k0 = Math.min(fitW / BASE_BOX.w, fitH / BASE_BOX.h);
   const k = k0 * view.z;
-  const vb: Vb = { x: view.cx - W / k / 2, y: view.cy - H / k / 2, w: W / k, h: H / k };
+  const vb: Vb = { x: view.cx - fx / k, y: view.cy - fy / k, w: W / k, h: H / k };
   // quantise the unit size so memoised layers only re-render on meaningful scale changes
   const u = Math.round((1 / k) * 200) / 200;
 
@@ -404,28 +412,29 @@ export function TacticalMap(props: MapProps) {
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const r = svg.getBoundingClientRect();
-      const mx = e.clientX - r.left, my = e.clientY - r.top;
+      const zf = rootZoom(svg);
+      const mx = (e.clientX - r.left) / zf, my = (e.clientY - r.top) / zf;
       setView((v) => {
         const kk = k0 * v.z;
-        const wx = v.cx - W / kk / 2 + mx / kk;
-        const wy = v.cy - H / kk / 2 + my / kk;
+        const wx = v.cx - fx / kk + mx / kk;
+        const wy = v.cy - fy / kk + my / kk;
         const z2 = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, v.z * Math.exp(-e.deltaY * 0.0016)));
         const k2 = k0 * z2;
-        return clampView(z2, wx - mx / k2 + W / k2 / 2, wy - my / k2 + H / k2 / 2);
+        return clampView(z2, wx - mx / k2 + fx / k2, wy - my / k2 + fy / k2);
       });
     };
     svg.addEventListener('wheel', onWheel, { passive: false });
     return () => svg.removeEventListener('wheel', onWheel);
-  }, [k0, W, H, clampView, zoomable]);
+  }, [k0, fx, fy, clampView, zoomable]);
 
   // keep the view valid when the panel resizes
   useEffect(() => setView((v) => clampView(v.z, v.cx, v.cy)), [clampView]);
 
-  const drag = useRef<{ x: number; y: number; cx: number; cy: number; moved: boolean; id: number } | null>(null);
+  const drag = useRef<{ x: number; y: number; cx: number; cy: number; moved: boolean; id: number; zf: number } | null>(null);
   const suppressClick = useRef(false);
   const onPointerDown = (e: React.PointerEvent) => {
     if (!zoomable || e.button !== 0) return;
-    drag.current = { x: e.clientX, y: e.clientY, cx: view.cx, cy: view.cy, moved: false, id: e.pointerId };
+    drag.current = { x: e.clientX, y: e.clientY, cx: view.cx, cy: view.cy, moved: false, id: e.pointerId, zf: rootZoom(svgRef.current) };
   };
   const onPointerMove = (e: React.PointerEvent) => {
     const d = drag.current;
@@ -436,7 +445,7 @@ export function TacticalMap(props: MapProps) {
       d.moved = true;
       svgRef.current?.setPointerCapture(d.id);
     }
-    setView((v) => clampView(v.z, d.cx - dx / k, d.cy - dy / k));
+    setView((v) => clampView(v.z, d.cx - dx / d.zf / k, d.cy - dy / d.zf / k));
   };
   const onPointerUp = () => {
     if (drag.current?.moved) {

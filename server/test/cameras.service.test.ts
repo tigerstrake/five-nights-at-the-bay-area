@@ -111,6 +111,27 @@ describe('mode selection', () => {
 });
 
 describe('status derivation', () => {
+  it('10 caps streaming master and media playlist bytes, cancels the body and bounds lines before parsing', async () => {
+    for (const media of [false, true]) {
+      let cancelled = false;
+      const oversized = new Response(new ReadableStream<Uint8Array>({
+        pull(controller) { controller.enqueue(new Uint8Array(128).fill(65)); },
+        cancel() { cancelled = true; },
+      }));
+      const { svc, lm, ff } = setup(() => new Response('', { status: 500 }), {
+        cameras: [A], config: { maxPlaylistBytes: 256, maxPlaylistLines: 10 },
+      });
+      ff.set(healthy(lm, { hls: u => u.endsWith(media ? 'chunklist_1.m3u8' : 'playlist.m3u8') ? oversized : hlsHandler(u) }));
+      await svc.tick();
+      expect(cancelled).toBe(true);
+      expect(svc.getStatus('a')).toMatchObject({ mode: 'snapshot', streamUrl: null, reason: expect.stringContaining('byte limit') });
+    }
+    const { svc, lm, ff } = setup(() => new Response('', { status: 500 }), { cameras: [A], config: { maxPlaylistLines: 5 } });
+    ff.set(healthy(lm, { hls: u => u.endsWith('playlist.m3u8') ? new Response('#EXTM3U\n' + '# comment\n'.repeat(10)) : hlsHandler(u) }));
+    await svc.tick();
+    expect(svc.getStatus('a')).toMatchObject({ mode: 'snapshot', reason: expect.stringContaining('line limit') });
+  });
+
   it('starts simulated ("checking") and never claims real imagery before a probe', () => {
     const { svc } = setup(() => new Response('', { status: 500 }));
     for (const s of svc.getStatuses()) {
