@@ -14,6 +14,7 @@ export interface PlacementRegion {
   w: number;
   h: number;
   scale: number; // figure height relative to frame height at this spot
+  occlude?: number; // optional: fraction of the figure hidden from the feet up by foreground clutter (shrubs, guardrail)
 }
 
 /** A server-approved appearance of the monster on one camera. Only sent when visibility rules allow. */

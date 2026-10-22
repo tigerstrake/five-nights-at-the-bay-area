@@ -5,9 +5,10 @@
 import type { FeedFxParams, PlacementRegion } from '../index';
 import { ctx2d, getGrainTiles, getInterlaceTile, getScanlineTile, getSnowTiles, makeCanvas, makeVignette, tileFill } from '../core/noise';
 import { clamp, rand01, smoothstep } from '../core/rng';
-import { isReducedMotion } from '../core/settings';
+import { fxNow, isReducedMotion } from '../core/settings';
 import { drawSourceBand, drawSourceFull, findSourceElement, measureSource, type SourceEl, type SourceInfo } from '../core/source';
 import { drawManifestation, type FrameRect } from '../monster/manifest';
+import { SceneProber, sunElevationDeg } from '../monster/grade';
 
 /** Timeline of the sabotage transition (ms after the status flips to 'sabotaged'). */
 export const SABOTAGE_TEAR_MS = 450;
@@ -44,10 +45,10 @@ export class OverlayRenderer {
   private lastScan = -1e9;
   private lastMeasure = -1e9;
   private srcPlacementRaw: string | null = null;
-  private sceneLum = 0.3;
-  private lumAt = -1e9;
-  private lumReadable = true;
-  private lumCanvas: HTMLCanvasElement | null = null;
+  private prober = new SceneProber();
+  private mediaFrame = 0;
+  private lastMediaTime = -1;
+  private lastMediaKey = '';
   private srcPlacement: PlacementRegion[] | null = null;
 
   private tears: Tear[] = [];
@@ -131,8 +132,7 @@ export class OverlayRenderer {
         this.source = null;
         this.lastMeasure = -1e9;
         this.fringeKey = '';
-        this.lumReadable = true;
-        this.lumAt = -1e9;
+        this.prober.reset();
       }
     }
     if (this.sourceEl && (perf - this.lastMeasure > 500 || !this.source)) {
@@ -201,15 +201,21 @@ export class OverlayRenderer {
     }
 
     // --- monster ------------------------------------------------------------------------------
+    const scene = this.sampleScene(perf, !!p.manifestation);
     const mres = drawManifestation(p.manifestation, this.srcPlacement ?? p.placement, {
       base: b,
       add: a,
       frame,
-      now: Date.now(),
+      now: fxNow(),
       reduced,
       px: this.k * Math.max(1, W / (this.k * 640)),
       frameIndex: fi,
-      sceneLum: this.sampleLum(perf),
+      sceneLum: scene?.mean ?? 0.3,
+      scene,
+      mediaFrame: this.mediaFrame,
+      visible: { x: 0, y: 0, w: W, h: H },
+      sim: p.sourceMode === 'simulated',
+      video: p.sourceMode !== 'simulated' && src?.el instanceof HTMLVideoElement,
     });
 
     let I = clamp(p.interference);
@@ -385,24 +391,40 @@ export class OverlayRenderer {
     }
   }
 
-  /** Mean luminance of the source picture (only when pixels are readable: same-origin / CORS). */
-  private sampleLum(perf: number): number {
+  /**
+   * Scene probe of the source picture (only when pixels are readable: blob / same-origin stills, MSE video, our
+   * simulated canvas). Also advances `mediaFrame` when the picture itself changes, so the creature's matched noise
+   * and shimmer follow real video frames and stay frozen on a still.
+   */
+  private sampleScene(perf: number, active: boolean) {
     const src = this.source;
-    if (!src || !this.lumReadable || perf - this.lumAt < 1500) return this.sceneLum;
-    this.lumAt = perf;
-    try {
-      this.lumCanvas ??= makeCanvas(8, 8);
-      const x = ctx2d(this.lumCanvas, { willReadFrequently: true });
-      x.drawImage(src.el, 0, 0, 8, 8);
-      const d = x.getImageData(0, 0, 8, 8).data;
-      let sum = 0;
-      for (let i = 0; i < d.length; i += 4) sum += 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
-      this.sceneLum = sum / (64 * 255);
-    } catch {
-      this.lumReadable = false; // tainted (no CORS): keep the neutral default
-      this.lumCanvas = null;
+    if (!src) return null;
+    const el = src.el;
+    if (el instanceof HTMLVideoElement) {
+      if (el.currentTime !== this.lastMediaTime) {
+        this.lastMediaTime = el.currentTime;
+        this.mediaFrame++;
+      }
+    } else if (el instanceof HTMLImageElement) {
+      const key = el.currentSrc || el.src;
+      if (key !== this.lastMediaKey) {
+        this.lastMediaKey = key;
+        this.mediaFrame++;
+      }
+    } else {
+      this.mediaFrame = this.frameIndex;
     }
-    return this.sceneLum;
+    if (!active) this.prober.resetMotion();
+    // Real feeds are current (stills ≤ 5 min, video ~30 s behind): the sun decides day vs night. A source may carry
+    // an explicit hint (data-fx-daylight, 0..1; the FX lab uses it for archived frames). Simulated scenes: image only.
+    const hint = el.getAttribute('data-fx-daylight');
+    const h = hint !== null && hint !== '' ? Number(hint) : NaN;
+    this.prober.daylight = Number.isFinite(h)
+      ? clamp(h)
+      : this.params.sourceMode === 'simulated'
+        ? null
+        : smoothstep(-6, 4, sunElevationDeg(fxNow()));
+    return this.prober.update(el, src.nw, src.nh, perf, active);
   }
 
   /** grain + scanlines + vignette, always last so everything sits inside the image */

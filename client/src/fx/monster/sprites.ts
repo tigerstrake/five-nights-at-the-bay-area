@@ -5,6 +5,7 @@
 // prepared for cast shadows.
 import type { MonsterManifestation } from '../index';
 import { boxBlur, ctx2d, makeCanvas } from '../core/noise';
+import type { EyePoint } from './creature';
 import { fxAssetsEnabled } from '../core/settings';
 
 export interface ManifestSprite {
@@ -18,6 +19,8 @@ export interface ManifestSprite {
   /** normalized focal point (the eyes) for closeups; the anchor otherwise */
   focusX: number;
   focusY: number;
+  /** eye positions (normalized, r relative to height) for night eye-shine on full-body sprites */
+  eyes: EyePoint[];
 }
 
 interface RawEntry {
@@ -76,7 +79,56 @@ function keepLargestBlob(alpha: Float32Array, w: number, h: number, thr = 0.08):
   return keep;
 }
 
-function processSprite(img: HTMLImageElement, kind: ManifestSprite['kind']): { img: HTMLCanvasElement; dark: HTMLCanvasElement; focus: [number, number] | null } {
+/** Eye-shine points of a full-body sprite: bright top-hat peaks in the head, else an anatomical estimate. */
+function findEyes(d: Uint8ClampedArray, w: number, h: number): EyePoint[] {
+  let top = h;
+  let bottom = 0;
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++)
+      if (d[(y * w + x) * 4 + 3] > 128) {
+        if (y < top) top = y;
+        if (y > bottom) bottom = y;
+      }
+  if (bottom <= top) return [];
+  const bodyH = bottom - top;
+  const headB = Math.min(h, Math.round(top + bodyH * 0.12));
+  let sx = 0;
+  let sw = 0;
+  for (let y = top; y < headB; y++)
+    for (let x = 0; x < w; x++) {
+      const a = d[(y * w + x) * 4 + 3] / 255;
+      sx += x * a;
+      sw += a;
+    }
+  const hx = sw > 0 ? sx / sw : w / 2;
+  const lum = new Float32Array(w * h);
+  for (let i = 0; i < lum.length; i++) lum[i] = ((d[i * 4] + d[i * 4 + 1] + d[i * 4 + 2]) / 765) * (d[i * 4 + 3] / 255);
+  const fine = boxBlur(lum, w, h, 1, 1);
+  const wide = boxBlur(lum, w, h, Math.max(3, Math.round(bodyH * 0.02)), 1);
+  const peaks: Array<{ x: number; y: number; v: number }> = [];
+  const r = bodyH * 0.08;
+  for (let y = top; y < headB; y++)
+    for (let x = Math.max(0, Math.round(hx - r)); x < Math.min(w, Math.round(hx + r)); x++) {
+      const v = fine[y * w + x] - wide[y * w + x];
+      if (v > 0.12) peaks.push({ x, y, v });
+    }
+  peaks.sort((a, b) => b.v - a.v);
+  const out: Array<{ x: number; y: number }> = [];
+  for (const pk of peaks) {
+    if (out.every((o) => Math.hypot(o.x - pk.x, o.y - pk.y) > bodyH * 0.02)) out.push(pk);
+    if (out.length === 2) break;
+  }
+  const er = 0.006;
+  if (out.length === 2) return out.map((o) => ({ x: o.x / w, y: o.y / h, r: er }));
+  const ey = (top + bodyH * 0.055) / h;
+  const dx = (bodyH * 0.018) / w;
+  return [
+    { x: hx / w - dx, y: ey, r: er },
+    { x: hx / w + dx, y: ey, r: er },
+  ];
+}
+
+function processSprite(img: HTMLImageElement, kind: ManifestSprite['kind']): { img: HTMLCanvasElement; dark: HTMLCanvasElement; focus: [number, number] | null; eyes: EyePoint[] } {
   const sc = Math.min(1, MAX_H / img.naturalHeight);
   const w = Math.max(1, Math.round(img.naturalWidth * sc));
   const h = Math.max(1, Math.round(img.naturalHeight * sc));
@@ -161,9 +213,10 @@ function processSprite(img: HTMLImageElement, kind: ManifestSprite['kind']): { i
     }
     if (bi >= 0 && best > 0.15) focus = [(bi % w) / w, Math.floor(bi / w) / h];
   }
+  const eyes = kind === 'closeup' || kind === 'shadow' ? [] : findEyes(d, w, h);
   x.putImageData(id, 0, 0);
   dx.putImageData(dd, 0, 0);
-  return { img: c, dark, focus };
+  return { img: c, dark, focus, eyes };
 }
 
 // process one sprite per task so a load never blocks a frame for long
@@ -207,7 +260,7 @@ export function loadMonsterSprites(base = '/assets/monster/'): void {
           idle(() => {
             try {
               const p = processSprite(img, kind);
-              sprites.push({ img: p.img, dark: p.dark, file, kind, anchorX, anchorY, aspect: p.img.width / Math.max(1, p.img.height), focusX: p.focus?.[0] ?? anchorX, focusY: p.focus?.[1] ?? anchorY });
+              sprites.push({ img: p.img, dark: p.dark, file, kind, anchorX, anchorY, aspect: p.img.width / Math.max(1, p.img.height), focusX: p.focus?.[0] ?? anchorX, focusY: p.focus?.[1] ?? anchorY, eyes: p.eyes });
             } catch {
               /* unusable sprite: ignore */
             }
@@ -234,4 +287,9 @@ export function spriteFor(kind: MonsterManifestation['kind'], seed: number): Man
   if (!list.length) return null;
   list.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
   return list[(seed >>> 0) % list.length];
+}
+
+/** Number of sprites processed so far (lab / tests wait on this). */
+export function loadedSpriteCount(): number {
+  return sprites.length;
 }

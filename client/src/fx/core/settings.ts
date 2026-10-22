@@ -37,3 +37,31 @@ export function setFxAssetsEnabled(v: boolean): void {
 export function fxAssetsEnabled(): boolean {
   return assetsEnabled;
 }
+
+let lite: boolean | null = null;
+/**
+ * Render-lite for automated tests: the `?e2e` URL flag (the same one that exposes `window.__fnab`) turns the FX canvas
+ * animation loops off so software-rendered CI runners are not starved. Only canvas pixels change: every DOM label,
+ * badge and game state is identical. `?e2e&fx=full` keeps the full effects. Never active for normal players.
+ */
+export function isRenderLite(): boolean {
+  if (lite === null) {
+    try {
+      const q = new URLSearchParams(window.location.search);
+      lite = q.has('e2e') && q.get('fx') !== 'full';
+    } catch {
+      lite = false;
+    }
+  }
+  return lite;
+}
+
+let clock: (() => number) | null = null;
+/** Lab/test only: replace the epoch clock manifestations are timed against (null = Date.now). */
+export function setFxClock(fn: (() => number) | null): void {
+  clock = fn;
+}
+/** Epoch ms used to time manifestations (Date.now unless a lab clock is installed). */
+export function fxNow(): number {
+  return clock ? clock() : Date.now();
+}

@@ -1,6 +1,7 @@
 // One shared requestAnimationFrame loop for every FX surface on the page. Each surface declares a
 // target fps; it is skipped while offscreen (IntersectionObserver) and the whole loop sleeps while
 // the tab is hidden. Also collects lightweight perf stats (see getFxPerfStats).
+import { isRenderLite } from './settings';
 
 export interface FxTask {
   /** Element used for visibility tracking. */
@@ -107,6 +108,17 @@ function onVisibility() {
 let visHooked = false;
 
 export function addFxTask(task: FxTask): () => void {
+  if (isRenderLite()) {
+    // e2e render-lite: paint one frame (so canvases are sized and initialised), then never animate.
+    const id = setTimeout(() => {
+      try {
+        task.render(performance.now());
+      } catch (err) {
+        console.error('[fx] render failed', err);
+      }
+    }, 0);
+    return () => clearTimeout(id);
+  }
   const entry: Entry = { task, last: 0, visible: true };
   entries.add(entry);
   let set = byEl.get(task.el);

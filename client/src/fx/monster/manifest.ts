@@ -1,10 +1,16 @@
 // Composites a MonsterManifestation into a feed overlay. Pure function of (manifestation, time,
 // placement) except for per-frame grain/erosion randomness, so every client sees the same
 // appearance at the same moment.
+//
+// On real footage the creature is graded to the spot it stands on (see ./grade.ts): rendered at the camera's own
+// resolution, highlights clamped to the local light, lifted by haze/flare to the scene's black level, tinted by the
+// scene's light colour, given the source's noise and (stills) JPEG blocking, grounded by a contact shadow in the
+// multiplied ground colour, and sunk into foreground clutter. By day it is a dark, still shape; eye-shine only at night.
 import type { MonsterManifestation, PlacementRegion } from '../index';
 import { ctx2d, getGrainTiles, getSnowTiles, makeCanvas, tileFill } from '../core/noise';
 import { clamp, gauss, mulberry32, rand01, range, smoothstep } from '../core/rng';
 import { CREATURE_SEED, getFaceSprite, getFigureSprite, type EyePoint } from './creature';
+import { cssRgb, gradeSprite, regionLight, spotGrade, type RGB, type SceneProbe, type SpotGrade } from './grade';
 import { spriteFor } from './sprites';
 
 export interface FrameRect {
@@ -26,6 +32,28 @@ export interface ManifestDrawContext {
   frameIndex: number;
   /** mean scene luminance 0..1 if the source is readable (CORS / same-origin), else ~0.3 */
   sceneLum: number;
+  /** sampled scene under the overlay (null when unreadable / not sampled yet → neutral grading) */
+  scene?: SceneProbe | null;
+  /** advances only when the source picture changes (video frame / sim frame); constant on stills */
+  mediaFrame?: number;
+  /** visible overlay area (canvas px); feet are kept inside it when the source is cropped (object-fit: cover) */
+  visible?: FrameRect;
+  /** simulated feed underneath (keeps its crisper, stylised look) */
+  sim?: boolean;
+  /**
+   * Real Caltrans HLS video underneath. Placement boxes are measured on the 320x260 stills, which are the video frame
+   * squeezed into the top STILL_PICTURE_H of the JPEG with the timestamp bar added below, so they are remapped.
+   */
+  video?: boolean;
+}
+
+/** Fraction of a Caltrans still's height that is picture (the rest is the burned-in timestamp bar). */
+export const STILL_PICTURE_H = 0.923;
+
+/** Placement box measured on a still, expressed in the matching live-video frame. */
+export function stillToVideo(r: PlacementRegion): PlacementRegion {
+  const k = 1 / STILL_PICTURE_H;
+  return { ...r, y: r.y * k, h: Math.min(r.h * k, Math.max(0.01, 0.985 - r.y * k)), scale: r.scale * k };
 }
 
 export interface ManifestResult {
@@ -37,7 +65,7 @@ export interface ManifestResult {
 }
 
 /** Used when a camera has no placement regions. Boxes are where the FEET land (camera-research convention). */
-export const DEFAULT_PLACEMENT: PlacementRegion = { x: 0.56, y: 0.66, w: 0.22, h: 0.12, scale: 0.32 };
+export const DEFAULT_PLACEMENT: PlacementRegion = { x: 0.56, y: 0.66, w: 0.22, h: 0.12, scale: 0.2 };
 
 const NONE: ManifestResult = { boost: 0, tears: [], active: false };
 
@@ -172,23 +200,33 @@ function staticHalo(add: CanvasRenderingContext2D, cx: number, cy: number, rx: n
   add.globalAlpha = 1;
 }
 
-function eyeGlow(add: CanvasRenderingContext2D, x: number, y: number, r: number, alpha: number, bloom: number) {
+function eyeGlow(add: CanvasRenderingContext2D, x: number, y: number, r: number, alpha: number, bloom: number, tint: RGB = [0.86, 0.92, 0.88]) {
   if (alpha <= 0.01) return;
   const core = Math.max(0.7, r);
+  const [cr, cg, cb] = tint.map((v) => Math.round(clamp(v) * 255));
   const g = add.createRadialGradient(x, y, 0, x, y, core * 2.2);
-  g.addColorStop(0, `rgba(236,244,232,${clamp(alpha)})`);
-  g.addColorStop(0.45, `rgba(200,220,205,${clamp(alpha * 0.55)})`);
-  g.addColorStop(1, 'rgba(160,190,170,0)');
+  g.addColorStop(0, `rgba(${Math.min(255, cr + 30)},${Math.min(255, cg + 30)},${Math.min(255, cb + 30)},${clamp(alpha)})`);
+  g.addColorStop(0.45, `rgba(${cr},${cg},${cb},${clamp(alpha * 0.55)})`);
+  g.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
   add.fillStyle = g;
   add.fillRect(x - core * 2.2, y - core * 2.2, core * 4.4, core * 4.4);
   if (bloom > 0) {
     const R = core * bloom;
     const b = add.createRadialGradient(x, y, 0, x, y, R);
-    b.addColorStop(0, `rgba(190,215,200,${clamp(alpha * 0.22)})`);
-    b.addColorStop(1, 'rgba(190,215,200,0)');
+    b.addColorStop(0, `rgba(${cr},${cg},${cb},${clamp(alpha * 0.3)})`);
+    b.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
     add.fillStyle = b;
     add.fillRect(x - R, y - R, R * 2, R * 2);
   }
+}
+
+/** Eye-shine reflects the light that hits it: tapetum green-white, pulled toward the scene's light colour. */
+function eyeTint(G: SpotGrade | null): RGB {
+  const base: RGB = [0.8, 0.9, 0.82];
+  if (!G) return base;
+  const a = G.light.ambient;
+  const m = Math.max(0.05, a[0], a[1], a[2]);
+  return [base[0] * 0.6 + (a[0] / m) * 0.4, base[1] * 0.6 + (a[1] / m) * 0.4, base[2] * 0.6 + (a[2] / m) * 0.4];
 }
 
 interface Layout {
@@ -198,20 +236,43 @@ interface Layout {
   r: PlacementRegion;
 }
 
-function layoutFor(m: MonsterManifestation, placement: PlacementRegion[], f: FrameRect): Layout {
+function layoutFor(m: MonsterManifestation, placement: PlacementRegion[], f: FrameRect, dc?: ManifestDrawContext): Layout {
   const list = placement.length ? placement : [DEFAULT_PLACEMENT];
   const n = list.length;
-  const r = list[(((m.regionIndex | 0) % n) + n) % n];
+  const r0 = list[(((m.regionIndex | 0) % n) + n) % n];
+  const r = dc?.video ? stillToVideo(r0) : r0;
   const rng = mulberry32(m.seed ^ 0x9137);
   // the box is the ground area where the feet land
-  const ux = range(rng, 0.15, 0.85);
-  const uy = range(rng, 0.25, 1.0);
-  return {
-    footX: f.x + (r.x + r.w * ux) * f.w,
-    footY: f.y + (r.y + r.h * uy) * f.h,
-    figH: clamp(r.scale, 0.03, 0.95) * f.h * range(rng, 0.94, 1.06),
-    r,
-  };
+  let ux = range(rng, 0.15, 0.85);
+  let uy = range(rng, 0.25, 1.0);
+  const figH = clamp(r.scale, 0.03, 0.95) * f.h * range(rng, 0.94, 1.06);
+  // A cropped source (object-fit: cover in a wider tile) can hide part of the box: keep the feet on screen,
+  // inside the visible part of the box when there is one.
+  const v = dc?.visible;
+  if (v) {
+    const bx0 = f.x + r.x * f.w;
+    const bw = r.w * f.w;
+    const by0 = f.y + r.y * f.h;
+    const bh = r.h * f.h;
+    const vx0 = v.x + v.w * 0.03;
+    const vx1 = v.x + v.w * 0.97;
+    const vy1 = v.y + v.h * 0.97;
+    if (bw > 0) ux = clamp(ux, clamp((vx0 - bx0) / bw), clamp((vx1 - bx0) / bw));
+    if (bh > 0 && by0 + bh * uy > vy1) uy = clamp((vy1 - by0) / bh, 0, 1);
+  }
+  let footX = f.x + (r.x + r.w * ux) * f.w;
+  let footY = f.y + (r.y + r.h * uy) * f.h;
+  if (v) {
+    footY = Math.min(footY, v.y + v.h * 0.97);
+    footX = clamp(footX, v.x + v.w * 0.02, v.x + v.w * 0.98);
+  }
+  // follow the picture when the camera moves (live video: sway, PTZ drift)
+  const sc = dc?.scene;
+  if (sc && sc.animated) {
+    footX += sc.motionX * f.w;
+    footY += sc.motionY * f.h;
+  }
+  return { footX, footY, figH, r };
 }
 
 /** Deterministic silhouette flash schedule: [startMs, lengthMs][] */
@@ -240,11 +301,31 @@ function figureSprites(m: MonsterManifestation) {
   };
 }
 
-function drawEyes(add: CanvasRenderingContext2D, eyes: EyePoint[], x: number, y: number, w: number, h: number, alpha: number, bloom: number, frameIndex: number, seed: number) {
+function drawEyes(add: CanvasRenderingContext2D, eyes: EyePoint[], x: number, y: number, w: number, h: number, alpha: number, bloom: number, now: number, seed: number, tint?: RGB, minR = 1.3) {
   eyes.forEach((e, i) => {
-    const flick = 0.75 + 0.25 * rand01(seed, Math.floor(frameIndex / 3), i);
-    eyeGlow(add, x + e.x * w, y + e.y * h, Math.max(0.8, e.r * h), alpha * flick, bloom);
+    // slow, smooth shimmer (well under 3 Hz); never a hard on/off
+    const flick = 0.82 + 0.18 * Math.sin(now / 370 + seed * 0.7 + i * 1.9) * Math.sin(now / 910 + i);
+    eyeGlow(add, x + e.x * w, y + e.y * h, Math.max(minR, e.r * h * 2), alpha * flick, bloom, tint);
   });
+}
+
+/** Per-frame seeds: sensor noise follows the picture (frozen on stills, per frame on video). */
+function seeds(m: MonsterManifestation, dc: ManifestDrawContext) {
+  const mf = dc.mediaFrame ?? dc.frameIndex;
+  return { noiseSeed: (m.seed ^ (mf * 2654435761)) >>> 0, erosionSeed: dc.frameIndex };
+}
+
+/** Sub-pixel shimmer locked to new video frames (compression / sensor), in canvas px. */
+function frameShimmer(m: MonsterManifestation, dc: ManifestDrawContext, f: FrameRect): [number, number] {
+  const sc = dc.scene;
+  if (!sc || !sc.animated || dc.reduced) return [0, 0];
+  const mf = dc.mediaFrame ?? 0;
+  const k = (0.35 * f.h) / Math.max(1, sc.nativeH);
+  return [(rand01(m.seed, mf, 71) - 0.5) * k, (rand01(m.seed, mf, 72) - 0.5) * k];
+}
+
+function grade(dc: ManifestDrawContext, L: Layout, w: number, h: number, s: number): SpotGrade {
+  return spotGrade(dc.scene, dc.frame, L.footX, L.footY, w, h, L.r.scale, !!dc.sim, s);
 }
 
 export function drawManifestation(
@@ -275,7 +356,7 @@ export function drawManifestation(
 
 function drawShadow(m: MonsterManifestation, p: number, s: number, placement: PlacementRegion[], dc: ManifestDrawContext): ManifestResult {
   const { base, frame } = dc;
-  const L = layoutFor(m, placement, frame);
+  const L = layoutFor(m, placement, frame, dc);
   const env = smoothstep(0, 0.22, p) * (1 - smoothstep(0.78, 1, p));
   const rng = mulberry32(m.seed ^ 0x5ad0);
   const dir = rng() < 0.5 ? -1 : 1;
@@ -292,19 +373,42 @@ function drawShadow(m: MonsterManifestation, p: number, s: number, placement: Pl
   const w = h * aspect * 0.8;
   const shear = dir * (0.95 + 0.25 * Math.sin(p * Math.PI)) * -1;
   const squash = 0.46 + 0.05 * Math.sin(p * Math.PI * 2 + 1);
-  const alpha = (0.26 + 0.4 * s) * env;
+  const G = spotGrade(dc.scene, frame, fx, fy, w * 1.4, h * squash * 1.5, L.r.scale, !!dc.sim);
+  // A shadow is the ground, darker: strongest on lit ground by day, barely there on unlit asphalt at night.
+  const lit = clamp(G.light.ambientLum * 2.2);
+  const alpha = (0.26 + 0.4 * s) * env * (0.55 + 0.45 * lit);
 
-  // broad darkening that drifts with it
+  // broad darkening that drifts with it (multiplied ground colour, not black)
   const R = L.figH * 0.9;
   const g = base.createRadialGradient(fx, fy - R * 0.2, 0, fx, fy - R * 0.2, R);
-  g.addColorStop(0, `rgba(0,0,0,${0.2 * s * env + 0.05 * env})`);
-  g.addColorStop(1, 'rgba(0,0,0,0)');
+  g.addColorStop(0, cssRgb(G.shadowColor, 1, (0.2 * s + 0.05) * env));
+  g.addColorStop(1, cssRgb(G.shadowColor, 1, 0));
   base.fillStyle = g;
   base.fillRect(fx - R, fy - R * 1.2, R * 2, R * 2);
 
-  const [c, sw, sh] = prepare(src, w, h, 0.5, 0.25 + 0.2 * (1 - s), dc.frameIndex);
+  const sd = seeds(m, dc);
+  const [c, sw, sh] = gradeSprite(src, {
+    w,
+    h,
+    res: Math.min(0.5, G.res),
+    erosion: 0.25 + 0.2 * (1 - s),
+    tint: G.shadowColor,
+    clampTo: null,
+    veil: null,
+    veilAlpha: 0,
+    chroma: 0,
+    chromaColor: null,
+    noise: G.noise * 0.6,
+    block: G.block * 0.6,
+    blockPx: G.blockPx * (Math.min(0.5, G.res) / Math.max(0.01, G.res)),
+    blockOx: 0,
+    blockOy: 0,
+    occlude: 0,
+    noiseSeed: sd.noiseSeed,
+    erosionSeed: sd.erosionSeed,
+  });
   base.save();
-  base.globalAlpha = alpha;
+  base.globalAlpha = clamp(alpha);
   base.translate(fx, fy);
   base.transform(1, 0, shear, 1, 0, 0);
   base.scale(1, squash);
@@ -315,7 +419,7 @@ function drawShadow(m: MonsterManifestation, p: number, s: number, placement: Pl
 
 function drawSilhouette(m: MonsterManifestation, t: number, s: number, placement: PlacementRegion[], dc: ManifestDrawContext): ManifestResult {
   const { base, frame } = dc;
-  const L = layoutFor(m, placement, frame);
+  const L = layoutFor(m, placement, frame, dc);
   const flashes = silhouetteFlashes(m);
   let k = -1;
   let inFlash = false;
@@ -345,6 +449,8 @@ function drawSilhouette(m: MonsterManifestation, t: number, s: number, placement
   const w = h * aspect;
   const x = L.footX + drift - w * 0.5;
   const y = L.footY + step * L.figH * 0.03 - h;
+  const G = spotGrade(dc.scene, frame, x + w / 2, y + h, w, h, L.r.scale, !!dc.sim, s * 0.8);
+  const day = G.dayness;
 
   let alpha: number;
   if (inFlash) alpha = 0.55 + 0.4 * s;
@@ -352,17 +458,43 @@ function drawSilhouette(m: MonsterManifestation, t: number, s: number, placement
   else alpha = 0.03 + 0.05 * s; // barely-there residue, lost under grain
   if (dc.reduced && inFlash) alpha *= 0.85;
 
-  if (inFlash) staticHalo(dc.add, x + w / 2, y + h * 0.5, w * 1.5, h * 0.75, (0.25 + 0.35 * s) * (dc.reduced ? 0.6 : 1), dc.frameIndex);
-  const [c, sw, sh] = prepare(src, w, h, 0.45, inFlash ? 0.35 : 0.65, dc.frameIndex);
+  // the local signal disturbance is a glow-free smear by day, brighter static at night
+  if (inFlash) staticHalo(dc.add, x + w / 2, y + h * 0.5, w * 1.5, h * 0.75, (0.25 + 0.35 * s) * (dc.reduced ? 0.6 : 1) * (0.35 + 0.65 * (1 - day)), dc.frameIndex);
+  const sd = seeds(m, dc);
+  const res = Math.min(0.45, G.res);
+  const [c, sw, sh] = gradeSprite(src, {
+    w,
+    h,
+    res,
+    erosion: inFlash ? 0.35 : 0.65,
+    clampTo: G.clampTo,
+    veil: G.veil,
+    veilAlpha: G.veilAlpha,
+    chroma: G.chroma,
+    chromaColor: G.light.ambient,
+    noise: G.noise,
+    block: G.block,
+    blockPx: G.blockPx * (res / Math.max(0.01, G.res)),
+    blockOx: G.blockOx * (res / Math.max(0.01, G.res)),
+    blockOy: G.blockOy * (res / Math.max(0.01, G.res)),
+    occlude: L.r.occlude ?? 0,
+    noiseSeed: sd.noiseSeed,
+    erosionSeed: sd.erosionSeed,
+  });
+  const [jx, jy] = frameShimmer(m, dc, frame);
   base.globalAlpha = clamp(alpha);
   const jitter = dc.reduced ? 0 : (inFlash ? 3.5 : 1.2) * dc.px;
-  blit(base, c, sw, sh, x, y, w, h, inFlash ? 9 : 4, jitter, dc.frameIndex, m.seed);
+  blit(base, c, sw, sh, x + jx, y + jy, w, h, inFlash ? 9 : 4, jitter, dc.frameIndex, m.seed);
   base.globalAlpha = 1;
   if (inFlash) {
     // the shape is negative space in its own interference
     dc.add.globalCompositeOperation = 'destination-out';
     dc.add.drawImage(c, 0, 0, sw, sh, x, y, w, h);
     dc.add.globalCompositeOperation = 'source-over';
+    // at night the flash catches its eyes
+    const eyes = spr ? spr.eyes : fig.eyes;
+    const eyeA = 0.6 * (1 - day) * (1 - day) * smoothstep(0.2, 0.7, s);
+    if (eyeA > 0.02) drawEyes(dc.add, eyes, x, y, w, h, eyeA, 4, dc.now, m.seed, eyeTint(G), Math.max(1.3, frame.h / 420));
   }
   const tears: Array<[number, number]> = [];
   if (inFlash && !dc.reduced) {
@@ -374,7 +506,7 @@ function drawSilhouette(m: MonsterManifestation, t: number, s: number, placement
 
 function drawFigure(m: MonsterManifestation, t: number, p: number, s: number, placement: PlacementRegion[], dc: ManifestDrawContext): ManifestResult {
   const { base, add, frame } = dc;
-  const L = layoutFor(m, placement, frame);
+  const L = layoutFor(m, placement, frame, dc);
   const rng = mulberry32(m.seed ^ 0xf16e);
   const snapAt = range(rng, 0.42, 0.68) * m.durationMs;
   const sprites = figureSprites(m);
@@ -386,8 +518,11 @@ function drawFigure(m: MonsterManifestation, t: number, p: number, s: number, pl
   const ax = spr ? spr.anchorX : fig.anchorX;
   const h = L.figH;
   const w = h * aspect;
-  const x = L.footX - w * ax;
-  const y = L.footY - h;
+  const [jx, jy] = frameShimmer(m, dc, frame);
+  const x = L.footX - w * ax + jx;
+  const y = L.footY - h + jy;
+  const G = grade(dc, L, w, h, s);
+  const day = G.dayness;
 
   const inDur = 300;
   const outDur = Math.min(260, m.durationMs * 0.12);
@@ -406,46 +541,69 @@ function drawFigure(m: MonsterManifestation, t: number, p: number, s: number, pl
   const clarity = 0.5 + 0.5 * s;
   const alpha = (0.7 + 0.3 * s) * env;
 
-  // contact shadow grounds it in the scene
-  const cg = base.createRadialGradient(L.footX, L.footY, 0, L.footX, L.footY, w * 0.9);
-  cg.addColorStop(0, `rgba(0,0,0,${0.42 * alpha})`);
-  cg.addColorStop(1, 'rgba(0,0,0,0)');
+  // contact shadow grounds it in the scene: the ground under it, darker (soft, wider than the feet)
+  const lit = clamp(G.light.ambientLum * 2.4);
+  const cw = w * 0.75;
+  const cg = base.createRadialGradient(L.footX, L.footY, 0, L.footX, L.footY, cw);
+  cg.addColorStop(0, cssRgb(G.shadowColor, 1, (0.25 + 0.35 * lit) * alpha));
+  cg.addColorStop(0.55, cssRgb(G.shadowColor, 1, (0.1 + 0.15 * lit) * alpha));
+  cg.addColorStop(1, cssRgb(G.shadowColor, 1, 0));
   base.save();
   base.translate(L.footX, L.footY);
-  base.scale(1, 0.12);
+  base.scale(1, 0.14);
   base.translate(-L.footX, -L.footY);
   base.fillStyle = cg;
-  base.fillRect(L.footX - w, L.footY - w, w * 2, w * 2);
+  base.fillRect(L.footX - cw, L.footY - cw, cw * 2, cw * 2);
   base.restore();
 
-  // soft halo for low-strength (less resolved) appearances
+  const sd = seeds(m, dc);
+  const occlude = L.r.occlude ?? 0;
+  const common = {
+    w,
+    h,
+    clampTo: G.clampTo,
+    veil: G.veil,
+    veilAlpha: G.veilAlpha,
+    chroma: G.chroma,
+    chromaColor: G.light.ambient,
+    noise: G.noise,
+    occlude,
+    noiseSeed: sd.noiseSeed,
+  };
+  // soft halo for low-strength (less resolved) appearances; a faint smudge by day
   if (clarity < 0.98) {
-    const [c2, sw2, sh2] = prepare(spr ? spr.img : fig.soft, w, h, 0.4, 0.5, dc.frameIndex + 1);
-    base.globalAlpha = alpha * (1 - clarity) * 0.9;
+    const r2 = Math.min(0.4, G.res);
+    const [c2, sw2, sh2] = gradeSprite(spr ? spr.img : fig.soft, { ...common, res: r2, erosion: 0.5, block: 0, blockPx: 0, blockOx: 0, blockOy: 0, erosionSeed: sd.erosionSeed + 1 });
+    base.globalAlpha = alpha * (1 - clarity) * 0.9 * (1 - 0.45 * day);
     base.drawImage(c2, 0, 0, sw2, sh2, x - w * 0.03, y - h * 0.01, w * 1.06, h * 1.01);
   }
-  if (spr) {
-    // painted sprites are lit for a neutral scene; sink them into the dark first
-    const [cd, swd, shd] = prepare(spr.dark, w, h, 0.5, 0.2, dc.frameIndex + 2);
-    // darker scenes swallow more of the sprite's painted lighting
-    base.globalAlpha = alpha * (0.72 - 0.5 * clamp(dc.sceneLum * 1.6));
-    base.drawImage(cd, 0, 0, swd, shd, x, y, w, h);
-  }
-  const [c, sw, sh] = prepare(src, w, h, dc.px > 1.2 ? 0.62 : 0.8, 0.1 + (1 - clarity) * 0.55, dc.frameIndex);
-  base.globalAlpha = alpha * (0.55 + 0.45 * clarity) * (spr ? 0.82 : 1);
+  const res = Math.min(G.res, dc.px > 1.2 ? 0.62 : 0.8);
+  const rk = res / Math.max(0.01, G.res);
+  const [c, sw, sh] = gradeSprite(src, {
+    ...common,
+    res,
+    erosion: 0.1 + (1 - clarity) * 0.55,
+    block: G.block,
+    blockPx: G.blockPx * rk,
+    blockOx: G.blockOx * rk,
+    blockOy: G.blockOy * rk,
+    erosionSeed: sd.erosionSeed,
+  });
+  base.globalAlpha = alpha * (0.55 + 0.45 * clarity) * (spr ? 0.92 : 1);
   const jitter = dc.reduced ? 0 : glitchIn || glitchOut || nearSnap ? 5 * dc.px : 0;
   blit(base, c, sw, sh, x, y, w, h, jitter ? 10 : 1, jitter, dc.frameIndex, m.seed);
   base.globalAlpha = 1;
 
-  if (!spr) {
-    const eyeA = smoothstep(0.15, 0.6, s) * env * 0.85 * (1 - 0.6 * clamp(dc.sceneLum * 1.5));
-    drawEyes(add, fig.eyes, x, y, w, h, eyeA, 5, dc.frameIndex, m.seed);
-  }
+  // eye-shine: night only (headlights / sodium light bouncing off it); by day it is just a dark, still shape
+  const night = (1 - day) * (1 - day);
+  const eyeA = smoothstep(0.15, 0.6, s) * env * night;
+  if (eyeA > 0.02) drawEyes(add, spr ? spr.eyes : fig.eyes, x, y, w, h, eyeA, 7, dc.now, m.seed, eyeTint(G), Math.max(1.3, frame.h / 420));
   const tears: Array<[number, number]> = [];
   if ((glitchIn || glitchOut || nearSnap) && !dc.reduced) {
     for (let i = 0; i < 3; i++) tears.push([y + h * rand01(m.seed, dc.frameIndex, i + 5), h * (0.04 + 0.1 * rand01(m.seed, dc.frameIndex, i + 9))]);
   }
-  const boost = glitchIn || glitchOut || nearSnap ? 0.45 + 0.3 * s : 0.12 + 0.18 * s;
+  // by day it barely disturbs the signal: the horror is that the picture stays clean
+  const boost = glitchIn || glitchOut || nearSnap ? 0.45 + 0.3 * s : (0.12 + 0.18 * s) * (1 - 0.4 * day);
   return { boost, tears, active: true };
 }
 
@@ -457,10 +615,13 @@ function drawCloseup(m: MonsterManifestation, t: number, p: number, s: number, d
   const face = spr ? null : getFaceSprite(CREATURE_SEED + (m.seed & 1));
   const src = spr ? spr.img : face!.face;
   const aspect = spr ? spr.aspect : face!.aspect;
-  // lens blocked: the frame goes dark around it
+  const sc = dc.scene;
+  const day = sc ? sc.dayness : 0.5;
+  const light = regionLight(sc, 0, 0, 1, 1);
+  // lens blocked: the frame goes dark around it (daylight still wraps round the edges)
   const blk = base.createRadialGradient(frame.x + frame.w / 2, frame.y + frame.h / 2, frame.h * 0.15, frame.x + frame.w / 2, frame.y + frame.h / 2, Math.hypot(frame.w, frame.h) * 0.6);
-  blk.addColorStop(0, `rgba(0,0,0,${0.8 * env})`);
-  blk.addColorStop(1, `rgba(0,0,0,${0.96 * env})`);
+  blk.addColorStop(0, `rgba(0,0,0,${(0.8 - 0.12 * day) * env})`);
+  blk.addColorStop(1, `rgba(0,0,0,${(0.96 - 0.1 * day) * env})`);
   base.fillStyle = blk;
   base.fillRect(frame.x, frame.y, frame.w, frame.h);
 
@@ -483,22 +644,45 @@ function drawCloseup(m: MonsterManifestation, t: number, p: number, s: number, d
   const flick = 0.82 + 0.18 * Math.sin(t / 260 + m.seed) * Math.sin(t / 410);
   const alpha = (0.5 + 0.5 * s) * env * flick;
 
-  const [c, sw, sh] = prepare(src, fw, fh, 0.42, 0.18 + 0.3 * (1 - s), dc.frameIndex);
+  // too close to focus: the camera's own resolution and noise, the scene's light colour
+  const nativePerDisplay = sc ? sc.nativeH / Math.max(1, frame.h) : 0.42;
+  const res = clamp(nativePerDisplay * 1.25, 0.2, 0.42);
+  const sd = seeds(m, dc);
+  const [c, sw, sh] = gradeSprite(src, {
+    w: fw,
+    h: fh,
+    res,
+    erosion: 0.18 + 0.3 * (1 - s),
+    // by day the painted eyes may not out-shine the daylight around the lens; at night they can
+    clampTo: day > 0.5 ? [light.ambient[0] * 1.4, light.ambient[1] * 1.4, light.ambient[2] * 1.4] : null,
+    veil: null,
+    veilAlpha: 0,
+    chroma: sc ? 0.3 : 0,
+    chromaColor: light.ambient,
+    noise: sc ? clamp(sc.noise * 1.5, 0, 0.18) : 0,
+    block: sc && sc.jpeg ? 0.25 : 0,
+    blockPx: sc ? (8 * res * frame.h) / sc.nativeH : 0,
+    blockOx: 0,
+    blockOy: 0,
+    occlude: 0,
+    noiseSeed: sd.noiseSeed,
+    erosionSeed: sd.erosionSeed,
+  });
   base.globalAlpha = clamp(alpha);
   const jitter = dc.reduced ? 1 * dc.px : (6 + 10 * (1 - s * 0.5)) * dc.px;
-  blit(base, c, sw, sh, x, y, fw, fh, dc.reduced ? 1 : 22, jitter, Math.floor(dc.frameIndex / (dc.reduced ? 1 : 1)), m.seed);
+  blit(base, c, sw, sh, x, y, fw, fh, dc.reduced ? 1 : 22, jitter, dc.frameIndex, m.seed);
   base.globalAlpha = 1;
 
   // chromatic split on the additive layer
   if (!dc.reduced) {
     const tint = tinted(src);
     const off = (4 + 6 * rand01(m.seed, dc.frameIndex, 4)) * dc.px;
-    add.globalAlpha = 0.18 * alpha;
+    add.globalAlpha = 0.18 * alpha * (1 - 0.4 * day);
     add.drawImage(tint.r, x + off, y, fw, fh);
     add.drawImage(tint.c, x - off, y + off * 0.3, fw, fh);
     add.globalAlpha = 1;
   }
-  if (face) drawEyes(add, face.eyes, x, y, fw, fh, 0.8 * env, 5, dc.frameIndex, m.seed);
+  if (face) drawEyes(add, face.eyes, x, y, fw, fh, 0.8 * env * (1 - 0.5 * day), 5, dc.now, m.seed);
   const tears: Array<[number, number]> = [];
   if (!dc.reduced) {
     const n = 2 + Math.floor(rand01(m.seed, dc.frameIndex, 31) * 3);
