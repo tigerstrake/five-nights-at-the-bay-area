@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CameraSourceStatus } from '@fnab/shared';
 import { CALTRANS_CADENCE_MS, nextLabel, nextPollDelay, stillFreshness, stillLabels } from '../freshness';
-import { liveFirst, liveThumbBudget, pickLiveThumbs, preferLive } from '../liveBudget';
+import { deviceLiveThumbBudget, liveFirst, liveThumbBudget, pickLiveThumbs, preferLive } from '../liveBudget';
 
 const MIN = 60_000;
 const NOW = 1_800_000_000_000;
@@ -99,8 +99,17 @@ describe('live budget and live-first defaults', () => {
     expect(liveFirst(['a', 'b', 'c', 'd', 'e'], (x) => x, (x) => rank[x]!, statuses)).toEqual(['e', 'c', 'a', 'd', 'b']);
   });
   it('liveThumbs query override is bounded', () => {
-    expect(liveThumbBudget('')).toBe(3);
-    expect(liveThumbBudget('?liveThumbs=0')).toBe(0);
-    expect(liveThumbBudget('?liveThumbs=99')).toBe(3);
+    const lowEnd = { cores: 2 };
+    expect(liveThumbBudget('', lowEnd)).toBe(3);
+    expect(liveThumbBudget('?liveThumbs=0', lowEnd)).toBe(0);
+    expect(liveThumbBudget('?liveThumbs=12', lowEnd)).toBe(12);
+    expect(liveThumbBudget('?liveThumbs=99', lowEnd)).toBe(3);
+  });
+  it('default budget scales with the device and respects data saver', () => {
+    expect(deviceLiveThumbBudget({ cores: 2 })).toBe(3);
+    expect(deviceLiveThumbBudget({ cores: 4 })).toBe(5);
+    expect(deviceLiveThumbBudget({ cores: 10 })).toBe(8);
+    expect(deviceLiveThumbBudget({ cores: 10, saveData: true })).toBe(3);
+    expect(deviceLiveThumbBudget({})).toBe(3);
   });
 });

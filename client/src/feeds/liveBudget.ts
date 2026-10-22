@@ -1,14 +1,38 @@
 // Pure helpers deciding where real live video is shown (unit-tested).
 import type { CameraSourceStatus } from '@fnab/shared';
 
-/** Live thumbnails allowed on the visible bank page (plus the main monitor). Measured cheap: see docs/CAMERAS.md §7.7. */
+/** Live thumbnails allowed on the visible bank page (plus the main monitor) on a low-end device. Measured cheap
+ *  (~1.3% of a core and ~0.7 Mbit/s per tile): see docs/CAMERAS.md §7.7. */
 export const LIVE_THUMB_BUDGET = 3;
+/** Larger budgets for machines that can clearly afford them; most of the wall should move where Caltrans allows. */
+const DEVICE_BUDGETS = { mid: 5, high: 8 } as const;
+const MAX_OVERRIDE = 12;
 
-/** The budget in effect: `?liveThumbs=N` (0..6) overrides it for QA / low-bandwidth players. */
-export function liveThumbBudget(search: string = typeof location !== 'undefined' ? location.search : ''): number {
+interface DeviceHints {
+  cores?: number;
+  saveData?: boolean;
+}
+
+function deviceHints(): DeviceHints {
+  if (typeof navigator === 'undefined') return {};
+  const conn = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
+  return { cores: navigator.hardwareConcurrency, saveData: conn?.saveData };
+}
+
+/** Default budget for this device: 3 when saving data or on ≤2-core devices, 5 on 4–7 cores, 8 on ≥8 cores. */
+export function deviceLiveThumbBudget({ cores, saveData }: DeviceHints = deviceHints()): number {
+  if (saveData || !cores || cores <= 2) return LIVE_THUMB_BUDGET;
+  return cores >= 8 ? DEVICE_BUDGETS.high : DEVICE_BUDGETS.mid;
+}
+
+/** The budget in effect: `?liveThumbs=N` (0..12) overrides it for QA / low-bandwidth players. */
+export function liveThumbBudget(
+  search: string = typeof location !== 'undefined' ? location.search : '',
+  hints: DeviceHints = deviceHints(),
+): number {
   const raw = new URLSearchParams(search).get('liveThumbs');
   const n = raw === null ? NaN : Number(raw);
-  return Number.isInteger(n) && n >= 0 && n <= 6 ? n : LIVE_THUMB_BUDGET;
+  return Number.isInteger(n) && n >= 0 && n <= MAX_OVERRIDE ? n : deviceLiveThumbBudget(hints);
 }
 
 export function isLiveCapable(s: CameraSourceStatus | undefined): boolean {
