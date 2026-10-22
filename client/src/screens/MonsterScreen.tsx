@@ -71,8 +71,8 @@ export function MonsterScreen({ room, view }: { room: RoomView; view: MonsterVie
   );
   // leaving the match or losing the ability's validity drops targeting
   useEffect(() => {
-    if (prep && tool !== 'move') setTool('move');
-  }, [prep, tool, setTool]);
+    if ((prep || self.held) && tool !== 'move') setTool('move');
+  }, [prep, self.held, tool, setTool]);
 
   const issue = useCallback(
     (s: MonsterStance, approachId?: string | null) => {
@@ -114,7 +114,7 @@ export function MonsterScreen({ room, view }: { room: RoomView; view: MonsterVie
   const inflight = useRef(false);
   const confirmTarget = useCallback(() => {
     // Enter can reach both a focused map node and the window handler; send once.
-    if (!pending || inflight.current) return;
+    if (!pending || inflight.current || self.held) return;
     inflight.current = true;
     setTimeout(() => (inflight.current = false), 400);
     if (tool === 'sabotage') {
@@ -134,14 +134,14 @@ export function MonsterScreen({ room, view }: { room: RoomView; view: MonsterVie
         }
       });
     }
-  }, [pending, tool, setTool]);
+  }, [pending, tool, setTool, self.held]);
 
   const toggleAbility = useCallback(
     (id: 'sabotage' | 'decoy') => {
       if (tool === id) return setTool('move');
       const c: MonsterCommand = id === 'sabotage' ? 'SABOTAGE' : 'DECOY';
       if (prep || !self.spawned || cd(c) > 0) return;
-      if (id === 'sabotage' && self.held) return;
+      if (self.held) return;
       audio.play('uiClick', { volume: 0.5 });
       setTool(id);
     },
@@ -347,7 +347,7 @@ export function MonsterScreen({ room, view }: { room: RoomView; view: MonsterVie
           <Legend prep={prep} />
           <BreachBanner view={view} hq={hq} />
           <MonsterMoments view={view} t={t} hq={hq} hopsToHq={sit.hopsToHq} />
-          {self.held && tool !== 'decoy' && (
+          {self.held && (
             <TrappedOverlay view={view} t={t} retreatLeft={cd('RETREAT')} calm={calm} onStruggle={() => onStance('RETREAT')} />
           )}
         </section>

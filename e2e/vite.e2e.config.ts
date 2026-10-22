@@ -8,6 +8,7 @@ import base from '../client/vite.config.ts';
 export default defineConfig(
   mergeConfig(base as UserConfig, {
     root: resolve(import.meta.dirname, '../client'),
+    define: { 'import.meta.env.VITE_FNAB_TEST_HOOKS': JSON.stringify('1') },
     cacheDir: resolve(import.meta.dirname, '../node_modules', `.vite-e2e-${process.env.E2E_VITE_CACHE ?? 'main'}`),
   } satisfies UserConfig),
 );

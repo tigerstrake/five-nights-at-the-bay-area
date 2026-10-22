@@ -203,7 +203,7 @@ export function monsterHints({ view: v, t, hopsToHq, watchedHere, commanded, see
     out.push({
       id: 'm-trapped',
       title: 'You’re caught. Struggle',
-      body: 'Press {Space} to start struggling. If they switch on containment it becomes a race. DECOY {D} still works while you’re held.',
+      body: 'Press {Space} to start struggling. If they switch on containment it becomes a race. Abilities are unavailable until you break free.',
       anchor: '[data-testid=monster-struggle]',
       side: 'bottom',
       tone: 'alert',

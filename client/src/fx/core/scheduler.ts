@@ -69,14 +69,16 @@ function tick(now: number) {
   }
   lastTick = now;
   const t0 = performance.now();
+  const lite = isRenderLite();
   for (const e of entries) {
     if (!e.visible) continue;
-    const fps = e.task.fps();
+    // Keep repainting gameplay transitions in test builds; only reduce animation cadence.
+    const fps = lite ? Math.min(e.task.fps(), 4) : e.task.fps();
     if (fps <= 0) continue;
     const minDt = 1000 / fps;
     if (now - e.last < minDt - 3) continue;
     // keep cadence stable without drifting
-    e.last = now - Math.min(minDt, Math.max(0, now - e.last - minDt));
+    e.last = lite ? now : now - Math.min(minDt, Math.max(0, now - e.last - minDt));
     try {
       e.task.render(now);
     } catch (err) {
@@ -108,17 +110,6 @@ function onVisibility() {
 let visHooked = false;
 
 export function addFxTask(task: FxTask): () => void {
-  if (isRenderLite()) {
-    // e2e render-lite: paint one frame (so canvases are sized and initialised), then never animate.
-    const id = setTimeout(() => {
-      try {
-        task.render(performance.now());
-      } catch (err) {
-        console.error('[fx] render failed', err);
-      }
-    }, 0);
-    return () => clearTimeout(id);
-  }
   const entry: Entry = { task, last: 0, visible: true };
   entries.add(entry);
   let set = byEl.get(task.el);

@@ -15,7 +15,7 @@ function storage() {
 
 let net: typeof import('../socket');
 let state: typeof import('../../state/store');
-const session = { code: 'ABCD', token: 'valid-session-token' };
+const session = { code: 'ABCD', token: 'valid-session-token', recoveryToken: 'disconnected-recovery-token' };
 const room = { code: 'ABCD', stage: 'playing' } as RoomView;
 const view = { role: 'monster', t: 1000, t0Epoch: 999_000, ended: false, events: [] } as unknown as PlayerView;
 const result = { reason: 'timer' } as MatchResult;
@@ -131,15 +131,28 @@ describe('clock synchronization', () => {
 });
 
 describe('fresh-tab seat recovery', () => {
-  const hint = { ...session, playerId: 'p', name: 'Original', savedAt: 1_000_000 };
+  const hint = { code: session.code, recoveryToken: session.recoveryToken, playerId: 'p', name: 'Original', savedAt: 1_000_000 };
   const prepare = () => {
     sessionStorage.removeItem('fnab.session');
     localStorage.setItem('fnab.recovery.ABCD', JSON.stringify(hint));
     state.useGame.getState().set({ room: null, view: null, result: null });
   };
+  it('keeps unrestricted resume credentials in sessionStorage and writes only recovery credentials to localStorage', async () => {
+    const pending = net.createRoom('Owner');
+    const joined = { ok: true, ...session, playerId: 'p' };
+    requests('room:create').at(-1)![2](joined);
+    await pending;
+    wire.handlers.get('room:state')!({ ...room, youId: 'p', players: [{ id: 'p', name: 'Owner' }] });
+    vi.advanceTimersByTime(15_000);
+    expect(JSON.parse(sessionStorage.getItem('fnab.session')!)).toEqual(session);
+    const raw = localStorage.getItem('fnab.recovery.ABCD')!;
+    expect(JSON.parse(raw)).toEqual([{ ...hint, name: 'Owner', savedAt: 1_015_000 }]);
+    expect(raw).not.toContain(session.token);
+    expect(JSON.parse(raw)[0]).not.toHaveProperty('token');
+  });
   it('automatically recovers a disconnected seat from an invitation URL and saves a per-tab session', () => {
     prepare(); vi.stubGlobal('location', { search: '?room=abcd' }); connect();
-    expect(requests('room:recover').at(-1)![1]).toEqual({ ...session, playerId: 'p' });
+    expect(requests('room:recover').at(-1)![1]).toEqual({ code: session.code, token: session.recoveryToken, playerId: 'p' });
     requests('room:recover').at(-1)![2]({ ok: true, ...session, playerId: 'p' });
     expect(JSON.parse(sessionStorage.getItem('fnab.session')!)).toEqual(session);
     expect(state.useGame.getState().connection).toBe('online');
@@ -165,7 +178,7 @@ describe('fresh-tab seat recovery', () => {
     expect(requests('room:resume')).toHaveLength(0);
   });
   it('a tab with its own session ignores another tab\'s local recovery hint', async () => {
-    localStorage.setItem('fnab.recovery.ABCD', JSON.stringify({ ...hint, token: 'some-other-tab-token' }));
+    localStorage.setItem('fnab.recovery.ABCD', JSON.stringify({ ...hint, recoveryToken: 'some-other-tab-token' }));
     vi.stubGlobal('location', { search: '?room=ABCD' }); connect();
     expect(requests('room:recover')).toHaveLength(0);
     expect(requests('room:resume')[0]![1]).toEqual(session);
@@ -213,17 +226,17 @@ describe('fresh-tab seat recovery', () => {
   it('tries every recent seat of this browser in the room, skipping seats that are live in other tabs', async () => {
     sessionStorage.removeItem('fnab.session');
     state.useGame.getState().set({ room: null, view: null, result: null });
-    const older = { ...hint, playerId: 'p-old', token: 'older-session-token', savedAt: 990_000 };
+    const older = { ...hint, playerId: 'p-old', recoveryToken: 'older-recovery-token', savedAt: 990_000 };
     localStorage.setItem('fnab.recovery.ABCD', JSON.stringify([older, hint]));
     vi.stubGlobal('location', { search: '?room=ABCD' }); connect();
     expect(requests('room:recover')[0]![1]).toMatchObject({ playerId: 'p' });
     requests('room:recover')[0]![2]({ ok: false, error: 'Seat is connected in another tab' });
     await vi.waitFor(() => expect(requests('room:recover')).toHaveLength(2));
-    expect(requests('room:recover')[1]![1]).toEqual({ code: 'ABCD', playerId: 'p-old', token: older.token });
-    requests('room:recover')[1]![2]({ ok: true, code: 'ABCD', playerId: 'p-old', token: older.token });
-    expect(JSON.parse(sessionStorage.getItem('fnab.session')!)).toEqual({ code: 'ABCD', token: older.token });
+    expect(requests('room:recover')[1]![1]).toEqual({ code: 'ABCD', playerId: 'p-old', token: older.recoveryToken });
+    requests('room:recover')[1]![2]({ ok: true, code: 'ABCD', playerId: 'p-old', token: 'older-session-token', recoveryToken: older.recoveryToken });
+    expect(JSON.parse(sessionStorage.getItem('fnab.session')!)).toEqual({ code: 'ABCD', token: 'older-session-token', recoveryToken: older.recoveryToken });
     // The live tab's hint is untouched.
-    expect(JSON.parse(localStorage.getItem('fnab.recovery.ABCD')!).map((s: { token: string }) => s.token)).toContain(hint.token);
+    expect(JSON.parse(localStorage.getItem('fnab.recovery.ABCD')!).map((s: { recoveryToken: string }) => s.recoveryToken)).toContain(hint.recoveryToken);
   });
   it('a live seat in another tab only produces a notice on the invite link; nothing is joined or taken over', async () => {
     prepare(); vi.stubGlobal('location', { search: '?room=ABCD' }); connect();

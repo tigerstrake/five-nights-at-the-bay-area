@@ -6,6 +6,8 @@ import { feedLog } from './feedDebug';
 const SAMPLE_MS = 500;
 /** Fatal hls.js errors tolerated (each answered with startLoad / recoverMediaError / reload) before giving up. */
 const MAX_FATAL = 4;
+const FATAL_RETRY_MS = 1000;
+const HEALTHY_RESET_MS = 30_000;
 
 export interface HlsState {
   /** Frames are advancing right now: the only state in which the UI may say LIVE. */
@@ -83,6 +85,8 @@ export function useHls(url: string | null, enabled: boolean, cb: HlsCallbacks, o
     let hls: Hls | null = null;
     let dead = false;
     let fatal = 0;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let healthySince: number | null = null;
     let lastKey = '';
     const wd = new StallWatchdog();
     const emit = (s: HlsState) => {
@@ -93,9 +97,11 @@ export function useHls(url: string | null, enabled: boolean, cb: HlsCallbacks, o
     };
     const fail = (why: string) => {
       if (dead) return;
-      dead = true;
       log('fail', why);
       emit({ advancing: false, started: false, stalledMs: 0 });
+      dead = true;
+      clearTimeout(retryTimer);
+      detach();
       cbRef.current.onFail(why);
     };
     const play = () => void video.play().catch(() => undefined);
@@ -108,19 +114,30 @@ export function useHls(url: string | null, enabled: boolean, cb: HlsCallbacks, o
       video.removeAttribute('src');
       video.load();
     };
+    const recoverFatal = (why: string, recover: () => void) => {
+      if (dead) return;
+      healthySince = null;
+      if (++fatal > MAX_FATAL) return fail(why);
+      if (retryTimer !== undefined) return;
+      retryTimer = setTimeout(() => {
+        retryTimer = undefined;
+        if (!dead) recover();
+      }, FATAL_RETRY_MS * 2 ** (fatal - 1));
+    };
     const attach = () => {
       if (HlsCtor) {
         const h = new HlsCtor({ ...HLS_CONFIG });
         hls = h;
         h.on(HlsCtor.Events.ERROR, (_e, data) => {
-          if (h !== hls) return;
+          if (dead || h !== hls) return;
           log(data.fatal ? 'hls-fatal' : 'hls-error', `${data.type}/${data.details}`);
           if (!data.fatal) return;
-          fatal++;
-          if (fatal > MAX_FATAL) return fail(`hls.js fatal ${data.details}`);
-          if (data.type === HlsCtor!.ErrorTypes.NETWORK_ERROR) h.startLoad();
-          else if (data.type === HlsCtor!.ErrorTypes.MEDIA_ERROR) h.recoverMediaError();
-          else reload('fatal ' + data.details);
+          recoverFatal(`hls.js fatal ${data.details}`, () => {
+            if (h !== hls) return;
+            if (data.type === HlsCtor!.ErrorTypes.NETWORK_ERROR) h.startLoad();
+            else if (data.type === HlsCtor!.ErrorTypes.MEDIA_ERROR) h.recoverMediaError();
+            else reload('fatal ' + data.details);
+          });
         });
         h.loadSource(url);
         h.attachMedia(video);
@@ -130,19 +147,18 @@ export function useHls(url: string | null, enabled: boolean, cb: HlsCallbacks, o
       play();
     };
     const reload = (why: string) => {
+      if (dead || retryTimer !== undefined) return;
       log('reload', why);
-      fatal = 0;
+      healthySince = null;
       detach();
       attach();
       wd.resetBaseline();
     };
     const onVideoError = () => {
-      // Native playback has no recovery API: reload, and let the watchdog give up if it keeps failing.
+      // Native playback has no recovery API. Keep a bounded budget across source reloads.
       if (HlsCtor || dead) return;
-      fatal++;
       log('video-error', String(video.error?.code ?? ''));
-      if (fatal > MAX_FATAL) fail('native video error');
-      else reload('native video error');
+      recoverFatal('native video error', () => reload('native video error'));
     };
     video.addEventListener('error', onVideoError);
 
@@ -199,6 +215,11 @@ export function useHls(url: string | null, enabled: boolean, cb: HlsCallbacks, o
         hidden: document.hidden,
       };
       const v = wd.sample(s);
+      // Replenish the budget only after continuous playback progress, never on reload or a brief frame.
+      if (v.advancing && v.stalledMs === 0 && !s.hidden && !s.paused && retryTimer === undefined) {
+        healthySince ??= s.now;
+        if (s.now - healthySince >= HEALTHY_RESET_MS) fatal = 0;
+      } else healthySince = null;
       run(v.action);
       emit({ advancing: v.advancing, started: v.started, stalledMs: v.advancing ? 0 : Math.round(v.stalledMs / 500) * 500 });
     };
@@ -230,6 +251,7 @@ export function useHls(url: string | null, enabled: boolean, cb: HlsCallbacks, o
 
     return () => {
       dead = true;
+      clearTimeout(retryTimer);
       clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
       video.removeEventListener('error', onVideoError);

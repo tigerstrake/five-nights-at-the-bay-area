@@ -28,6 +28,18 @@ function useMomentQueue(phase: string) {
   const queue = useRef<Moment[]>([]);
   const fired = useRef(new Set<string>());
   const busy = useRef(false);
+  const mounted = useRef(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      clearTimeout(timer.current);
+      timer.current = undefined;
+      queue.current = [];
+      busy.current = false;
+    };
+  }, []);
   const holdUntil = useRef(0);
   const lastPhase = useRef(phase);
   if (lastPhase.current !== phase) {
@@ -35,11 +47,13 @@ function useMomentQueue(phase: string) {
     holdUntil.current = Date.now() + PHASE_CARD_MS;
   }
   const pump = () => {
-    if (busy.current) return;
+    if (!mounted.current || busy.current) return;
     const wait = holdUntil.current - Date.now();
     if (wait > 0 && queue.current.length) {
       busy.current = true;
-      setTimeout(() => {
+      timer.current = setTimeout(() => {
+        timer.current = undefined;
+        if (!mounted.current) return;
         busy.current = false;
         pump();
       }, wait);
@@ -50,7 +64,9 @@ function useMomentQueue(phase: string) {
     busy.current = true;
     setCur({ ...next, key: Date.now() });
     if (next.sfx) audio.play(next.sfx, { volume: 0.9 });
-    setTimeout(() => {
+    timer.current = setTimeout(() => {
+      timer.current = undefined;
+      if (!mounted.current) return;
       busy.current = false;
       setCur(null);
       pump();
@@ -58,7 +74,7 @@ function useMomentQueue(phase: string) {
   };
   /** Fire a beat once per id. Beats that pile up wait their turn; stale ones are dropped. */
   const fire = (m: Moment) => {
-    if (fired.current.has(m.id)) return;
+    if (!mounted.current || fired.current.has(m.id)) return;
     fired.current.add(m.id);
     queue.current = [...queue.current.filter((q) => q.tone === 'alert'), m].slice(-2);
     pump();

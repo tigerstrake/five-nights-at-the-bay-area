@@ -40,11 +40,11 @@ export function fxAssetsEnabled(): boolean {
 
 let lite: boolean | null = null;
 /**
- * Render-lite for automated tests: the `?e2e` URL flag (the same one that exposes `window.__fnab`) turns the FX canvas
- * animation loops off so software-rendered CI runners are not starved. Only canvas pixels change: every DOM label,
- * badge and game state is identical. `?e2e&fx=full` keeps the full effects. Never active for normal players.
+ * Explicit test builds may use `?e2e` to cap canvas animation rates for software-rendered CI runners.
+ * `?e2e&fx=full` keeps full effects. A URL flag alone never enables this in a normal build.
  */
 export function isRenderLite(): boolean {
+  if (import.meta.env.VITE_FNAB_TEST_HOOKS !== '1') return false;
   if (lite === null) {
     try {
       const q = new URLSearchParams(window.location.search);

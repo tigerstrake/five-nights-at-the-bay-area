@@ -1,6 +1,6 @@
 /**
  * Cross-tab seat recovery hints (localStorage), never proof of seat ownership: the server still validates the
- * token and only hands back a seat that is currently disconnected (`room:recover`).
+ * recovery credential and only hands back a seat that is currently disconnected (`room:recover`).
  *
  * The per-tab session stays in sessionStorage, so two tabs remain two players. Each tab additionally keeps a
  * short-lived record of its seat here, keyed by room code, so that a *fresh* tab (closed and reopened, or a new
@@ -11,13 +11,13 @@ export const RECOVERY_TTL_MS = 10 * 60_000;
 export const RECOVERY_MAX_SEATS = 6;
 const PREFIX = 'fnab.recovery.';
 type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> & Partial<Pick<Storage, 'key' | 'length'>>;
-export interface RecoverySeat { code: string; playerId: string; token: string; name: string; savedAt: number; }
+export interface RecoverySeat { code: string; playerId: string; recoveryToken: string; name: string; savedAt: number; }
 export const roomCode = (code: string) => code.trim().toUpperCase();
 
 function valid(s: unknown, code: string, now: number): s is RecoverySeat {
   const r = s as RecoverySeat | null;
   return !!r && typeof r === 'object' && r.code === code && typeof r.playerId === 'string' && !!r.playerId &&
-    typeof r.token === 'string' && r.token.length >= 16 && typeof r.name === 'string' &&
+    typeof r.recoveryToken === 'string' && r.recoveryToken.length >= 16 && typeof r.name === 'string' &&
     Number.isFinite(r.savedAt) && now >= r.savedAt && now - r.savedAt < RECOVERY_TTL_MS;
 }
 
@@ -48,18 +48,18 @@ export function readRecovery(storage: StorageLike, code: string, now = Date.now(
   return readRecoveries(storage, code, now)[0] ?? null;
 }
 
-/** Insert or refresh this tab's hint (matched by token or player id). */
+/** Insert or refresh this tab's hint (matched by recovery credential or player id). */
 export function saveRecovery(storage: StorageLike, seat: Omit<RecoverySeat, 'savedAt'>, now = Date.now()): void {
   const code = roomCode(seat.code);
-  const others = readRecoveries(storage, code, now).filter(s => s.token !== seat.token && s.playerId !== seat.playerId);
+  const others = readRecoveries(storage, code, now).filter(s => s.recoveryToken !== seat.recoveryToken && s.playerId !== seat.playerId);
   write(storage, code, [{ ...seat, code, savedAt: now }, ...others].slice(0, RECOVERY_MAX_SEATS));
 }
 
 /** Remove only this tab's hint: a stale tab must never delete another tab's newer record. */
-export function clearRecovery(storage: StorageLike, seat: { code: string; token: string }, now = Date.now()): void {
+export function clearRecovery(storage: StorageLike, seat: { code: string; recoveryToken?: string }, now = Date.now()): void {
   const code = roomCode(seat.code);
   const seats = readRecoveries(storage, code, now);
-  const rest = seats.filter(s => s.token !== seat.token);
+  const rest = seats.filter(s => s.recoveryToken !== seat.recoveryToken);
   if (rest.length !== seats.length) write(storage, code, rest);
 }
 

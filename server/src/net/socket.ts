@@ -125,7 +125,8 @@ export function attachSockets(io: IO, rooms: RoomManager, cameras: CameraService
         const ack = args.at(-1);
         const t = Date.now();
         ipBudget.seenAt = t;
-        if (!requests.take(t) || !ipBudget.requests.take(t)) return safeAck(ack, bad('Rate limit exceeded — try again shortly'));
+        // Leaving only removes the current binding; it must remain possible after either bucket is exhausted.
+        if (event !== 'room:leave' && (!requests.take(t) || !ipBudget.requests.take(t))) return safeAck(ack, bad('Rate limit exceeded — try again shortly'));
         if ((event === 'room:create' || event === 'room:createSolo' || event === 'room:join' || event === 'room:resume' || event === 'room:recover') &&
           (!ipBudget.joins.take(t) || !ipBudget.failures.available(t))) return safeAck(ack, bad('Join limit exceeded — try again shortly'));
         try {
@@ -210,12 +211,13 @@ export function attachSockets(io: IO, rooms: RoomManager, cameras: CameraService
     on('room:recover', (p, ack) => {
       const v = S.recoverSchema.safeParse(p);
       if (!v.success) return safeAck(ack, bad('Invalid session'));
-      if (!identityAllowed(v.data.code, v.data.token)) return safeAck(ack, bad('Cannot change identity during a match'));
-      const target = rooms.locate(v.data.token);
+      const room = rooms.rooms.get(v.data.code.toUpperCase().trim());
+      const player = room?.players.get(v.data.playerId);
+      const valid = player && !player.ai && player.recoveryToken === v.data.token;
+      if (!identityAllowed(v.data.code, valid ? player.token : undefined)) return safeAck(ack, bad('Cannot change identity during a match'));
       // A lost acknowledgement may retry on this same socket; it still cannot displace another tab.
-      const sameBinding = target && target.room.code === v.data.code.toUpperCase().trim() &&
-        target.player.id === v.data.playerId && bound(socket, target.room, target.player.id);
-      const res = sameBinding ? rooms.resume(v.data.code, v.data.token) : rooms.recover(v.data.code, v.data.playerId, v.data.token);
+      const sameBinding = valid && room && bound(socket, room, player.id);
+      const res = sameBinding ? rooms.resume(v.data.code, player.token) : rooms.recover(v.data.code, v.data.playerId, v.data.token);
       if (res.ok) bind(socket, res.code, res.playerId);
       if (!res.ok && (res.error === 'Room not found' || res.error === 'Session expired')) ipBudget.failures.take(Date.now());
       safeAck(ack, res);

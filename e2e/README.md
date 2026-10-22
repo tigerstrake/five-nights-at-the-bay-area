@@ -60,10 +60,10 @@ Real matches take 5 to 10 minutes, so the e2e servers start with `FNAB_TEST_HOOK
   (the cause of the CI failures on slow runners, where the 20 s preparation phase expired before the helper chose a spawn).
   Implemented by wrapping `RoomManager.tick` so a held match sees no elapsed wall time (`FNAB_TEST_HOOKS=1` only).
 
-Client side, `?e2e` also enables **render-lite** (`client/src/fx/core/settings.ts`): the FX canvas animation loops are not
-started (one paint per surface), which removes most of the CPU cost on software-rendered runners. DOM state, labels and
-badges are unchanged; `?e2e&fx=full` brings the effects back. It is keyed on the same URL flag as `window.__fnab`, so normal
-players never get it.
+The e2e Vite config explicitly sets `VITE_FNAB_TEST_HOOKS=1`. In that test build, `?e2e` enables **render-lite**
+(`client/src/fx/core/settings.ts`): FX canvases repaint at up to 4 fps, reducing CPU cost on software-rendered runners
+while continuing to display gameplay changes. DOM state, labels and badges are unchanged; `?e2e&fx=full` restores the
+full animation rate. Normal builds ignore the URL flag for render-lite.
 
 Slow-runner rehearsal: `CI=1 E2E_THROTTLE=4 E2E_WORKERS=2 npx playwright test` throttles every page's CPU 4x through CDP
 (`Emulation.setCPUThrottlingRate`) and scales the wait timeouts.

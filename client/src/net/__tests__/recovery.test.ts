@@ -7,9 +7,15 @@ function storage() {
     setItem: (key: string, value: string) => { data.set(key, value); }, removeItem: (key: string) => { data.delete(key); },
     key: (i: number) => [...data.keys()][i] ?? null, get length() { return data.size; } };
 }
-const seat = { code: 'ABCD', playerId: 'p1', token: 'valid-session-token', name: 'Nightwatch' };
+const seat = { code: 'ABCD', playerId: 'p1', recoveryToken: 'valid-session-token', name: 'Nightwatch' };
 
 describe('cross-tab recovery hints', () => {
+  it('discards legacy hints containing unrestricted resume tokens', () => {
+    const local = storage();
+    local.setItem('fnab.recovery.ABCD', JSON.stringify([{ code: 'ABCD', playerId: 'p1', name: 'Old tab', token: 'unrestricted-resume-token', savedAt: 1000 }]));
+    expect(readRecoveries(local, 'ABCD', 1001)).toEqual([]);
+    expect(local.getItem('fnab.recovery.ABCD')).toBeNull();
+  });
   it('persists a normalised room-scoped hint for a fresh tab, with a strict 10-minute TTL', () => {
     const local = storage();
     saveRecovery(local, { ...seat, code: ' abcd ' }, 10_000);
@@ -22,7 +28,7 @@ describe('cross-tab recovery hints', () => {
   it('does not let a stale tab erase a newer player\'s hint', () => {
     const local = storage();
     saveRecovery(local, seat);
-    const newer = { ...seat, token: 'a-different-valid-token', playerId: 'p2' };
+    const newer = { ...seat, recoveryToken: 'a-different-valid-token', playerId: 'p2' };
     saveRecovery(local, newer);
     clearRecovery(local, seat);
     expect(readRecovery(local, seat.code)).toMatchObject(newer);
@@ -32,10 +38,10 @@ describe('cross-tab recovery hints', () => {
   it('keeps one hint per tab in the same room (newest first, bounded) and refreshes a tab in place', () => {
     const local = storage();
     saveRecovery(local, seat, 1_000);
-    saveRecovery(local, { ...seat, playerId: 'p2', token: 'second-tab-session-token' }, 2_000);
+    saveRecovery(local, { ...seat, playerId: 'p2', recoveryToken: 'second-tab-session-token' }, 2_000);
     saveRecovery(local, seat, 3_000);
     expect(readRecoveries(local, 'ABCD', 3_001).map(s => [s.playerId, s.savedAt])).toEqual([['p1', 3_000], ['p2', 2_000]]);
-    for (let i = 0; i < 10; i++) saveRecovery(local, { ...seat, playerId: `x${i}`, token: `extra-session-token-${i}` }, 4_000 + i);
+    for (let i = 0; i < 10; i++) saveRecovery(local, { ...seat, playerId: `x${i}`, recoveryToken: `extra-session-token-${i}` }, 4_000 + i);
     expect(readRecoveries(local, 'ABCD', 5_000)).toHaveLength(RECOVERY_MAX_SEATS);
     expect(readRecovery(local, 'ABCD', 5_000)?.playerId).toBe('x9');
   });
@@ -52,7 +58,7 @@ describe('cross-tab recovery hints', () => {
     expect(local.getItem('fnab.name')).toBe('kept');
   });
   it.each([null, {}, { ...seat, savedAt: '1' }, { ...seat, savedAt: Infinity }, { ...seat, savedAt: 20_000 },
-    { ...seat, token: 'short', savedAt: 1 }, { ...seat, code: 'EFGH', savedAt: 1 }])('rejects malformed or future records: %j', value => {
+    { ...seat, recoveryToken: 'short', savedAt: 1 }, { ...seat, code: 'EFGH', savedAt: 1 }])('rejects malformed or future records: %j', value => {
     const local = storage();
     local.setItem('fnab.recovery.ABCD', JSON.stringify(value));
     expect(readRecovery(local, 'ABCD', 10_000)).toBeNull();

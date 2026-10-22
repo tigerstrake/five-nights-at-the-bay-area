@@ -6,6 +6,8 @@ export interface JoinOk {
   code: string;
   playerId: string;
   token: string;
+  /** Disconnected-seat recovery only; safe to share with other tabs. Never accepted by room:resume. */
+  recoveryToken?: string;
 }
 export interface Fail {
   ok: false;

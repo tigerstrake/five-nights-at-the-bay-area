@@ -188,7 +188,7 @@ export function CommandDeck({
     let disabledReason: string | null = null;
     if (prep || !self.spawned) disabledReason = 'Emerge first';
     else if (left > 0) disabledReason = `Ready in ${Math.ceil(left / 1000)}s`;
-    else if (id === 'SABOTAGE' && self.held) disabledReason = 'Restrained';
+    else if (self.held) disabledReason = 'Restrained';
     else if (!targets) disabledReason = id === 'SABOTAGE' ? 'Nothing to break in reach' : 'No working camera in reach';
     const toolId = id === 'SABOTAGE' ? 'sabotage' : 'decoy';
     const active = tool === toolId;
@@ -200,7 +200,7 @@ export function CommandDeck({
       state: active ? 'targeting' : 'idle',
       left,
       total: cfg.monster.cooldownMs[id],
-      disabledReason: active ? null : disabledReason,
+      disabledReason: active && !self.held ? null : disabledReason,
       foot: active ? 'Pick a target on the map' : `${targets} target${targets === 1 ? '' : 's'} in reach`,
       stamp: stamps[id] ?? 0,
       onClick: () => onTool(active ? 'move' : toolId),

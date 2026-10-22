@@ -145,6 +145,13 @@ const mctx = (view: MonsterView, o: { hopsToHq?: number | null; watchedHere?: bo
 });
 
 describe('monster coaching rules', () => {
+  it('coaches struggle and does not advertise DECOY while restrained', () => {
+    const held = monView({ t: PREP + 60_000 }, { held: { until: PREP + 68_000, contained: false, struggle: 0, struggling: false } });
+    const hints = monsterHints(mctx(held, { seen: ['m-sabotage'], watchedHere: true }));
+    expect(hints[0]).toMatchObject({ id: 'm-trapped' });
+    expect(hints[0].body).toContain('Abilities are unavailable until you break free');
+    expect(hints.some(h => h.body.includes('DECOY'))).toBe(false);
+  });
   it('walks through spawn → first order in preparation', () => {
     const prep = monView({ phase: 'preparation', t: 3_000 }, { spawned: false, nodeId: null });
     expect(ids(monsterHints(mctx(prep, { commanded: false })))).toEqual(['m-spawn']);

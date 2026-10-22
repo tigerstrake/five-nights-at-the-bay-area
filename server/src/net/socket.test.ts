@@ -239,10 +239,54 @@ describe('socket security regressions', () => {
 });
 
 describe('recovery transport and resource lifecycle', () => {
+  it('recovery credentials cannot resume or steal a connected seat or its private view', () => {
+    const { cfg, socket } = setup(), owner = socket(), defender = socket(), fresh = socket();
+    const seat = joined(owner.request<JoinResult>('room:create', { name: 'Owner' }));
+    defender.request('room:join', { code: seat.code, name: 'Defender' });
+    owner.request('lobby:setReady', { ready: true }); defender.request('lobby:setReady', { ready: true });
+    vi.advanceTimersByTime(cfg.tickMs + cfg.match.countdownMs + cfg.tickMs);
+    expect(seat.recoveryToken).toBeTruthy();
+    expect(seat.recoveryToken).not.toBe(seat.token);
+    const hint = { code: seat.code, playerId: seat.playerId, token: seat.recoveryToken };
+    expect(fresh.request('room:resume', hint).ok).toBe(false);
+    expect(fresh.request('room:recover', hint)).toMatchObject({ ok: false, error: 'Seat is connected in another tab' });
+    expect(owner.values('room:kicked')).toHaveLength(0);
+    expect(fresh.values('game:view')).toHaveLength(0);
+    owner.disconnect();
+    expect(fresh.request('room:resume', hint).ok).toBe(false);
+    expect(fresh.request('room:recover', { ...hint, token: seat.token }).ok).toBe(false);
+    expect(fresh.request('room:recover', hint)).toEqual(seat);
+    expect(fresh.values('game:view').at(-1).role).toBe('monster');
+    expect(fresh.request('room:recover', hint)).toEqual(seat); // Lost-ack retry on its own binding.
+  });
+
+  it.each(['socket', 'IP'])('Leave removes the seat even after exhausting the %s request bucket', bucket => {
+    const { rm, cfg, socket } = setup(c => {
+      c.net!.socketBurst = bucket === 'socket' ? 8 : 100;
+      c.net!.ipBurst = bucket === 'IP' ? 8 : 100;
+    });
+    const monster = socket(), defender = socket(), teammate = socket();
+    const room = joined(monster.request<JoinResult>('room:create', { name: 'Monster' }));
+    const seat = joined(defender.request<JoinResult>('room:join', { code: room.code, name: 'Defender' }));
+    teammate.request('room:join', { code: room.code, name: 'Teammate' });
+    for (const s of [monster, defender, teammate]) s.request('lobby:setReady', { ready: true });
+    vi.advanceTimersByTime(cfg.tickMs + cfg.match.countdownMs + cfg.tickMs);
+    for (let i = 0; i < 100; i++) defender.request('time:ping', { clientSentAt: 0 });
+    expect(defender.request('game:resync').error).toMatch(/Rate limit/);
+    const leave = vi.spyOn(rm, 'leave');
+    defender.request('room:leave');
+    expect(rm.rooms.get(room.code)!.players.has(seat.playerId)).toBe(false);
+    expect(rm.locate(seat.token)).toBeNull();
+    expect(defender.data).toEqual({});
+    defender.request('room:leave');
+    expect(leave).toHaveBeenCalledTimes(1);
+    expect(rm.rooms.get(room.code)!.match!.state.result).toBeNull();
+  });
+
   it('recovery rejects connected/forged seats, resumes a disconnected seat, and handles lost-ack retries on its own binding', () => {
     const { rm, socket } = setup(), first = socket(), reopened = socket();
     const seat = joined(first.request<JoinResult>('room:create', { name: 'Original' }));
-    const request = { code: seat.code, playerId: seat.playerId, token: seat.token };
+    const request = { code: seat.code, playerId: seat.playerId, token: seat.recoveryToken };
     expect(reopened.request('room:recover', request)).toMatchObject({ ok: false, error: 'Seat is connected in another tab' });
     expect(first.values('room:kicked')).toHaveLength(0);
     first.disconnect();

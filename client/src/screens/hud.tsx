@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import type { ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import type { HqId, MatchPhase, RoomView, TeamConnectionView, VisibleEvent, ViewBase } from '@fnab/shared';
 import { matchNow, serverNow } from '../state/store';
 import { useNow } from '../hooks/useNow';
@@ -7,6 +7,7 @@ import { mmss, PHASE_LABEL } from '../lib/format';
 import { ConnectionBadge, SettingsMenu } from '../ui/chrome';
 import { Badge, Button } from '../ui/kit';
 import { lobby, leaveRoom } from '../net/socket';
+import { HowToPlay } from './shell/HowToPlay';
 
 export type HudAccent = 'cyan' | 'monster';
 
@@ -195,51 +196,68 @@ export function TopBar({
   const me = room.players.find((p) => p.id === room.youId);
   const spectator = me?.role === 'spectator';
   const monster = accent === 'monster';
+  const [manual, setManual] = useState(false);
+  const closeManual = useCallback(() => setManual(false), []);
   return (
-    <header
-      className={clsx(
-        'relative z-30 flex flex-nowrap items-center gap-x-3 border-b px-3 py-1.5 max-lg:flex-wrap max-lg:gap-y-1 max-md:px-2 min-[1400px]:gap-x-5 [&>*]:shrink-0',
-        monster ? 'border-blood/60 bg-[#0d0708]/95' : 'border-edge bg-panel/90',
-      )}
-      data-testid="top-bar"
-      data-coach-safe
-    >
-      <div className="flex items-center gap-2">
-        <span
-          className={clsx(
-            'h-2 w-2',
-            monster
-              ? 'rotate-45 bg-blood-hi shadow-[0_0_8px_rgba(179,32,47,0.8)]'
-              : 'rounded-full bg-cyan shadow-[0_0_8px_rgba(59,198,214,0.7)]',
-          )}
-        />
-        <span className={clsx('font-mono text-[11px] uppercase tracking-[0.2em] max-lg:hidden', monster ? 'text-bone' : 'text-mute')}>
-          {title ?? (monster ? 'Entity Command' : 'Security Control')}
-        </span>
-        <span className="font-mono text-[11px] text-dim" title="Room code" data-testid="hud-room-code">
-          <span className="max-lg:hidden">· </span>
-          {room.code}
-        </span>
-      </div>
-      {spectator && <SpectatorBanner />}
-      <PhaseBadge view={view} />
-      <MatchClock view={view} accent={accent} />
-      {/* Screen-specific readouts compress first (they clip rather than push the controls off-screen). */}
-      <div className="flex min-w-0 flex-1 shrink! items-center gap-3 overflow-hidden max-lg:order-last max-lg:basis-full min-[1400px]:gap-5">
-        {children}
-      </div>
-      {right}
-      <ConnectionBadge textClassName="hidden min-[1400px]:inline" />
-      <SettingsMenu labelClassName="hidden min-[1400px]:inline" />
-      {me?.isHost && (
-        <Button size="sm" tone="ghost" onClick={() => confirm('Abort the match and return everyone to the lobby?') && void lobby.restart()}>
-          Abort
+    <>
+      <header
+        className={clsx(
+          'relative z-30 flex flex-nowrap items-center gap-x-3 border-b px-3 py-1.5 max-lg:flex-wrap max-lg:gap-y-1 max-md:px-2 min-[1400px]:gap-x-5 [&>*]:shrink-0',
+          monster ? 'border-blood/60 bg-[#0d0708]/95' : 'border-edge bg-panel/90',
+        )}
+        data-testid="top-bar"
+        data-coach-safe
+      >
+        <div className="flex items-center gap-2">
+          <span
+            className={clsx(
+              'h-2 w-2',
+              monster
+                ? 'rotate-45 bg-blood-hi shadow-[0_0_8px_rgba(179,32,47,0.8)]'
+                : 'rounded-full bg-cyan shadow-[0_0_8px_rgba(59,198,214,0.7)]',
+            )}
+          />
+          <span className={clsx('font-mono text-[11px] uppercase tracking-[0.2em] max-lg:hidden', monster ? 'text-bone' : 'text-mute')}>
+            {title ?? (monster ? 'Entity Command' : 'Security Control')}
+          </span>
+          <span className="font-mono text-[11px] text-dim" title="Room code" data-testid="hud-room-code">
+            <span className="max-lg:hidden">· </span>
+            {room.code}
+          </span>
+        </div>
+        {spectator && <SpectatorBanner />}
+        <PhaseBadge view={view} />
+        <MatchClock view={view} accent={accent} />
+        {/* Screen-specific readouts compress first (they clip rather than push the controls off-screen). */}
+        <div className="flex min-w-0 flex-1 shrink! items-center gap-3 overflow-hidden max-lg:order-last max-lg:basis-full min-[1400px]:gap-5">
+          {children}
+        </div>
+        {right}
+        <Button
+          size="sm"
+          tone="ghost"
+          onClick={() => setManual(true)}
+          aria-label="Field manual"
+          aria-haspopup="dialog"
+          aria-expanded={manual}
+          title="Field manual — role strategy"
+          data-testid="field-manual"
+        >
+          <span aria-hidden>?</span> <span className="hidden min-[1400px]:inline">Field manual</span>
         </Button>
-      )}
-      <Button size="sm" tone="ghost" onClick={() => confirm('Leave this room?') && leaveRoom()}>
-        Leave
-      </Button>
-    </header>
+        <ConnectionBadge textClassName="hidden min-[1400px]:inline" />
+        <SettingsMenu labelClassName="hidden min-[1400px]:inline" />
+        {me?.isHost && (
+          <Button size="sm" tone="ghost" onClick={() => confirm('Abort the match and return everyone to the lobby?') && void lobby.restart()}>
+            Abort
+          </Button>
+        )}
+        <Button size="sm" tone="ghost" onClick={() => confirm('Leave this room?') && leaveRoom()}>
+          Leave
+        </Button>
+      </header>
+      <HowToPlay open={manual} onClose={closeManual} initialSection="strategy" initialRole={monster ? 'monster' : 'defender'} />
+    </>
   );
 }
 

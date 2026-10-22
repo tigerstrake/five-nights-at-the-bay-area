@@ -13,6 +13,7 @@ const NAME_KEY = 'fnab.name'; // localStorage convenience
 interface Session {
   code: string;
   token: string;
+  recoveryToken?: string;
 }
 
 function readSession(): Session | null {
@@ -38,11 +39,12 @@ function forgetSession() {
 function recoveriesFor(code: string): RecoverySeat[] {
   try { return readRecoveries(localStorage, code); } catch { return []; }
 }
-function forgetHint(sess: Session | null) {
+function forgetHint(sess: { code: string; recoveryToken?: string } | null) {
   try { if (sess) clearRecovery(localStorage, sess); } catch { /* Storage unavailable. */ }
 }
-function rememberSeat(res: { code: string; token: string; playerId: string }, name: string) {
-  try { saveRecovery(localStorage, { code: res.code, token: res.token, playerId: res.playerId, name }); } catch { /* Storage unavailable. */ }
+function rememberSeat(res: { code: string; recoveryToken?: string; playerId: string }, name: string) {
+  if (!res.recoveryToken) return;
+  try { saveRecovery(localStorage, { code: res.code, recoveryToken: res.recoveryToken, playerId: res.playerId, name }); } catch { /* Storage unavailable. */ }
 }
 /** Refresh this tab's cross-tab hint while it holds a seat in a lobby or a running match. */
 function refreshSeat() {
@@ -84,7 +86,8 @@ const RESYNC_MIN_INTERVAL_MS = 500;
 
 function resumeSession(s: ClientSocket, recovery?: RecoverySeat, done?: (res: JoinResult) => void) {
   cancelResume();
-  const sess = recovery ?? readSession();
+  const session = readSession();
+  const sess = recovery ?? session;
   if (!sess) return;
   let cancelled = false, attempt = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -95,7 +98,7 @@ function resumeSession(s: ClientSocket, recovery?: RecoverySeat, done?: (res: Jo
   };
   const current = () => {
     const saved = readSession();
-    return !cancelled && s.connected && (recovery ? !saved : saved?.code === sess.code && saved.token === sess.token);
+    return !cancelled && s.connected && (recovery ? !saved : saved?.code === sess.code && saved.token === session?.token);
   };
   const retry = () => {
     if (!current()) return;
@@ -114,6 +117,10 @@ function resumeSession(s: ClientSocket, recovery?: RecoverySeat, done?: (res: Jo
       if (res.ok) {
         cancelled = true; clearTimeout(timer);
         if (recovery) onJoined(res, recovery.name);
+        else {
+          writeSession({ code: res.code, token: res.token, recoveryToken: res.recoveryToken });
+          refreshSeat();
+        }
         useGame.getState().set({ connection: 'online' });
         done?.(res);
       } else if (SESSION_INVALID_ERRORS.has(res.error) || (recovery && RECOVERY_FINAL_ERRORS.has(res.error))) {
@@ -132,8 +139,8 @@ function resumeSession(s: ClientSocket, recovery?: RecoverySeat, done?: (res: Jo
         retry();
       }
     };
-    if (recovery) s.emit('room:recover', { code: recovery.code, playerId: recovery.playerId, token: recovery.token }, receive);
-    else s.emit('room:resume', sess, receive);
+    if (recovery) s.emit('room:recover', { code: recovery.code, playerId: recovery.playerId, token: recovery.recoveryToken }, receive);
+    else if (session) s.emit('room:resume', session, receive);
   };
   send();
 }
@@ -245,7 +252,7 @@ export function syncClock() {
 function onJoined(res: JoinResult, name: string): JoinResult {
   if (res.ok) {
     cancelResume();
-    writeSession({ code: res.code, token: res.token });
+    writeSession({ code: res.code, token: res.token, recoveryToken: res.recoveryToken });
     if (useGame.getState().room?.stage !== 'results') rememberSeat(res, name);
     saveName(name);
     useGame.getState().set({ connection: 'online' });

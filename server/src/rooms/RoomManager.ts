@@ -33,6 +33,7 @@ export interface Player {
   ai?: AiSeat;
   id: string;
   token: string;
+  recoveryToken?: string;
   name: string;
   role: Role;
   ready: boolean;
@@ -146,7 +147,7 @@ export class RoomManager {
     this.rooms.set(code, room);
     const p = this.addPlayer(room, name, token, 'monster');
     room.hostId = p.id;
-    return { ok: true, code, playerId: p.id, token: p.token };
+    return { ok: true, code, playerId: p.id, token: p.token, recoveryToken: p.recoveryToken };
   }
 
   createSolo(name: string, options: SoloOptions, token?: string): JoinResult {
@@ -181,7 +182,7 @@ export class RoomManager {
     const p = this.addPlayer(room, name, token, role);
     if (!room.hostId) room.hostId = p.id;
     this.cancelCountdown(room);
-    return { ok: true, code: room.code, playerId: p.id, token: p.token };
+    return { ok: true, code: room.code, playerId: p.id, token: p.token, recoveryToken: p.recoveryToken };
   }
 
   private findByToken(room: Room, token: string): Player | undefined {
@@ -194,6 +195,7 @@ export class RoomManager {
     const p: Player = {
       id: randomUUID(),
       token: t,
+      recoveryToken: randomUUID(),
       name: this.cleanName(name),
       role,
       ready: false,
@@ -212,11 +214,11 @@ export class RoomManager {
   recover(code: string, playerId: string, token: string): JoinResult {
     const room = this.rooms.get(code.toUpperCase().trim());
     if (!room) return { ok: false, error: 'Room not found' };
-    const p = this.findByToken(room, token);
-    if (!p || p.id !== playerId) return { ok: false, error: 'Session expired' };
+    const p = room.players.get(playerId);
+    if (!p || p.ai || !p.recoveryToken || p.recoveryToken !== token) return { ok: false, error: 'Session expired' };
     if (p.connected) return { ok: false, error: 'Seat is connected in another tab' };
     if (room.stage === 'results' || room.match?.state.result) return { ok: false, error: 'Match ended' };
-    return this.resume(room.code, token);
+    return this.resume(room.code, p.token);
   }
 
   resume(code: string, token: string): JoinResult {
@@ -237,7 +239,7 @@ export class RoomManager {
     room.emptySince = null;
     if (!wasConnected) room.version++;
     this.updateConnections(room, this.now());
-    return { ok: true, code: room.code, playerId: p.id, token: p.token };
+    return { ok: true, code: room.code, playerId: p.id, token: p.token, recoveryToken: p.recoveryToken };
   }
 
   disconnect(code: string, playerId: string): void {
