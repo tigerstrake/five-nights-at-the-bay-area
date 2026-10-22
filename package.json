@@ -15,7 +15,8 @@
     "test:watch": "vitest",
     "typecheck": "npm run typecheck -w @fnab/shared && npm run typecheck -w @fnab/server && npm run typecheck -w @fnab/client",
     "test:e2e": "playwright test",
-    "balance": "node --import tsx server/src/balance/cli.ts"
+    "balance": "node --import tsx server/src/balance/cli.ts",
+    "perf": "node --expose-gc --import tsx server/src/perf/cli.ts"
   },
   "engines": {
     "node": ">=20"

@@ -1,7 +1,7 @@
 // §3: reconnection after a temporary disconnect (tab reload and dropped socket) and restarting without a page reload.
 import { expect, test } from '@playwright/test';
 import { CFG } from './helpers/data';
-import { asDefender, asMonster, chooseSpawn, disposeAll, expectSameResult, ready, runUntilEnd, skipPrep, startMatch } from './helpers/game';
+import { asDefender, asMonster, chooseSpawn, disposeAll, expectSameResult, Player, ready, runUntilEnd, skipPrep, startMatch } from './helpers/game';
 
 test('a defender reloading mid-match resumes the same seat and state; so does the monster', async ({ browser }) => {
   const m = await startMatch(browser, { hq: 'hq-sf', defenders: 2 });
@@ -25,7 +25,7 @@ test('a defender reloading mid-match resumes the same seat and state; so does th
     await d1.waitView(`v.t >= ${viewBefore.t}`);
     const viewAfter = asDefender(await d1.view());
     expect(viewAfter.hqId).toBe(viewBefore.hqId);
-    expect(viewAfter.t0Epoch).toBe(viewBefore.t0Epoch);
+    expect(Math.abs(viewAfter.serverNow - viewAfter.t0Epoch - viewAfter.t)).toBeLessThan(500); // same clock mapping
     expect(viewAfter.traps.map((t) => t.id)).toEqual(viewBefore.traps.map((t) => t.id));
     expect(viewAfter.power.value).toBeGreaterThan(0);
     await expect.poll(async () => (await d2.room()).players.every((p) => p.connected)).toBe(true);
@@ -73,6 +73,42 @@ test('a dropped socket shows the reconnect banner, the seat is held, and the ses
     expect((await def.room()).youId).toBe(youId);
     await def.waitView(`v.t >= ${asMonster(await monster.view()).t - 1}`);
     expect((await def.act({ type: 'scan', nodeId: hqNode(asDefender(await def.view())) })).ok).toBe(true);
+  } finally {
+    await disposeAll(m);
+  }
+});
+
+test('closing the tab and reopening the invite link reclaims the seat; a tab opened while it is live never takes it', async ({ browser }) => {
+  const m = await startMatch(browser, { hq: 'hq-sf', defenders: 1 });
+  try {
+    const { monster, defenders } = m;
+    const def = defenders[0]!;
+    await chooseSpawn(m);
+    await skipPrep(m);
+    const { youId, players } = await def.room();
+    const seat = () => monster.room().then((r) => r.players.find((p) => p.id === youId));
+
+    // Same browser, seat still live: the new tab stays on the title screen with a notice; nobody is kicked.
+    const twin = new Player('twin', def.context, await def.context.newPage());
+    await twin.page.goto(`/?e2e&room=${m.code}`);
+    await expect(twin.page.getByTestId('title-screen')).toBeVisible();
+    await expect(twin.page.getByTestId('toasts')).toContainText(/open in another tab/);
+    expect(await twin.room()).toBeNull();
+    await expect(def.page.getByTestId('defender-screen')).toBeVisible();
+    expect((await seat())?.connected).toBe(true);
+    await twin.page.close();
+
+    // Close the tab for real (sessionStorage is gone with it), then open the invite link in a fresh tab.
+    await def.page.close();
+    await expect.poll(async () => (await seat())?.connected).toBe(false);
+    const reopened = new Player(def.name, def.context, await def.context.newPage());
+    await reopened.page.goto(`/?e2e&room=${m.code}`);
+    await expect(reopened.page.getByTestId('defender-screen')).toBeVisible({ timeout: 20_000 });
+    expect((await reopened.room()).youId).toBe(youId);
+    await expect.poll(async () => (await seat())?.connected).toBe(true);
+    expect((await monster.room()).players).toHaveLength(players.length); // no extra spectator seat
+    await reopened.waitView(`v.t >= ${asMonster(await monster.view()).t - 1}`);
+    expect((await reopened.act({ type: 'scan', nodeId: hqNode(asDefender(await reopened.view())) })).ok).toBe(true);
   } finally {
     await disposeAll(m);
   }

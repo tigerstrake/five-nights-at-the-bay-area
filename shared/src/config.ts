@@ -359,3 +359,8 @@ export function scaleForDefenders(count: number, base: BalanceConfig = DEFAULT_C
 export function clampDurationMs(ms: number, cfg: BalanceConfig = DEFAULT_CONFIG): number {
   return Math.min(cfg.match.maxDurationMs, Math.max(cfg.match.minDurationMs, Math.round(ms)));
 }
+/**
+ * Opt-in view delta transport (server/src/net/viewUpdates.ts). A full `game:view` checkpoint is also sent every
+ * `fullEveryTicks` emissions (30 s at 10 Hz) as a safety net; gaps are otherwise repaired by `game:resync`.
+ */
+export const VIEW_TRANSPORT_CONFIG = { fullEveryTicks: 300 } as const;

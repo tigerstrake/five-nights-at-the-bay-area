@@ -210,6 +210,25 @@ stale callbacks cannot invalidate a newer session. Definitive invalidation (`Roo
 `Reconnection grace expired`, `Invalid session`) clears the saved session. Clock pings accept only matching,
 finite timestamps, a finite nonnegative RTT and a finite offset, retaining the last valid estimate on errors.
 
+**Reopening a closed tab.** The session stays per tab (sessionStorage), so two tabs are still two players. Each tab
+also keeps a seat hint in localStorage under `fnab.recovery.<CODE>`: a list of `{code, playerId, token, name, savedAt}`
+(one entry per tab, newest first, at most 6, 10 min TTL), refreshed on join, on room updates, every 15 s and on
+`pagehide`; removed on leave, kick and match end (only the tab's own entry, so a stale tab never deletes another's).
+A tab *without* a session that opens `/?room=CODE`, or joins CODE, first sends `room:recover {code, playerId, token}`
+for each hint. The server validates the token exactly as for `room:resume` (same room, same player, grace not
+expired, match not over) and additionally refuses with `Seat is connected in another tab` while that seat has a live
+socket, so a live tab is never kicked. On success the tab saves the session and resumes the seat (role, name,
+match). If every hinted seat is still live, the invite link only shows a notice and Join creates a new player with
+its own token. `room:recover` shares the join budget and failure accounting of `room:resume`.
+
+**View deltas (transport only).** Clients that connect with `auth: { viewDeltas: true }` receive `game:delta`
+`{ baseSequence, sequence, changes, removed? }`: whole top-level fields that changed since the previous view on that
+socket, plus optional fields that disappeared. Full views carry `viewSequence`. The client applies a delta only when
+`baseSequence` equals its view's `viewSequence` (and the role is unchanged); otherwise it emits `game:resync` (at most
+every 500 ms) and the next tick is a full `game:view`. Full checkpoints are also sent on every (re)bind, role change,
+new match and every 300 emissions (`VIEW_TRANSPORT_CONFIG`). Deltas are computed from the already role-filtered view,
+so they can never contain more than the full view would.
+
 Additive optional fields on every `PlayerView`:
 
 ```ts

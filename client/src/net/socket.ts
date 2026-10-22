@@ -1,7 +1,9 @@
 // Socket.IO client singleton + session persistence + server clock sync.
 import { io, type Socket } from 'socket.io-client';
-import type { AiDifficulty, ClientToServerEvents, GameAction, JoinResult, ServerToClientEvents, ActionResult, Role, HqId, SoloOptions } from '@fnab/shared';
+import type { AiDifficulty, ClientToServerEvents, GameAction, JoinResult, PlayerView, ServerToClientEvents, ActionResult, Role, HqId, SoloOptions } from '@fnab/shared';
 import { normalizeResult, useGame } from '../state/store';
+import { clearRecovery, clearRoomRecoveries, pruneRecoveries, readRecoveries, roomCode, saveRecovery, type RecoverySeat } from './recovery';
+import { applyViewDelta } from '../state/viewDelta';
 
 export type ClientSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
@@ -29,6 +31,26 @@ function writeSession(s: Session | null) {
     /* storage unavailable */
   }
 }
+function forgetSession() {
+  forgetHint(readSession());
+  writeSession(null);
+}
+function recoveriesFor(code: string): RecoverySeat[] {
+  try { return readRecoveries(localStorage, code); } catch { return []; }
+}
+function forgetHint(sess: Session | null) {
+  try { if (sess) clearRecovery(localStorage, sess); } catch { /* Storage unavailable. */ }
+}
+function rememberSeat(res: { code: string; token: string; playerId: string }, name: string) {
+  try { saveRecovery(localStorage, { code: res.code, token: res.token, playerId: res.playerId, name }); } catch { /* Storage unavailable. */ }
+}
+/** Refresh this tab's cross-tab hint while it holds a seat in a lobby or a running match. */
+function refreshSeat() {
+  const sess = readSession(), { room, view } = useGame.getState();
+  if (!sess || !room || room.code !== sess.code || room.stage === 'results' || view?.ended) return;
+  const me = room.players?.find(p => p.id === room.youId);
+  if (me) rememberSeat({ ...sess, playerId: me.id }, me.name);
+}
 export function savedName(): string {
   try {
     return localStorage.getItem(NAME_KEY) ?? '';
@@ -53,20 +75,27 @@ let socket: ClientSocket | null = null;
 let cancelResume = () => {};
 
 const SESSION_INVALID_ERRORS = new Set(['Room not found', 'Session expired', 'Reconnection grace expired', 'Invalid session']);
+const SEAT_LIVE_ERROR = 'Seat is connected in another tab';
+const RECOVERY_FINAL_ERRORS = new Set([SEAT_LIVE_ERROR, 'Match ended', 'Cannot change identity during a match']);
 const RESUME_RETRY_BASE_MS = 500;
 const RESUME_RETRY_MAX_MS = 4_000;
 const RESUME_ACK_TIMEOUT_MS = 4_000;
+const RESYNC_MIN_INTERVAL_MS = 500;
 
-function resumeSession(s: ClientSocket) {
+function resumeSession(s: ClientSocket, recovery?: RecoverySeat, done?: (res: JoinResult) => void) {
   cancelResume();
-  const sess = readSession();
+  const sess = recovery ?? readSession();
   if (!sess) return;
   let cancelled = false, attempt = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  cancelResume = () => { cancelled = true; clearTimeout(timer); };
+  cancelResume = () => {
+    if (cancelled) return;
+    cancelled = true; clearTimeout(timer);
+    done?.({ ok: false, error: 'Recovery cancelled' });
+  };
   const current = () => {
     const saved = readSession();
-    return !cancelled && s.connected && saved?.code === sess.code && saved.token === sess.token;
+    return !cancelled && s.connected && (recovery ? !saved : saved?.code === sess.code && saved.token === sess.token);
   };
   const retry = () => {
     if (!current()) return;
@@ -78,55 +107,113 @@ function resumeSession(s: ClientSocket) {
     let pending = true;
     // Socket.IO may never acknowledge a request lost during a transport interruption.
     timer = setTimeout(() => { pending = false; retry(); }, RESUME_ACK_TIMEOUT_MS);
-    s.emit('room:resume', sess, (res) => {
+    const receive = (res: JoinResult) => {
       if (!pending || !current()) return;
       pending = false;
       clearTimeout(timer);
       if (res.ok) {
-        cancelResume();
+        cancelled = true; clearTimeout(timer);
+        if (recovery) onJoined(res, recovery.name);
         useGame.getState().set({ connection: 'online' });
-      } else if (SESSION_INVALID_ERRORS.has(res.error)) {
-        cancelResume();
-        writeSession(null);
-        useGame.getState().set({ connection: 'online', room: null, view: null, result: null });
-        useGame.getState().toast(res.error === 'Session expired' ? 'Previous session expired' : res.error, 'warn');
+        done?.(res);
+      } else if (SESSION_INVALID_ERRORS.has(res.error) || (recovery && RECOVERY_FINAL_ERRORS.has(res.error))) {
+        cancelled = true; clearTimeout(timer);
+        if (recovery) {
+          if (res.error !== SEAT_LIVE_ERROR) forgetHint(recovery);
+          useGame.getState().set({ connection: 'online' });
+        } else {
+          forgetSession();
+          useGame.getState().set({ connection: 'online', room: null, view: null, result: null });
+          useGame.getState().toast(res.error === 'Session expired' ? 'Previous session expired' : res.error, 'warn');
+        }
+        done?.(res);
       } else {
         if (attempt === 0) useGame.getState().toast(res.error, 'warn');
         retry();
       }
-    });
+    };
+    if (recovery) s.emit('room:recover', { code: recovery.code, playerId: recovery.playerId, token: recovery.token }, receive);
+    else s.emit('room:resume', sess, receive);
   };
   send();
 }
 
+/**
+ * Fresh tab (no per-tab session): try this browser's recent seats in `code`, newest first. The server only hands
+ * back a seat that is currently disconnected, so a seat still open in another tab is never taken over.
+ * Resolves null when there was nothing to try.
+ */
+async function recoverAny(s: ClientSocket, code: string): Promise<JoinResult | null> {
+  let last: JoinResult | null = null;
+  for (const seat of recoveriesFor(code)) {
+    if (readSession()) break;
+    const res = await new Promise<JoinResult>(resolve => resumeSession(s, seat, resolve));
+    last = res;
+    if (!res.ok && res.error === 'Room not found') {
+      try { clearRoomRecoveries(localStorage, code); } catch { /* Storage unavailable. */ }
+    }
+    if (res.ok || !RETRY_NEXT_SEAT.has(res.error)) return res;
+  }
+  return last;
+}
+const RETRY_NEXT_SEAT = new Set([SEAT_LIVE_ERROR, 'Session expired', 'Reconnection grace expired', 'Invalid session', 'Match ended']);
+
 export function getSocket(): ClientSocket {
   if (socket) return socket;
-  const s: ClientSocket = io({ path: '/socket.io', transports: ['websocket', 'polling'], autoConnect: true });
+  const s: ClientSocket = io({ path: '/socket.io', transports: ['websocket', 'polling'], autoConnect: true, auth: { viewDeltas: true } });
   socket = s;
   const store = useGame.getState;
+  try { pruneRecoveries(localStorage); } catch { /* Storage unavailable. */ }
 
   s.on('connect', () => {
     store().set({ connection: 'online' });
     syncClock();
-    resumeSession(s);
+    const invited = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('room');
+    if (readSession() || !invited) return resumeSession(s);
+    void recoverAny(s, invited).then(res => {
+      if (res && !res.ok && res.error === SEAT_LIVE_ERROR) store().toast('Your seat in this room is open in another tab', 'info');
+    });
   });
   s.on('disconnect', () => { cancelResume(); store().set({ connection: 'reconnecting' }); });
   s.io.on('reconnect_attempt', () => store().set({ connection: 'reconnecting' }));
   s.on('room:state', (room) => {
     store().setRoom(room);
+    const sess = readSession();
+    if (sess?.code !== room.code) return;
+    if (room.stage === 'results') forgetHint(sess);
+    else refreshSeat();
   });
-  s.on('game:view', (view) => store().setView(view));
-  s.on('game:result', (result) => store().set({ result: normalizeResult(result) }));
+  const receiveView = (view: PlayerView) => {
+    const wasEnded = store().view?.ended;
+    store().setView(view);
+    if (view.ended && !wasEnded) forgetHint(readSession());
+  };
+  s.on('game:view', receiveView);
+  // Opt-in delta transport (auth.viewDeltas): patch the last view; on any gap ask for a full checkpoint.
+  let resyncAt = -Infinity;
+  s.on('game:delta', delta => {
+    const view = applyViewDelta(store().view, delta);
+    if (view) return receiveView(view);
+    if (Date.now() - resyncAt < RESYNC_MIN_INTERVAL_MS) return;
+    resyncAt = Date.now();
+    s.emit('game:resync');
+  });
+  s.on('game:result', (result) => {
+    forgetHint(readSession());
+    store().set({ result: normalizeResult(result) });
+  });
   s.on('cameras:status', (st) => store().setCameraStatuses(st));
   s.on('room:kicked', ({ reason }) => {
     // Forget the seat: otherwise this tab would auto-resume on its next reconnect and kick the replacement
     // connection (e.g. the same player who reopened the game in another tab).
     cancelResume();
-    writeSession(null);
+    forgetSession();
     store().toast(reason, 'warn');
     store().set({ room: null, view: null, result: null });
   });
-  setInterval(syncClock, 15_000);
+  setInterval(() => { syncClock(); refreshSeat(); }, 15_000);
+  // Closing the tab is exactly when a fresh tab will need the hint: stamp it with the closing time.
+  if (typeof addEventListener === 'function') addEventListener('pagehide', refreshSeat);
   return s;
 }
 
@@ -159,6 +246,7 @@ function onJoined(res: JoinResult, name: string): JoinResult {
   if (res.ok) {
     cancelResume();
     writeSession({ code: res.code, token: res.token });
+    if (useGame.getState().room?.stage !== 'results') rememberSeat(res, name);
     saveName(name);
     useGame.getState().set({ connection: 'online' });
   }
@@ -177,13 +265,20 @@ export function createSoloRoom(name: string, options: SoloOptions): Promise<Join
     });
   });
 }
-export function joinRoom(code: string, name: string): Promise<JoinResult> {
-  return new Promise((resolve) => getSocket().emit('room:join', { code, name, token: tabToken() }, (r) => resolve(onJoined(r, name))));
+export async function joinRoom(code: string, name: string): Promise<JoinResult> {
+  const s = getSocket();
+  if (!readSession()) {
+    const res = await recoverAny(s, code);
+    if (res && (res.ok || res.error === 'Recovery cancelled' || res.error === 'Cannot change identity during a match')) return res;
+    // A seat still open in another tab stays there: joining creates an independent player with its own token.
+    if (res && !res.ok && res.error === SEAT_LIVE_ERROR) useGame.getState().toast('Your earlier seat is open in another tab — joining as a new player', 'info');
+  }
+  return new Promise((resolve) => s.emit('room:join', { code: roomCode(code), name, token: tabToken() }, (r) => resolve(onJoined(r, name))));
 }
 export function leaveRoom() {
   cancelResume();
   getSocket().emit('room:leave');
-  writeSession(null);
+  forgetSession();
   useGame.getState().set({ room: null, view: null, result: null });
 }
 

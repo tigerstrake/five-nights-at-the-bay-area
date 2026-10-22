@@ -28,7 +28,25 @@ function walk(v: unknown, visit: (key: string, value: unknown, parent: Record<st
     }
   }
 }
-const views = (p: Player): Frame[] => p.eventFrames('game:view');
+/**
+ * Every view as the client reconstructs it off the wire: full `game:view` checkpoints patched by the opt-in
+ * `game:delta` frames (top-level `changes`, `removed`). Inspecting these covers every byte either kind carried.
+ */
+const views = (p: Player): Frame[] => {
+  const out: Frame[] = [];
+  let last: Record<string, unknown> | null = null;
+  for (const f of p.frames) {
+    if (f.event === 'game:view') last = f.data[0] as Record<string, unknown>;
+    else if (f.event === 'game:delta' && last) {
+      const d = f.data[0] as { changes: Record<string, unknown>; removed?: string[] };
+      const next: Record<string, unknown> = { ...last, ...d.changes };
+      for (const k of d.removed ?? []) delete next[k];
+      last = next;
+    } else continue;
+    out.push({ ...f, data: [last] });
+  }
+  return out;
+};
 
 /** One pass over a player's game:view frames, collecting what was ever sent (cheap; assertions run once afterwards). */
 function inspect(frames: Frame[]) {

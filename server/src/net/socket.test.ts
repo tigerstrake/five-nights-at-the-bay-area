@@ -5,21 +5,23 @@ import { SimulationCameraService } from '../cameras/simulation';
 import { attachSockets } from './socket';
 import { networkLimits, TokenBucket } from './limits';
 import { FIXTURE, testCfg } from '../../test/fixtures';
+import { EventEmitter } from 'node:events';
 
 // Exercise the real transport registrations without opening ports or using the network.
 class WireSocket {
   data: { code?: string; playerId?: string } = {};
-  handshake: { address: string; headers: { 'x-forwarded-for'?: string } };
+  handshake: { address: string; headers: { 'x-forwarded-for'?: string }; auth?: { viewDeltas: boolean } };
   handlers = new Map<string, (...args: any[]) => void>();
   out: Array<{ event: string; value: any }> = [];
   constructor(readonly id: string, ip = '127.0.0.1', forwarded?: string) { this.handshake = { address: ip, headers: { 'x-forwarded-for': forwarded } }; }
   on(event: string, handler: (...args: any[]) => void) { this.handlers.set(event, handler); }
+  off(event: string, handler: (...args: any[]) => void) { if (this.handlers.get(event) === handler) this.handlers.delete(event); }
   emit(event: string, value: unknown) { this.out.push({ event, value }); }
   disconnect() { this.handlers.get('disconnect')?.(); }
   request<T = ActionResult>(event: string, payload?: unknown): T {
     let reply: unknown;
     const ack = (v: unknown) => { reply = v; };
-    if (event === 'room:restart') this.handlers.get(event)?.(ack);
+    if (event === 'room:restart' || event === 'game:resync') this.handlers.get(event)?.(ack);
     else this.handlers.get(event)?.(payload, ack);
     return reply as T;
   }
@@ -221,8 +223,11 @@ describe('socket security regressions', () => {
     const second = socket('10.42.0.7', '198.51.100.2');
     expect(second.request('room:resume', player).ok).toBe(true);
     expect(rm.locate(player.token)?.player.connected).toBe(true);
-    for (let i = 0; i < 3; i++) first.request('time:ping', { clientSentAt: 0 });
-    expect(first.request('time:ping', { clientSentAt: 0 }).error).toContain('Rate limit');
+    // A disconnected socket has no handlers left; a new socket from the same client address shares its budget.
+    expect(first.handlers.size).toBe(0);
+    const again = socket('10.42.0.7', '198.51.100.1');
+    for (let i = 0; i < 3; i++) again.request('time:ping', { clientSentAt: 0 });
+    expect(again.request('time:ping', { clientSentAt: 0 }).error).toContain('Rate limit');
     expect(socket('10.42.0.7', '198.51.100.3').request<any>('time:ping', { clientSentAt: 0 }).serverNow).toBeDefined();
   });
 
@@ -230,5 +235,62 @@ describe('socket security regressions', () => {
     const { socket } = setup(c => { c.net = { ...c.net!, joinBurst: 1 }; });
     joined(socket('198.51.100.1', '203.0.113.1').request<JoinResult>('room:create', { name: 'm' }));
     expect(socket('198.51.100.1', '203.0.113.2').request('room:create', { name: 'other' }).error).toContain('Join limit');
+  });
+});
+
+describe('recovery transport and resource lifecycle', () => {
+  it('recovery rejects connected/forged seats, resumes a disconnected seat, and handles lost-ack retries on its own binding', () => {
+    const { rm, socket } = setup(), first = socket(), reopened = socket();
+    const seat = joined(first.request<JoinResult>('room:create', { name: 'Original' }));
+    const request = { code: seat.code, playerId: seat.playerId, token: seat.token };
+    expect(reopened.request('room:recover', request)).toMatchObject({ ok: false, error: 'Seat is connected in another tab' });
+    expect(first.values('room:kicked')).toHaveLength(0);
+    first.disconnect();
+    expect(reopened.request('room:recover', { ...request, playerId: 'forged' }).ok).toBe(false);
+    expect(reopened.request('room:recover', request)).toEqual(seat);
+    expect(reopened.request('room:recover', request)).toEqual(seat);
+    expect(rm.rooms.get(seat.code)!.players.size).toBe(1);
+    expect(socket().request('room:recover', request).ok).toBe(false);
+    expect(reopened.values('room:kicked')).toHaveLength(0);
+  });
+  it('negotiates deltas, resets on resync/rebind, and keeps legacy clients on full views', () => {
+    const { cfg, socket } = setup(), m = socket(), d = socket();
+    m.handshake.auth = { viewDeltas: true };
+    const seat = joined(m.request<JoinResult>('room:create', { name: 'Monster' }));
+    d.request('room:join', { code: seat.code, name: 'Defender' });
+    m.request('lobby:setReady', { ready: true }); d.request('lobby:setReady', { ready: true });
+    vi.advanceTimersByTime(cfg.tickMs + cfg.match.countdownMs + cfg.tickMs * 2);
+    expect(m.values('game:delta').length).toBeGreaterThan(0);
+    expect(d.values('game:delta')).toHaveLength(0);
+    expect(d.values('game:view').length).toBeGreaterThan(1);
+    const before = m.values('game:view').length;
+    expect(m.request('game:resync')).toEqual({ ok: true });
+    vi.advanceTimersByTime(cfg.tickMs);
+    expect(m.values('game:view')).toHaveLength(before + 1);
+    m.disconnect();
+    const reconnected = socket(); reconnected.handshake.auth = { viewDeltas: true };
+    reconnected.request('room:resume', { code: seat.code, token: seat.token });
+    expect(reconnected.values('game:view')).toHaveLength(1);
+    expect(reconnected.values('game:delta')).toHaveLength(0);
+  });
+  it('removes transport timers, camera subscriptions, connection listeners and every socket handler when stopped', () => {
+    const io = new EventEmitter();
+    const cfg = testCfg(), rm = new RoomManager({ graph: new Graph(FIXTURE), cfg, placementCount: () => 1 });
+    const cameras = new SimulationCameraService({ cameras: [] });
+    let subscriptions = 0;
+    vi.spyOn(cameras, 'subscribe').mockImplementation(() => { subscriptions++; return () => { subscriptions--; }; });
+    const timers = vi.getTimerCount();
+    for (let i = 0; i < 100; i++) {
+      const dispose = attachSockets(io as never, rm, cameras, cfg.tickMs);
+      const s = new WireSocket(`cycle-${i}`);
+      io.emit('connection', s);
+      expect(s.handlers.size).toBeGreaterThan(10);
+      expect(io.listenerCount('connection')).toBe(1);
+      dispose();
+      expect(s.handlers.size).toBe(0);
+      expect(io.listenerCount('connection')).toBe(0);
+      expect(subscriptions).toBe(0);
+      expect(vi.getTimerCount()).toBe(timers);
+    }
   });
 });

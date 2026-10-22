@@ -124,7 +124,73 @@ Deployable using the Fly CLI (`flyctl`):
 
 ---
 
-## 6. Open Issues
+## 6. Capacity
+
+### How it was measured
+
+`npm run perf` (`server/src/perf/`) runs N concurrent rooms in-process through the real `RoomManager` on a simulated
+clock: 1 AI monster + 1–4 AI defenders per room (mixed HQs and difficulties; `--defenders 4` for 5-player rooms), a
+connected human spectator keeping each room alive, and finished matches restarted through the normal results →
+lobby → countdown cycle so the load is sustained. For every AI seat it also does what the transport would do for a
+human in that seat each tick: project the role view, delta-encode it and `JSON.stringify` it (bytes counted). Options:
+`--rooms 10,25,50,100 --minutes 10 --defenders 4 --full-views --output file.json`. Raw results:
+`server/src/perf/before.json` (commit f6a747f) and `server/src/perf/after.json`. Every seed is fixed, and the match
+outcome digests are identical before and after, so the optimisations changed no game rule or AI decision.
+
+"Tick" is the wall time of one 100 ms server tick for all rooms together (simulation + AI + projection +
+serialisation). Event-loop lag is sampled during the accelerated run and is about one tick at worst. Machine: Apple M4
+Max, Node 24, one core, with other agents' browsers using 8–20 cores at the same time (the 100-room 5-player rows were
+the noisiest). 10 simulated minutes per row.
+
+| Rooms × players | Tick p50 / p95 / p99 ms (before → after) | CPU per room-tick ms | Bytes/player/s | Peak heap / RSS MiB (after) |
+| --- | --- | --- | --- | --- |
+| 10 × 2–5 | 2.1 / 2.8 / 3.1 → **0.5 / 0.9 / 1.5** | 0.197 → 0.059 | 138.7 k → **12.2 k** | 60 / 197 |
+| 25 × 2–5 | 5.4 / 7.1 / 7.5 → **1.4 / 2.0 / 3.1** | 0.204 → 0.058 | 137.6 k → 12.1 k | 75 / 221 |
+| 50 × 2–5 | 11.2 / 15.4 / 16.2 → **2.7 / 3.5 / 4.9** | 0.216 → 0.055 | 137.8 k → 11.9 k | 76 / 231 |
+| 100 × 2–5 | 24.0 / 34.0 / 36.2 → **5.4 / 6.7 / 9.0** | 0.234 → 0.055 | 138.3 k → 11.9 k | 89 / 258 |
+| 50 × 5 | 16.3 / 23.3 / 24.2 → **3.0 / 3.8 / 4.7** | 0.315 → 0.061 | 146.1 k → 13.1 k | 87 / 235 |
+| 100 × 5 | 42.2 / 93.5 / 143.7 → **8.2 / 14.3 / 20.9** | 0.469 → 0.089 | 146.2 k → 13.3 k | 152 / 339 |
+| 50 × 5, old full-view clients | 13.2 / 33.8 / 67.4 (after, loaded host) | 0.333 | 146.1 k | 85 / 240 |
+
+Simulation + AI alone costs 0.015–0.025 ms per room-tick. Before the changes, about 85 % of the cost was view
+projection and serialisation, and bandwidth was the real limit: 146 kB/s per player is ~290 Mbit/s for 250 players.
+
+**Optimisations** (no rule changes, deterministic):
+- Views are projected once per role per room per tick (`RoomManager.viewBatch`) and shared by teammates.
+- The visible event window (the largest view field, ~10 kB) is memoised per match and returned as the same frozen
+  array until an event is pushed. History older than the window is no longer hashed, copied and sorted per observer.
+- The monster view reads its remembered observations directly instead of rebuilding the full AI brain input.
+- Opt-in **view deltas**: the bundled client receives top-level patches against its previous view, with a full
+  checkpoint on (re)connect, role or match change, resync and every 30 s (see `docs/MECHANICS.md`). This cuts
+  bandwidth about 11×. Old or third-party clients still get full views.
+- Bounded AI memory (a defender bot's seen-sighting set keeps only ids still visible); AI controllers are released when
+  a match ends, restarts or its room is deleted.
+
+**Leaks.** After each run every room is left and swept: 0 rooms remain and the heap returns to 9–10 MiB after GC
+(8–12 MiB at the start) at every size. `server/src/rooms/cleanup.test.ts` runs 100 finish/restart/abandon cycles and checks that
+controllers, matches, tokens and memberships are released and no timers are created.
+`server/src/net/socket.test.ts` attaches and disposes the transport 100 times and checks that no interval, camera
+subscription, connection listener or socket handler survives. Socket handlers are also removed on disconnect.
+
+### Recommendation
+
+One instance comfortably runs **50 concurrent matches of 4–5 players**. On the test core that used ~3 ms (p99 < 5 ms)
+of the 100 ms tick. Plan on a typical cloud vCPU being 2–3× slower than this core. **100 matches** also fit
+(p99 ~21 ms under contention), but treat that as the ceiling for a single instance. Budget:
+- **CPU:** 1 vCPU up to ~50 matches, 2 vCPUs (Node stays single-threaded, the rest absorbs GC, TLS and the OS) up to
+  ~100. Not measured: Socket.IO/WebSocket framing, TLS and kernel send cost per emit (one emit per player per tick,
+  2,500 emits/s at 50 × 5). That is the main reason for the 3× headroom above.
+- **Bandwidth:** ~13 kB/s per connected player with deltas. 50 × 5 players ≈ 3.3 MB/s ≈ 26 Mbit/s egress
+  (~8.5 TB/month if sustained). Full-view clients cost ~146 kB/s each.
+- **Memory:** heap stayed under 160 MiB and RSS under 350 MiB at 100 five-player rooms. A 512 MB instance is enough
+  for 50 matches; use 1 GB for 100.
+
+Beyond that, scale-out needs shared room state (see §5.1). Watch event-loop lag (tick > 50 ms means you are
+saturated) and egress.
+
+---
+
+## 7. Open Issues
 
 1. **Docker image not yet built in CI or locally.** The Dockerfile was written against the current scripts (`tsx` is a server runtime dependency, so `npm prune --omit=dev` keeps it), but no Docker daemon was available when it was authored. Run `docker build -t fnab . && docker run -p 3001:3001 fnab` and check `/api/health` before the first deploy.
 2. **Single instance only.** Match state lives in memory, so keep exactly one instance (`numInstances: 1` on Render, one machine on Fly). On Fly, `auto_stop_machines` with `min_machines_running = 1` keeps one machine up; stopping it ends any matches in progress.

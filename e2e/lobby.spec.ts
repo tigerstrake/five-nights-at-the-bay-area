@@ -34,6 +34,7 @@ test('players join by code and invite link; roles, HQ choice, ready and synchron
     for (const p of all) await expect.poll(async () => (await p.room()).settings.hqId).toBe(hq.id);
     await expect(monster.page.getByTestId('blocker')).toContainText('Waiting for');
 
+    await monster.hold(true); // keep the clock still: the assertions below must not race preparation
     await ready(def1);
     await ready(def2);
     await expect(monster.page.getByTestId('player-list')).toContainText('Ready');
@@ -52,7 +53,9 @@ test('players join by code and invite link; roles, HQ choice, ready and synchron
     for (const p of [def1, def2, spec]) await expect(p.page.getByTestId('defender-screen')).toBeVisible({ timeout: 30_000 });
     await expect(spec.page.getByTestId('spectating-banner')).toBeVisible();
     const views = await Promise.all(all.map((p) => p.view()));
-    expect(new Set(views.map((v) => v.t0Epoch)).size).toBe(1); // one shared match clock
+    // one shared match clock: same match time, and every view's epoch mapping agrees with it
+    expect(new Set(views.map((v) => v.t)).size).toBe(1);
+    for (const v of views) expect(Math.abs(v.serverNow - v.t0Epoch - v.t)).toBeLessThan(500);
     expect(new Set(views.map((v) => v.hqId))).toEqual(new Set([hq.id]));
     expect(views.map((v) => v.role).sort()).toEqual(['defender', 'defender', 'monster', 'spectator']);
     expect(views[0]!.phase).toBe('preparation');

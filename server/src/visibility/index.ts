@@ -10,7 +10,7 @@ import { MONSTER_COMMANDS, spawnCandidates } from '@fnab/shared';
 import type { GameState } from '../engine/state';
 import { isOutage, matchEndT, phaseBounds, publicId } from '../engine/state';
 import { powerDrainPerSec, threatLevel, type EngineCtx } from '../engine/engine';
-import { buildMonsterKnowledge, coarsePower, publicCameraStatus } from '../ai/knowledge';
+import { coarsePower, publicCameraStatus } from '../ai/knowledge';
 
 export interface ViewClock {
   t0Epoch: number;
@@ -25,11 +25,36 @@ function visibleWindow<T extends { t: number; id: number }>(entries: T[], limit:
   return entries.slice(start);
 }
 
+/**
+ * Per-match memo of the visible event window. Retained events are append-only and immutable once the action or tick
+ * that pushed them returns (`by` attribution happens inside `applyAction`), so the window can only change when an
+ * event is pushed or evicted: (newest id, length) identifies it. Reusing the same frozen array keeps projection cheap
+ * and lets the delta encoder skip the largest field by identity. Consumers must treat views as read-only.
+ */
+type EventWindow = { newest: number; length: number; limit: number; value: VisibleEvent[] };
+const eventWindows = new WeakMap<GameState, { defenders?: EventWindow; monster?: EventWindow }>();
+
 function visibleEvents(s: GameState, audience: 'defenders' | 'monster', limit: number): VisibleEvent[] {
+  let memo = eventWindows.get(s);
+  if (!memo) { memo = {}; eventWindows.set(s, memo); }
+  const newest = s.events.length ? s.events[s.events.length - 1]!.id : -1;
+  const hit = memo[audience];
+  if (hit && hit.newest === newest && hit.length === s.events.length && hit.limit === limit) return hit.value;
+  const value = computeVisibleEvents(s, audience, limit);
+  for (const e of value) Object.freeze(e);
+  memo[audience] = { newest, length: s.events.length, limit, value: Object.freeze(value) as VisibleEvent[] };
+  return value;
+}
+
+function computeVisibleEvents(s: GameState, audience: 'defenders' | 'monster', limit: number): VisibleEvent[] {
+  if (limit <= 0) return [];
   const out: VisibleEvent[] = [];
   for (let i = s.events.length - 1; i >= 0; i--) {
     const e: GameEvent = s.events[i]!;
     if (e.audience !== 'all' && e.audience !== audience) continue;
+    // Engine retention is chronological. Include the entire boundary timestamp before opaque sorting,
+    // then discard older history without hashing/copying/sorting it again for every observer.
+    if (out.length >= limit && e.t < out[out.length - 1]!.t) break;
     const v: VisibleEvent = { id: publicId(s, e.id), t: e.t, kind: e.kind, text: e.text, severity: e.severity };
     if (e.nodeId !== undefined) v.nodeId = e.nodeId;
     if (e.cameraId !== undefined) v.cameraId = e.cameraId;
@@ -139,7 +164,9 @@ export const projectSpectatorView = (ctx: EngineCtx, s: GameState, clock: ViewCl
 
 export function projectMonsterView(ctx: EngineCtx, s: GameState, clock: ViewClock): MonsterView {
   const m = s.monster;
-  const k = buildMonsterKnowledge(s, ctx.graph);
+  // The transport needs the remembered observations only. Building the brain input also traverses
+  // every camera and retained event; those unused fields must not be rebuilt for a network view.
+  const k = m.knowledge;
   const cooldowns = Object.fromEntries(MONSTER_COMMANDS.map((c) => [c, m.cooldowns[c]])) as Record<MonsterCommand, number>;
   return {
     ...base(s, clock, false),
@@ -159,10 +186,10 @@ export function projectMonsterView(ctx: EngineCtx, s: GameState, clock: ViewCloc
       cooldowns,
     },
     cameras: Object.values(s.cameras).map((c) => ({ cameraId: c.cameraId, nodeId: c.nodeId, status: publicCameraStatus(s, c.cameraId) })),
-    knownSensors: k.knownSensors.map((x) => ({
-      id: x.id,
+    knownSensors: Object.entries(k.knownSensors).map(([id, x]) => ({
+      id,
       nodeId: x.nodeId,
-      disabledUntil: x.disabled ? (x.disabledUntil ?? null) : null,
+      disabledUntil: (x.disabledUntil ?? 0) > s.t ? x.disabledUntil ?? null : null,
     })),
     knownDoors: Object.entries(k.knownDoors).map(([approachId, d]) => ({
       approachId,
@@ -170,7 +197,7 @@ export function projectMonsterView(ctx: EngineCtx, s: GameState, clock: ViewCloc
       jammed: d.jammed,
       seenAt: d.seenAt,
     })),
-    disturbances: k.disturbances.map((d) => ({ ...d })),
+    disturbances: k.disturbances.filter(d => d.expiresAt > s.t).map((d) => ({ ...d })),
     scanPulses: k.scanPulses.map((d) => ({ ...d })),
     exposures: k.exposures.map((d) => ({ ...d })),
     powerLevel: coarsePower(s),

@@ -68,6 +68,7 @@ test('monster reconnecting within the grace period resumes the match; the clock 
     await def.page.waitForTimeout(1_000);
     await monster.socket('connect');
     await def.waitView(`v.monsterConnection && v.monsterConnection.connected === true && !v.pausedForReconnect`);
+    await monster.hold(false); // this one asserts that real time flows again after the resume
     await expect(def.page.getByTestId('event-log').first()).toContainText(/restored|reconnect/i);
     expect((await monster.room()).youId).toBe(monsterId);
     await monster.waitView(`v.self.spawned`);

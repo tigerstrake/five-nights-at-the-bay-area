@@ -40,11 +40,19 @@ epoch at t=0) and `serverNow`; the client keeps an NTP-style clock offset (`time
 - `visibility/` — `projectDefenderView`, `projectSpectatorView`, `projectMonsterView`. Fields are copied
   explicitly; tests assert no forbidden keys leak.
 - `rooms/RoomManager.ts` — transport-agnostic lobby/match lifecycle with an injectable clock (unit-tested):
-  4-letter codes, roles, HQ choice, ready → 5 s countdown → match, reconnection by token within a 60 s grace
+  4-letter codes, roles, HQ choice, ready → 5 s countdown → match, reconnection by token within a 45 s grace
   period, host migration, forfeits, restart to lobby, empty-room cleanup. `tick(now)` advances matches in
   fixed steps with bounded catch-up.
 - `net/` — Socket.IO wiring (`socket.ts`) and zod schemas for every client payload (`schemas.ts`).
   Views are emitted per player socket (never broadcast) every tick, plus immediately after an accepted action.
+  Views are projected once per role per room per tick (`RoomManager.viewBatch`) and shared by teammates. Clients that
+  connect with `auth: { viewDeltas: true }` (the bundled client) receive `game:delta` top-level patches against the
+  last view that socket received (`net/viewUpdates.ts`, `ViewEncoder`); a full `game:view` checkpoint is sent on every
+  (re)bind, role/match change, `game:resync` request and every 300 emissions. Other clients keep getting full views.
+  `room:recover` is the fresh-tab variant of `room:resume`: same token validation, but it only succeeds for a seat
+  that is currently disconnected, so it can never take a seat away from a live tab.
+- `perf/` — in-process load harness (`npm run perf`): N rooms of AI players through the real `RoomManager`, with
+  per-seat view projection, delta encoding and serialisation. Results and capacity guidance: `docs/DEPLOYMENT.md`.
 - `cameras/` — `CameraService` (`types.ts`): real-world source availability only, never fictional game status.
   `CAMERA_MODE` (`auto` default · `live` · `snapshot` · `simulation`) picks the implementation (`index.ts`).
   `CaltransCameraService` (`caltrans.ts`) probes every curated camera's JPEG snapshot and HLS playlist + segment on
@@ -67,7 +75,10 @@ to `API_PORT` (default 3001). Webfonts are self-hosted (`src/fonts.ts`, @fontsou
   a root CSS `zoom` (`hooks/useConsoleZoom.ts`: layout for ~1680×1000, scaled up to 1.6×) so every screen scales alike.
   Components that convert pointer coordinates use layout px (`clientWidth`) or divide by `rootZoom(el)`.
 - `net/socket.ts` — socket singleton, sessionStorage session `{code, token}` (per tab; cleared on leave/kick), auto-resume
-  on reconnect, NTP-style clock sync, `sendAction`, `lobby.*` helpers. Errors surface as toasts.
+  on reconnect; a short-lived localStorage seat hint per room (`net/recovery.ts`, 10 min TTL, cleared on leave/kick/
+  match end) lets a fresh tab on `/?room=CODE` (or joining CODE) reclaim a *disconnected* seat via `room:recover`;
+  applies `game:delta` patches (`state/viewDelta.ts`) and asks for `game:resync` on a sequence gap,
+  NTP-style clock sync, `sendAction`, `lobby.*` helpers. Errors surface as toasts.
 - `state/store.ts` — zustand store (`room`, `view`, `result`, `cameraStatuses`, clock offset, UI state) and
   `serverNow()` / `matchNow(view)`. In dev (or with `?e2e`) it is exposed as `window.__fnab` for scripted tests.
 - `ui/` — the shared kit: `kit.tsx` (Panel, Button, Badge, Meter, Stat, Segmented, Kbd…), `chrome.tsx` (settings menu:

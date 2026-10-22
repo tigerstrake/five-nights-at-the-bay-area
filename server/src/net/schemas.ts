@@ -21,6 +21,7 @@ export const removeAiSchema = z.object({ playerId: id });
 export const aiDifficultySchema = removeAiSchema.extend({ difficulty: aiDifficulty });
 export const joinSchema = z.object({ code: codeSchema, name: nameSchema, token: tokenSchema.optional() });
 export const resumeSchema = z.object({ code: codeSchema, token: tokenSchema });
+export const recoverSchema = resumeSchema.extend({ playerId: id });
 export const setNameSchema = z.object({ name: nameSchema });
 export const roleSchema = z.object({ role: z.enum(['monster', 'defender', 'spectator']) });
 export const readySchema = z.object({ ready: z.boolean() });

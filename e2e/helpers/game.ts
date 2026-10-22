@@ -33,6 +33,9 @@ export interface PlayerOpts {
 /** Match-time milliseconds, with a small margin so "has the phase changed" comparisons are not off by a tick. */
 export const TICK = CFG.tickMs;
 
+/** E2E_THROTTLE=4 emulates a CPU 4x slower than this machine (CDP) to rehearse a small CI runner. */
+export const THROTTLE = Math.max(1, Number(process.env.E2E_THROTTLE ?? 1) || 1);
+
 export class Player {
   readonly frames: Frame[] = [];
   readonly pageErrors: string[] = [];
@@ -77,7 +80,7 @@ export class Player {
   }
 
   /** Wait until the in-store view satisfies the predicate (evaluated in the page; source string, no closures). */
-  async waitView(predicate: string, timeout = 20_000): Promise<void> {
+  async waitView(predicate: string, timeout = 20_000 * Math.max(1, Math.ceil(THROTTLE / 2))): Promise<void> {
     await this.page.waitForFunction(`(() => { const v = window.__fnab.getState().view; return !!v && (${predicate}); })()`, null, { timeout });
   }
 
@@ -97,12 +100,33 @@ export class Player {
       return new Promise<{ ok: boolean; error?: string; t?: number; ended?: boolean }>((resolve) => {
         const sock = m.getSocket() as unknown as { emit: (e: string, p: unknown, ack: (r: never) => void) => void };
         sock.emit('test:fastForward', { token: sess?.token, ms }, resolve as never);
-        setTimeout(() => resolve({ ok: false, error: 'no ack (are FNAB_TEST_HOOKS enabled?)' }), 5000);
+        setTimeout(() => resolve({ ok: false, error: 'no ack (are FNAB_TEST_HOOKS enabled?)' }), 20_000);
       });
     }, ms);
     if (!res.ok) throw new Error(`fastForward failed: ${res.error}`);
     if (!res.ended) await this.waitView(`v.t >= ${res.t! - 1}`);
     return { t: res.t!, ended: !!res.ended };
+  }
+
+  /**
+   * Freeze (true) or release (false) the room's match clock. startMatch freezes it, so preparation, trap holds and
+   * cooldowns advance only through fastForward and never depend on how fast the machine runs. Release it only
+   * for assertions that need real time to pass.
+   */
+  async hold(on: boolean): Promise<void> {
+    const res = await this.page.evaluate(
+      async ([hold]) => {
+        const m = await (new Function('p', 'return import(p)') as (p: string) => Promise<typeof import('../../client/src/net/socket')>)('/src/net/socket.ts');
+        const sess = JSON.parse(sessionStorage.getItem('fnab.session') ?? 'null') as { token: string } | null;
+        return new Promise<{ ok: boolean; error?: string }>((resolve) => {
+          const sock = m.getSocket() as unknown as { emit: (e: string, p: unknown, ack: (r: never) => void) => void };
+          sock.emit('test:hold', { token: sess?.token, hold }, resolve as never);
+          setTimeout(() => resolve({ ok: false, error: 'no ack (are FNAB_TEST_HOOKS enabled?)' }), 20_000);
+        });
+      },
+      [on] as const,
+    );
+    if (!res.ok) throw new Error(`hold(${on}) failed: ${res.error}`);
   }
 
   /** Drop this player's socket (like a lost network) or bring it back; the app auto-resumes its session on connect. */
@@ -129,6 +153,7 @@ export async function newPlayer(browser: Browser, name: string, opts: PlayerOpts
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, baseURL, reducedMotion: 'reduce' });
   if (opts.blockCaltrans) await context.route(/(^|\.)dot\.ca\.gov/, (r) => r.abort('blockedbyclient'));
   const page = await context.newPage();
+  if (THROTTLE > 1) await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: THROTTLE });
   return new Player(name, context, page);
 }
 
@@ -226,6 +251,7 @@ export async function startMatch(browser: Browser, o: StartOpts = {}): Promise<M
     await setRole(s, 'spectator');
   }
   await pickHq(defenders[0]!, hq);
+  await monster.hold(true); // match time moves only via fastForward from here on (see Player.hold)
   const dur = o.durationSec ?? CFG.match.maxDurationMs / 1000;
   await monster.page.getByTestId(`duration-${dur}`).click();
   const m: Match = { code, hq, monster, defenders, spectators, all: [monster, ...defenders, ...spectators] };

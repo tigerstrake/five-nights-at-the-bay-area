@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Graph } from '@fnab/shared';
 import { RoomManager } from '../src/rooms/RoomManager';
 import { DEFAULT_CONFIG } from '@fnab/shared';
-import { fastForward, testConfig, testHooksEnabled } from '../src/net/testHooks';
+import { attachTestHooks, fastForward, setHold, testConfig, testHooksEnabled } from '../src/net/testHooks';
 import { FIXTURE, testCfg } from './fixtures';
 
 describe('e2e test hooks guard', () => {
@@ -59,5 +59,36 @@ describe('fastForward', () => {
     // run to the end: the next tick publishes the result
     expect(fastForward(rm, a.token, 600_000).ended).toBe(true);
     expect(rm.tick((now += 100)).ended).toContain(room);
+  });
+});
+
+describe('hold (frozen match clock)', () => {
+  it('real time does not advance a held match; only fastForward does; release restores real time', () => {
+    let now = 1_000_000;
+    const cfg = testCfg();
+    const rm = new RoomManager({ graph: new Graph(FIXTURE), cfg, now: () => now, placementCount: () => 2, seed: () => 7 });
+    const a = rm.create('Alice');
+    const b = rm.join((a as { code: string }).code, 'Bob');
+    if (!a.ok || !b.ok) throw new Error('setup');
+    attachTestHooks({ on: () => undefined } as never, rm); // patches rm.tick
+    expect(setHold(rm, a.token, true).ok).toBe(true);
+    expect(setHold(rm, 'nope-nope-nope-nope', true).ok).toBe(false);
+    rm.setReady(a.code, a.playerId, true);
+    rm.setReady(a.code, b.playerId, true);
+    rm.tick((now += 100));
+    rm.tick((now += cfg.match.countdownMs + 200));
+    const room = rm.rooms.get(a.code)!;
+    expect(room.stage).toBe('playing');
+    const t = room.match!.state.t;
+    for (let i = 0; i < 300; i++) rm.tick((now += 100)); // 30 s of wall clock
+    expect(room.match!.state.t).toBe(t);
+    expect(fastForward(rm, a.token, 2_000).ok).toBe(true);
+    expect(room.match!.state.t).toBeGreaterThanOrEqual(t + 2_000);
+    const t2 = room.match!.state.t;
+    for (let i = 0; i < 300; i++) rm.tick((now += 100));
+    expect(room.match!.state.t).toBe(t2);
+    setHold(rm, a.token, false);
+    for (let i = 0; i < 10; i++) rm.tick((now += 100));
+    expect(room.match!.state.t).toBeGreaterThan(t2);
   });
 });

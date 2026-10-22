@@ -1,0 +1,502 @@
+[
+ {
+  "environment": {
+   "node": "v24.14.0",
+   "cpu": "Apple M4 Max",
+   "arch": "arm64"
+  },
+  "options": {
+   "rooms": 10,
+   "minutes": 10
+  },
+  "simulatedSeconds": 600,
+  "wallMs": 11945.580917,
+  "tickMs": {
+   "p50": 2.0467499999999745,
+   "p95": 2.8360840000004828,
+   "p99": 3.0484999999998763,
+   "max": 10.278999999998632
+  },
+  "cpuMs": 12572.515,
+  "perRoomTickMs": {
+   "simulationAndAi": 0.026844460184873485,
+   "projectionAndSerialization": 0.16877886257142904,
+   "total": 0.19674798020168024
+  },
+  "eventLoopLagMs": {
+   "p50": 2.109439,
+   "p95": 2.891775,
+   "p99": 3.102719,
+   "max": 10.362879
+  },
+  "bytesPerPlayerSecond": 138715.83804430862,
+  "bytesPerRoleSecond": {
+   "monster": 100630.81008403361,
+   "defender": 154979.78852758495
+  },
+  "roomTicks": 59500,
+  "playerTicks": 196350,
+  "completed": 10,
+  "outcomeDigest": "122f7a1e9f3440fb0cb9d115b3b88169ff738e5ab5d7d4390845dd621296c94c",
+  "memory": [
+   {
+    "simulatedSeconds": 0,
+    "heapMiB": 8.211235046386719,
+    "rssMiB": 66.46875
+   },
+   {
+    "simulatedSeconds": 120,
+    "heapMiB": 18.042274475097656,
+    "rssMiB": 89.4375
+   },
+   {
+    "simulatedSeconds": 240,
+    "heapMiB": 19.948379516601562,
+    "rssMiB": 109.421875
+   },
+   {
+    "simulatedSeconds": 360,
+    "heapMiB": 20.31103515625,
+    "rssMiB": 110.71875
+   },
+   {
+    "simulatedSeconds": 480,
+    "heapMiB": 19.41973876953125,
+    "rssMiB": 113.359375
+   },
+   {
+    "simulatedSeconds": 600,
+    "heapMiB": 32.79236602783203,
+    "rssMiB": 115.59375
+   },
+   {
+    "simulatedSeconds": 600,
+    "heapMiB": 17.80931854248047,
+    "rssMiB": 115.59375
+   }
+  ],
+  "cleanup": {
+   "remainingRooms": 0,
+   "heapBeforeCleanupMiB": 17.80970001220703,
+   "heapAfterGcMiB": 9.734893798828125,
+   "gcAvailable": true
+  }
+ },
+ {
+  "environment": {
+   "node": "v24.14.0",
+   "cpu": "Apple M4 Max",
+   "arch": "arm64"
+  },
+  "options": {
+   "rooms": 25,
+   "minutes": 10
+  },
+  "simulatedSeconds": 600,
+  "wallMs": 30708.350833000004,
+  "tickMs": {
+   "p50": 5.37066699999923,
+   "p95": 7.097333000005165,
+   "p99": 7.4606669999993755,
+   "max": 21.334625000003143
+  },
+  "cpuMs": 31052.76,
+  "perRoomTickMs": {
+   "simulationAndAi": 0.027376643418570407,
+   "projectionAndSerialization": 0.17576921839165566,
+   "total": 0.20429779037012047
+  },
+  "eventLoopLagMs": {
+   "p50": 5.423103,
+   "p95": 7.172095,
+   "p99": 7.569407,
+   "max": 21.413887
+  },
+  "bytesPerPlayerSecond": 137598.41539364302,
+  "bytesPerRoleSecond": {
+   "monster": 98710.92240915209,
+   "defender": 153250.93795670758
+  },
+  "roomTicks": 148600,
+  "playerTicks": 511250,
+  "completed": 28,
+  "outcomeDigest": "f7d8833659f8b3df4c9920a91ed071b38a1034f2f192fb3337ab2e830334f3bc",
+  "memory": [
+   {
+    "simulatedSeconds": 0,
+    "heapMiB": 10.312065124511719,
+    "rssMiB": 117.75
+   },
+   {
+    "simulatedSeconds": 120,
+    "heapMiB": 18.488815307617188,
+    "rssMiB": 149.359375
+   },
+   {
+    "simulatedSeconds": 240,
+    "heapMiB": 29.367691040039062,
+    "rssMiB": 153.953125
+   },
+   {
+    "simulatedSeconds": 360,
+    "heapMiB": 46.18638610839844,
+    "rssMiB": 156.53125
+   },
+   {
+    "simulatedSeconds": 480,
+    "heapMiB": 71.37739562988281,
+    "rssMiB": 221.40625
+   },
+   {
+    "simulatedSeconds": 600,
+    "heapMiB": 57.764556884765625,
+    "rssMiB": 225.5625
+   },
+   {
+    "simulatedSeconds": 600,
+    "heapMiB": 57.766212463378906,
+    "rssMiB": 225.5625
+   }
+  ],
+  "cleanup": {
+   "remainingRooms": 0,
+   "heapBeforeCleanupMiB": 57.76659393310547,
+   "heapAfterGcMiB": 10.209892272949219,
+   "gcAvailable": true
+  }
+ },
+ {
+  "environment": {
+   "node": "v24.14.0",
+   "cpu": "Apple M4 Max",
+   "arch": "arm64"
+  },
+  "options": {
+   "rooms": 50,
+   "minutes": 10
+  },
+  "simulatedSeconds": 600,
+  "wallMs": 64752.067084,
+  "tickMs": {
+   "p50": 11.208958000002895,
+   "p95": 15.440082999994047,
+   "p99": 16.205082999993465,
+   "max": 45.53983399999561
+  },
+  "cpuMs": 64791.686,
+  "perRoomTickMs": {
+   "simulationAndAi": 0.029476533490109737,
+   "projectionAndSerialization": 0.18556207899757046,
+   "total": 0.21625102906435115
+  },
+  "eventLoopLagMs": {
+   "p50": 11.280383,
+   "p95": 15.523839,
+   "p99": 16.261119,
+   "max": 45.645823
+  },
+  "bytesPerPlayerSecond": 137838.02925924413,
+  "bytesPerRoleSecond": {
+   "monster": 99153.67709941899,
+   "defender": 153277.7942083321
+  },
+  "roomTicks": 297237,
+  "playerTicks": 1028598,
+  "completed": 56,
+  "outcomeDigest": "e4d34aa248b6ebb7109fc01297573672e7609cde048e235fd8bb500aad54d2e2",
+  "memory": [
+   {
+    "simulatedSeconds": 0,
+    "heapMiB": 11.522605895996094,
+    "rssMiB": 225.859375
+   },
+   {
+    "simulatedSeconds": 120,
+    "heapMiB": 69.77216339111328,
+    "rssMiB": 231.890625
+   },
+   {
+    "simulatedSeconds": 240,
+    "heapMiB": 74.13880157470703,
+    "rssMiB": 234.203125
+   },
+   {
+    "simulatedSeconds": 360,
+    "heapMiB": 85.13823699951172,
+    "rssMiB": 235.625
+   },
+   {
+    "simulatedSeconds": 480,
+    "heapMiB": 74.810302734375,
+    "rssMiB": 239.609375
+   },
+   {
+    "simulatedSeconds": 600,
+    "heapMiB": 29.927444458007812,
+    "rssMiB": 242.75
+   },
+   {
+    "simulatedSeconds": 600,
+    "heapMiB": 29.929054260253906,
+    "rssMiB": 242.75
+   }
+  ],
+  "cleanup": {
+   "remainingRooms": 0,
+   "heapBeforeCleanupMiB": 29.92943572998047,
+   "heapAfterGcMiB": 9.218109130859375,
+   "gcAvailable": true
+  }
+ },
+ {
+  "environment": {
+   "node": "v24.14.0",
+   "cpu": "Apple M4 Max",
+   "arch": "arm64"
+  },
+  "options": {
+   "rooms": 100,
+   "minutes": 10
+  },
+  "simulatedSeconds": 600,
+  "wallMs": 140011.42200000002,
+  "tickMs": {
+   "p50": 23.9476250000007,
+   "p95": 33.99762500001816,
+   "p99": 36.2194170000148,
+   "max": 107.08987500000512
+  },
+  "cpuMs": 139813.036,
+  "perRoomTickMs": {
+   "simulationAndAi": 0.03186540142294064,
+   "projectionAndSerialization": 0.20114901103028104,
+   "total": 0.23422211533861925
+  },
+  "eventLoopLagMs": {
+   "p50": 24.084479,
+   "p95": 34.078719,
+   "p99": 36.306943,
+   "max": 107.282431
+  },
+  "bytesPerPlayerSecond": 138316.681530058,
+  "bytesPerRoleSecond": {
+   "monster": 99352.13060407538,
+   "defender": 153620.04757737461
+  },
+  "roomTicks": 594545,
+  "playerTicks": 2081176,
+  "completed": 112,
+  "outcomeDigest": "47451687a51e060086f0a30f00a82d37d60d06853a0f58ee283aba14120d94d5",
+  "memory": [
+   {
+    "simulatedSeconds": 0,
+    "heapMiB": 12.169029235839844,
+    "rssMiB": 242.78125
+   },
+   {
+    "simulatedSeconds": 120,
+    "heapMiB": 70.59233093261719,
+    "rssMiB": 243.765625
+   },
+   {
+    "simulatedSeconds": 240,
+    "heapMiB": 88.42675018310547,
+    "rssMiB": 245.75
+   },
+   {
+    "simulatedSeconds": 360,
+    "heapMiB": 96.2021255493164,
+    "rssMiB": 252
+   },
+   {
+    "simulatedSeconds": 480,
+    "heapMiB": 84.45752716064453,
+    "rssMiB": 265.015625
+   },
+   {
+    "simulatedSeconds": 600,
+    "heapMiB": 83.23174285888672,
+    "rssMiB": 274.109375
+   },
+   {
+    "simulatedSeconds": 600,
+    "heapMiB": 25.803123474121094,
+    "rssMiB": 274.125
+   }
+  ],
+  "cleanup": {
+   "remainingRooms": 0,
+   "heapBeforeCleanupMiB": 25.803504943847656,
+   "heapAfterGcMiB": 9.525291442871094,
+   "gcAvailable": true
+  }
+ },
+ {
+  "environment": {
+   "node": "v24.14.0",
+   "cpu": "Apple M4 Max",
+   "arch": "arm64"
+  },
+  "options": {
+   "rooms": 50,
+   "minutes": 10,
+   "defenders": 4
+  },
+  "simulatedSeconds": 600,
+  "wallMs": 93979.99925,
+  "tickMs": {
+   "p50": 16.337416999998823,
+   "p95": 23.272792000003392,
+   "p99": 24.2410830000008,
+   "max": 79.26350000000093
+  },
+  "cpuMs": 95365.704,
+  "perRoomTickMs": {
+   "simulationAndAi": 0.042602654783778685,
+   "projectionAndSerialization": 0.2711275591216546,
+   "total": 0.314855372592967
+  },
+  "eventLoopLagMs": {
+   "p50": 16.433151,
+   "p95": 23.363583,
+   "p99": 24.379391,
+   "max": 79.429631
+  },
+  "bytesPerPlayerSecond": 146098.6055056369,
+  "bytesPerRoleSecond": {
+   "monster": 101031.39138482248,
+   "defender": 157079.66219081273
+  },
+  "roomTicks": 297150,
+  "playerTicks": 1485750,
+  "completed": 57,
+  "outcomeDigest": "89ffa655f83ee5cfc6c51f6413a723c614e633c28e1d40ad770e19dc6ccbdf6f",
+  "memory": [
+   {
+    "simulatedSeconds": 0,
+    "heapMiB": 9.656036376953125,
+    "rssMiB": 69.859375
+   },
+   {
+    "simulatedSeconds": 120,
+    "heapMiB": 25.514190673828125,
+    "rssMiB": 221.03125
+   },
+   {
+    "simulatedSeconds": 240,
+    "heapMiB": 88.64839935302734,
+    "rssMiB": 229.796875
+   },
+   {
+    "simulatedSeconds": 360,
+    "heapMiB": 78.77371215820312,
+    "rssMiB": 237.34375
+   },
+   {
+    "simulatedSeconds": 480,
+    "heapMiB": 76.1959457397461,
+    "rssMiB": 242.984375
+   },
+   {
+    "simulatedSeconds": 600,
+    "heapMiB": 36.80120086669922,
+    "rssMiB": 249.734375
+   },
+   {
+    "simulatedSeconds": 600,
+    "heapMiB": 36.80418395996094,
+    "rssMiB": 249.75
+   }
+  ],
+  "cleanup": {
+   "remainingRooms": 0,
+   "heapBeforeCleanupMiB": 36.8045654296875,
+   "heapAfterGcMiB": 8.968742370605469,
+   "gcAvailable": true
+  }
+ },
+ {
+  "environment": {
+   "node": "v24.14.0",
+   "cpu": "Apple M4 Max",
+   "arch": "arm64"
+  },
+  "options": {
+   "rooms": 100,
+   "minutes": 10,
+   "defenders": 4
+  },
+  "simulatedSeconds": 600,
+  "wallMs": 279289.21424999996,
+  "tickMs": {
+   "p50": 42.15325000000303,
+   "p95": 93.48504099997808,
+   "p99": 143.65700000000652,
+   "max": 606.8427079999819
+  },
+  "cpuMs": 244521.2,
+  "perRoomTickMs": {
+   "simulationAndAi": 0.0677905961772672,
+   "projectionAndSerialization": 0.39849342322576037,
+   "total": 0.4686156642864358
+  },
+  "eventLoopLagMs": {
+   "p50": 42.336255,
+   "p95": 93.585407,
+   "p99": 143.917055,
+   "max": 609.746943
+  },
+  "bytesPerPlayerSecond": 146211.15888212135,
+  "bytesPerRoleSecond": {
+   "monster": 101003.16539354579,
+   "defender": 157232.0514688562
+  },
+  "roomTicks": 594340,
+  "playerTicks": 2971700,
+  "completed": 114,
+  "outcomeDigest": "a1e507cc47270f15e89815db0822e74c727e9f6d51cb631bc0272a9bdd2af39e",
+  "memory": [
+   {
+    "simulatedSeconds": 0,
+    "heapMiB": 11.71337890625,
+    "rssMiB": 73.515625
+   },
+   {
+    "simulatedSeconds": 120,
+    "heapMiB": 69.0472412109375,
+    "rssMiB": 236.625
+   },
+   {
+    "simulatedSeconds": 240,
+    "heapMiB": 77.23043823242188,
+    "rssMiB": 255.1875
+   },
+   {
+    "simulatedSeconds": 360,
+    "heapMiB": 92.26090240478516,
+    "rssMiB": 260.796875
+   },
+   {
+    "simulatedSeconds": 480,
+    "heapMiB": 58.811805725097656,
+    "rssMiB": 263.46875
+   },
+   {
+    "simulatedSeconds": 600,
+    "heapMiB": 68.16277313232422,
+    "rssMiB": 265.84375
+   },
+   {
+    "simulatedSeconds": 600,
+    "heapMiB": 68.16572570800781,
+    "rssMiB": 265.859375
+   }
+  ],
+  "cleanup": {
+   "remainingRooms": 0,
+   "heapBeforeCleanupMiB": 68.16610717773438,
+   "heapAfterGcMiB": 9.317802429199219,
+   "gcAvailable": true
+  }
+ }
+]

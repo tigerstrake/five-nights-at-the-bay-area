@@ -43,6 +43,10 @@ export class DefenderBot {
       const nodes = novice ? graph.data.nodes.map(n => n.id) : [...this.order, ...graph.data.nodes.filter(n => graph.hopsToHq(n.id, v.hqId) <= 2).map(n => n.id)];
       this.watched = new Set(Array.from({ length: Math.ceil((novice ? 1 : 2) * this.attention) }, () => rng.pick(nodes)));
     }
+    // The chronological visible window never readmits an evicted report. Retain only current IDs,
+    // keeping this set bounded over arbitrarily long matches without changing policy RNG draws.
+    const visibleIds = new Set(v.sightings.map(s => s.id));
+    for (const id of this.seen) if (!visibleIds.has(id)) this.seen.delete(id);
     // Map notifications can also draw attention. A sighting is sampled once, never re-rolled until noticed.
     for (const sight of v.sightings) if (!this.seen.has(sight.id)) {
       this.seen.add(sight.id);

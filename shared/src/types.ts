@@ -12,6 +12,8 @@ export interface PlacementRegion {
   w: number;
   h: number;
   scale: number;
+  /** Optional: fraction of the figure's height hidden from the feet up by foreground clutter (shrubs, guardrail) at this spot. */
+  occlude?: number;
 }
 
 export interface CameraRecord {
@@ -250,6 +252,8 @@ export interface TeamConnectionView {
 }
 
 export interface ViewBase {
+  /** Transport sequence for optional view deltas. Absent on legacy full snapshots. */
+  viewSequence?: number;
   monsterConnection?: TeamConnectionView;
   defenderConnection?: TeamConnectionView;
   /** Simulation is paused during a whole-team reconnection grace period. */

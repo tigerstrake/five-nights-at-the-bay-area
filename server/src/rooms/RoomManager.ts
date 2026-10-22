@@ -208,6 +208,17 @@ export class RoomManager {
     return p;
   }
 
+  /** Cross-tab hints never displace a live socket; check and resume in the same synchronous operation. */
+  recover(code: string, playerId: string, token: string): JoinResult {
+    const room = this.rooms.get(code.toUpperCase().trim());
+    if (!room) return { ok: false, error: 'Room not found' };
+    const p = this.findByToken(room, token);
+    if (!p || p.id !== playerId) return { ok: false, error: 'Session expired' };
+    if (p.connected) return { ok: false, error: 'Seat is connected in another tab' };
+    if (room.stage === 'results' || room.match?.state.result) return { ok: false, error: 'Match ended' };
+    return this.resume(room.code, token);
+  }
+
   resume(code: string, token: string): JoinResult {
     const room = this.rooms.get(code.toUpperCase().trim());
     if (!room) return { ok: false, error: 'Room not found' };
@@ -250,6 +261,7 @@ export class RoomManager {
     const p = room.players.get(playerId);
     if (!p) return;
     room.players.delete(playerId);
+    room.match?.aiPlayers.delete(playerId);
     this.byToken.delete(p.token);
     room.version++;
     if (room.match && !room.match.state.result) {
@@ -407,6 +419,7 @@ export class RoomManager {
     if (room.hostId !== playerId) return { ok: false, error: 'Only the host can restart' };
     if (room.stage !== 'results') return { ok: false, error: 'Finish the current match before restarting' };
     const roles = room.match?.roles;
+    room.match?.aiPlayers.clear();
     room.stage = 'lobby';
     room.match = null;
     room.result = null;
@@ -603,6 +616,7 @@ export class RoomManager {
         m.t0Epoch = m.lastStepAt - m.state.t;
         out.playing.push(room);
         if (m.state.result) {
+          m.aiPlayers.clear();
           room.stage = 'results';
           m.state.result.players = m.roster;
           room.result = m.state.result;
@@ -618,6 +632,11 @@ export class RoomManager {
 
   private deleteRoom(room: Room) {
     for (const p of room.players.values()) this.byToken.delete(p.token);
+    room.match?.aiPlayers.clear();
+    room.match = null;
+    room.result = null;
+    room.players.clear();
+    room.stage = 'lobby';
     this.rooms.delete(room.code);
   }
 
@@ -641,10 +660,18 @@ export class RoomManager {
     };
   }
 
-  playerView(room: Room, playerId: string, now: number = this.now()): PlayerView | null {
+  /** Scope sharing to one synchronous broadcast, so actions/connections can never stale a cached view. */
+  viewBatch(room: Room, now: number = this.now()): (playerId: string) => PlayerView | null {
+    const views = new Map<Role, PlayerView>();
+    return playerId => this.playerView(room, playerId, now, views);
+  }
+
+  playerView(room: Room, playerId: string, now: number = this.now(), batch?: Map<Role, PlayerView>): PlayerView | null {
     const m = room.match;
     if (!m || !room.players.has(playerId)) return null;
     const role = m.roles.get(playerId) ?? 'spectator';
+    const cached = batch?.get(role);
+    if (cached) return cached;
     const view = projectView(m.ctx, m.state, role, { t0Epoch: m.t0Epoch, serverNow: now });
     for (const team of ['monster', 'defenders'] as const) {
       const ids = [...m.roles].filter(([, r]) => r === (team === 'monster' ? 'monster' : 'defender')).map(([id]) => id);
@@ -657,6 +684,7 @@ export class RoomManager {
       };
     }
     view.pausedForReconnect = !m.state.result && this.pausedForReconnect(m);
+    batch?.set(role, view);
     return view;
   }
 }

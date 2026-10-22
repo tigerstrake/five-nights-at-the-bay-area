@@ -1,11 +1,12 @@
 // Socket.IO transport: validates payloads, routes to RoomManager, broadcasts role-filtered views.
 import type { Server, Socket } from 'socket.io';
-import type { ClientToServerEvents, ServerToClientEvents, ActionResult, GameAction, Role } from '@fnab/shared';
+import type { ClientToServerEvents, ServerToClientEvents, ActionResult, GameAction, Role, PlayerView } from '@fnab/shared';
 import type { RoomManager, Room } from '../rooms/RoomManager';
 import type { CameraService } from '../cameras';
 import * as S from './schemas';
 import { networkLimits, TokenBucket } from './limits';
 import { clientAddressResolver } from './clientAddress';
+import { ViewEncoder } from './viewUpdates';
 
 interface SocketData {
   code?: string;
@@ -24,24 +25,32 @@ const safeAck = <T>(ack: unknown, value: T) => {
 export function attachSockets(io: IO, rooms: RoomManager, cameras: CameraService, tickMs: number): () => void {
   /** playerId → socket (latest connection wins; a second tab has its own token so its own player). */
   const sockets = new Map<string, Sock>();
+  const encoders = new Map<string, ViewEncoder>();
   const limits = networkLimits(rooms.cfg);
   const clientAddress = clientAddressResolver();
   const ips = new Map<string, { requests: TokenBucket; joins: TokenBucket; failures: TokenBucket; seenAt: number }>();
   const dirty = new Set<Room>();
+  const listeners = new Map<Sock, Array<() => void>>();
   let generation = 0;
   const sent = new Map<string, { match: Room['match']; generation: number }>();
-  const identities = new WeakMap<Sock, { room: Room; match: NonNullable<Room['match']>; playerId: string }>();
+  const identities = new WeakMap<Sock, { code: string; match: WeakRef<NonNullable<Room['match']>>; playerId: string }>();
   const bound = (s: Sock | undefined, room: Room, id: string): s is Sock =>
     !!s && s.data.code === room.code && s.data.playerId === id && sockets.get(id) === s && !!room.players.get(id)?.connected;
-  const sendView = (room: Room, id: string, s: Sock, now = Date.now()) => {
+  const sendView = (room: Room, id: string, s: Sock, now = Date.now(), project?: (id: string) => PlayerView | null) => {
     if (!bound(s, room, id)) return;
     const last = sent.get(id);
     if (last?.match === room.match && last.generation === generation) return;
-    const view = rooms.playerView(room, id, now);
+    const view = project ? project(id) : rooms.playerView(room, id, now);
     if (view) {
       if (room.stage === 'playing' && room.match && !room.match.state.result)
-        identities.set(s, { room, match: room.match, playerId: id });
-      s.emit('game:view', view);
+        identities.set(s, { code: room.code, match: new WeakRef(room.match), playerId: id });
+      if (s.handshake.auth?.viewDeltas === true) {
+        let encoder = encoders.get(id);
+        if (!encoder) { encoder = new ViewEncoder(); encoders.set(id, encoder); }
+        const emission = encoder.next(view);
+        if (emission.event === 'game:view') s.emit('game:view', emission.data);
+        else s.emit('game:delta', emission.data);
+      } else s.emit('game:view', view);
       sent.set(id, { match: room.match, generation });
     }
   };
@@ -60,6 +69,7 @@ export function attachSockets(io: IO, rooms: RoomManager, cameras: CameraService
     const oldCode = socket.data.code;
     if (oldId && (oldId !== playerId || oldCode !== code) && sockets.get(oldId) === socket) {
       sockets.delete(oldId);
+      encoders.delete(oldId);
       if (oldCode) {
         rooms.disconnect(oldCode, oldId);
         const oldRoom = rooms.rooms.get(oldCode);
@@ -74,6 +84,8 @@ export function attachSockets(io: IO, rooms: RoomManager, cameras: CameraService
     }
     socket.data.code = code;
     socket.data.playerId = playerId;
+    encoders.delete(playerId);
+    sent.delete(playerId);
     sockets.set(playerId, socket);
     const room = rooms.rooms.get(code);
     if (room) {
@@ -87,7 +99,7 @@ export function attachSockets(io: IO, rooms: RoomManager, cameras: CameraService
 
   const unsubCams = cameras.subscribe((st) => io.emit('cameras:status', st));
 
-  io.on('connection', (socket: Sock) => {
+  const onConnection = (socket: Sock) => {
     const now = Date.now();
     const ip = clientAddress(socket.handshake.address, socket.handshake.headers?.['x-forwarded-for']);
     let budget = ips.get(ip);
@@ -101,14 +113,20 @@ export function attachSockets(io: IO, rooms: RoomManager, cameras: CameraService
     }
     const ipBudget = budget;
     const requests = new TokenBucket(limits.socketBurst, limits.socketPerSecond, now);
+    const unregister: Array<() => void> = [];
+    listeners.set(socket, unregister);
+    const register = (event: string, handler: (...args: unknown[]) => void) => {
+      socket.on(event as never, handler as never);
+      unregister.push(() => socket.off?.(event as never, handler as never));
+    };
     // Register every client handler through the same exception and budget boundary.
     const on = <E extends keyof ClientToServerEvents>(event: E, handler: ClientToServerEvents[E]) => {
-      socket.on(event, ((...args: unknown[]) => {
+      register(event, (...args: unknown[]) => {
         const ack = args.at(-1);
         const t = Date.now();
         ipBudget.seenAt = t;
         if (!requests.take(t) || !ipBudget.requests.take(t)) return safeAck(ack, bad('Rate limit exceeded — try again shortly'));
-        if ((event === 'room:create' || event === 'room:createSolo' || event === 'room:join' || event === 'room:resume') &&
+        if ((event === 'room:create' || event === 'room:createSolo' || event === 'room:join' || event === 'room:resume' || event === 'room:recover') &&
           (!ipBudget.joins.take(t) || !ipBudget.failures.available(t))) return safeAck(ack, bad('Join limit exceeded — try again shortly'));
         try {
           const result = (handler as (...a: unknown[]) => unknown)(...args);
@@ -120,7 +138,7 @@ export function attachSockets(io: IO, rooms: RoomManager, cameras: CameraService
           console.error(`[net] ${event} handler failed`, error);
           safeAck(ack, bad('Internal server error'));
         }
-      }) as never);
+      });
     };
     const ctx = () => {
       const { code, playerId } = socket.data;
@@ -135,9 +153,10 @@ export function attachSockets(io: IO, rooms: RoomManager, cameras: CameraService
 
     const identityAllowed = (code?: string, token?: string) => {
       const locked = identities.get(socket);
-      if (locked && locked.room.stage === 'playing' && locked.room.match === locked.match && !locked.match.state.result) {
+      const lockedRoom = locked && rooms.rooms.get(locked.code);
+      if (locked && lockedRoom?.stage === 'playing' && lockedRoom.match === locked.match.deref() && !lockedRoom.match?.state.result) {
         const target = token ? rooms.locate(token) : null;
-        return !!target && target.room === locked.room && target.room.code === code?.toUpperCase().trim() && target.player.id === locked.playerId;
+        return !!target && target.room === lockedRoom && target.room.code === code?.toUpperCase().trim() && target.player.id === locked.playerId;
       }
       const c = ctx();
       if (!c || rooms.rooms.get(c.code)?.stage !== 'playing') return true;
@@ -188,11 +207,27 @@ export function attachSockets(io: IO, rooms: RoomManager, cameras: CameraService
       safeAck(ack, res);
     });
 
+    on('room:recover', (p, ack) => {
+      const v = S.recoverSchema.safeParse(p);
+      if (!v.success) return safeAck(ack, bad('Invalid session'));
+      if (!identityAllowed(v.data.code, v.data.token)) return safeAck(ack, bad('Cannot change identity during a match'));
+      const target = rooms.locate(v.data.token);
+      // A lost acknowledgement may retry on this same socket; it still cannot displace another tab.
+      const sameBinding = target && target.room.code === v.data.code.toUpperCase().trim() &&
+        target.player.id === v.data.playerId && bound(socket, target.room, target.player.id);
+      const res = sameBinding ? rooms.resume(v.data.code, v.data.token) : rooms.recover(v.data.code, v.data.playerId, v.data.token);
+      if (res.ok) bind(socket, res.code, res.playerId);
+      if (!res.ok && (res.error === 'Room not found' || res.error === 'Session expired')) ipBudget.failures.take(Date.now());
+      safeAck(ack, res);
+    });
+
     function leaveCurrent() {
       const c = ctx();
       if (!c) return;
       rooms.leave(c.code, c.playerId);
       sockets.delete(c.playerId);
+      encoders.delete(c.playerId);
+      sent.delete(c.playerId);
       socket.data = {};
       const room = rooms.rooms.get(c.code);
       if (room) dirty.add(room);
@@ -256,6 +291,12 @@ export function attachSockets(io: IO, rooms: RoomManager, cameras: CameraService
       safeAck(ack, res);
       // Views are pushed only by the tick loop, irrespective of action type or acceptance.
     });
+    on('game:resync', ack => {
+      const c = ctx();
+      if (!c) return safeAck(ack, bad('Not in a room'));
+      encoders.get(c.playerId)?.reset();
+      safeAck(ack, { ok: true });
+    });
 
     on('time:ping', (p, ack) => {
       const v = S.pingSchema.safeParse(p);
@@ -263,32 +304,44 @@ export function attachSockets(io: IO, rooms: RoomManager, cameras: CameraService
       safeAck(ack, { clientSentAt: v.data.clientSentAt, serverNow: Date.now() });
     });
 
-    socket.on('disconnect', () => {
-      const c = ctx();
-      if (!c) return;
+    register('disconnect', () => {
       try {
+        const c = ctx();
+        if (!c) return;
         if (sockets.get(c.playerId) !== socket) return;
         sockets.delete(c.playerId);
+        encoders.delete(c.playerId);
+        sent.delete(c.playerId);
         rooms.disconnect(c.code, c.playerId);
         socket.data = {};
         const room = rooms.rooms.get(c.code);
         if (room) dirty.add(room);
       } catch (error) {
         console.error('[net] disconnect handler failed', error);
+      } finally {
+        identities.delete(socket);
+        for (const off of unregister) off();
+        listeners.delete(socket);
       }
     });
-  });
+  };
+  io.on('connection', onConnection);
 
   const sendViews = (room: Room) => {
     const now = Date.now();
+    const project = rooms.viewBatch(room, now);
     for (const p of room.players.values()) {
       const s = sockets.get(p.id);
-      if (bound(s, room, p.id)) sendView(room, p.id, s, now);
+      if (bound(s, room, p.id)) sendView(room, p.id, s, now, project);
     }
   };
 
   const timer = setInterval(() => {
     generation++;
+    if (generation % 600 === 0) {
+      const now = Date.now();
+      for (const [ip, budget] of ips) if (now - budget.seenAt >= limits.ipIdleTtlMs) ips.delete(ip);
+    }
     for (const [id, last] of sent) if (last.generation < generation - 1) sent.delete(id);
     const out = rooms.tick(Date.now());
     for (const room of out.playing) sendViews(room);
@@ -306,5 +359,11 @@ export function attachSockets(io: IO, rooms: RoomManager, cameras: CameraService
   return () => {
     clearInterval(timer);
     unsubCams();
+    io.off?.('connection', onConnection);
+    for (const [socket, unregister] of listeners) {
+      identities.delete(socket);
+      for (const off of unregister) off();
+    }
+    listeners.clear(); sockets.clear(); encoders.clear(); sent.clear(); dirty.clear(); ips.clear();
   };
 }

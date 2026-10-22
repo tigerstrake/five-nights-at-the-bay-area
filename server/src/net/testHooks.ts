@@ -63,8 +63,43 @@ export function fastForward(rooms: RoomManager, token: string, ms: number): Fast
   return { ok: true, t: m.state.t, ended: !!m.state.result };
 }
 
+/**
+ * Rooms whose match clock is frozen between fast-forwards. With wall-clock-driven matches, a slow CI runner burns
+ * the 20 s preparation phase (and the 8 s trap hold, etc.) before a test can act, so e2e freezes time per room and
+ * advances it only with `test:fastForward`. `test:hold {token, hold:false}` returns that room to real time.
+ */
+const heldRooms = new Set<string>();
+
+export function setHold(rooms: RoomManager, token: string, hold: boolean): { ok: boolean; error?: string } {
+  const loc = rooms.locate(token);
+  if (!loc) return { ok: false, error: 'Not in a room' };
+  if (hold) heldRooms.add(loc.room.code);
+  else heldRooms.delete(loc.room.code);
+  return { ok: true };
+}
+
+/** Wrap `rooms.tick` so held matches see no elapsed real time (same trick the reconnect pause uses). */
+function patchTickForHold(rooms: RoomManager): void {
+  const tick = rooms.tick.bind(rooms);
+  rooms.tick = (now?: number) => {
+    const at = now ?? Date.now();
+    for (const code of heldRooms) {
+      const room = rooms.rooms.get(code);
+      if (!room) heldRooms.delete(code);
+      else if (room.stage === 'playing' && room.match) room.match.lastStepAt = at;
+    }
+    return tick(at);
+  };
+}
+
 export function attachTestHooks(io: Server, rooms: RoomManager): void {
+  patchTickForHold(rooms);
   io.on('connection', (socket) => {
+    socket.on('test:hold', (p: unknown, ack?: (r: { ok: boolean; error?: string }) => void) => {
+      const d = (p ?? {}) as { token?: unknown; hold?: unknown };
+      const res = typeof d.token === 'string' && typeof d.hold === 'boolean' ? setHold(rooms, d.token, d.hold) : { ok: false, error: 'Bad request' };
+      if (typeof ack === 'function') ack(res);
+    });
     socket.on('test:fastForward', (p: unknown, ack?: (r: FastForwardResult) => void) => {
       try {
         const d = (p ?? {}) as { token?: unknown; ms?: unknown };
@@ -77,5 +112,5 @@ export function attachTestHooks(io: Server, rooms: RoomManager): void {
       }
     });
   });
-  console.warn('[fnab] TEST HOOKS ENABLED (FNAB_TEST_HOOKS=1): test:fastForward is available. Never use in production.');
+  console.warn('[fnab] TEST HOOKS ENABLED (FNAB_TEST_HOOKS=1): test:fastForward and test:hold are available. Never use in production.');
 }
