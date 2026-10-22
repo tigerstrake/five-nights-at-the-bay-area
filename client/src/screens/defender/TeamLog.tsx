@@ -104,7 +104,13 @@ export function TeamLog({ ctx, room, onLocate }: { ctx: RoomCtx; room: RoomView;
             </li>
           );
         })}
-        {!list.length && <li className="px-2 py-2 text-dim">Nothing logged yet.</li>}
+        {!list.length && (
+          <li className="px-2 py-2 font-sans text-[12px] leading-snug text-dim">
+            {filter === 'all'
+              ? 'Quiet so far. Sightings, sensor pings, door changes and sabotage land here; click an entry to look at it.'
+              : 'Nothing in this filter yet.'}
+          </li>
+        )}
       </ol>
     </Bay>
   );

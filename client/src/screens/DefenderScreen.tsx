@@ -23,6 +23,10 @@ import { NodeInspector, TOOL_KEYS, ToolDock } from './defender/Devices';
 import { ContainmentConsole, ContainmentStandby } from './defender/Containment';
 import { TeamLog } from './defender/TeamLog';
 import { AlertTicker, BlackoutCurtain, HelpSheet, PhaseAnnouncer, ThreatVignette } from './defender/Atmosphere';
+import { DefenderMoments } from './shell/Moments';
+import { CoachLayer } from '../coach/Coach';
+import { defenderHints } from '../coach/rules';
+import { useCoachPrefs, useHintsOn } from '../coach/store';
 
 const ALERT_MS = 8000;
 const CYCLE_MS = 7000;
@@ -269,8 +273,21 @@ export function DefenderScreen({ room, view }: { room: RoomView; view: DefenderV
   const powerFrac = view.power.value / view.power.max;
   const showConsole = !!view.held;
 
+  // First-match coaching: hints tied to what is on screen right now (see src/coach).
+  const rootRef = useRef<HTMLDivElement>(null);
+  const hintsOn = useHintsOn('defender') && !spectator;
+  const coachSeen = useCoachPrefs().seen;
+  const hints = hintsOn
+    ? defenderHints({ view, t, hq, mainNodeId: mainCam?.nodeId ?? null, seen: new Set(coachSeen) })
+    : [];
+
   return (
-    <div className={clsx('relative flex flex-col', reduced && 'fnab-reduced')} style={{ height: '100%' }} data-testid="defender-screen">
+    <div
+      ref={rootRef}
+      className={clsx('relative flex flex-col', reduced && 'fnab-reduced')}
+      style={{ height: '100%' }}
+      data-testid="defender-screen"
+    >
       <DefenderStyles />
       <TopBar room={room} view={view} accent="cyan">
         <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -321,14 +338,18 @@ export function DefenderScreen({ room, view }: { room: RoomView; view: DefenderV
           ?<span className="hidden min-[1360px]:inline"> Keys</span>
         </button>
       </TopBar>
+      <TeamSignalBanner view={view} perspective="defenders" />
 
       <AlertTicker ctx={ctx} onLocate={locate} onJump={jumpToLatest} />
 
-      <div className="relative grid min-h-0 flex-1 grid-cols-1 gap-1.5 p-1.5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_clamp(300px,24vw,460px)]">
+      <div
+        className="relative grid min-h-0 flex-1 grid-cols-1 gap-1.5 p-1.5 max-lg:auto-rows-max max-lg:overflow-y-auto md:max-lg:grid-cols-2 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_clamp(300px,24vw,460px)]"
+        data-testid="defender-grid"
+      >
         <BlackoutCurtain ctx={ctx} />
         {/* LEFT: monitors */}
-        <div className="flex min-h-0 flex-col gap-1.5">
-          <div className="flex min-h-0 flex-[1.2] flex-col">
+        <div className="flex min-h-0 flex-col gap-1.5 max-lg:contents">
+          <div className="flex min-h-0 flex-[1.2] flex-col max-lg:order-1 max-lg:min-h-[260px]">
             <MainFeed
               ctx={ctx}
               cam={mainCam}
@@ -337,7 +358,7 @@ export function DefenderScreen({ room, view }: { room: RoomView; view: DefenderV
             />
           </div>
           {showConsole ? (
-            <ContainmentConsole ctx={ctx} className="flex-1" />
+            <ContainmentConsole ctx={ctx} className="flex-1 max-lg:order-3 max-lg:min-h-[380px] md:max-lg:col-span-2" />
           ) : (
             <MonitorBank
               ctx={ctx}
@@ -354,7 +375,7 @@ export function DefenderScreen({ room, view }: { room: RoomView; view: DefenderV
               mainId={mainCam?.cameraId}
               pinned={pinned}
               alertNodes={alertNodes}
-              className="flex-1"
+              className="flex-1 max-lg:order-5 max-lg:h-[400px] md:max-lg:col-span-2"
             />
           )}
         </div>
@@ -369,6 +390,7 @@ export function DefenderScreen({ room, view }: { room: RoomView; view: DefenderV
             </span>
           }
           bodyClass="flex flex-col"
+          className="max-lg:order-4 max-lg:h-[clamp(540px,110vw,720px)] md:max-lg:col-span-2"
         >
           <div className="relative min-h-0 flex-1">
             <MapPanel
@@ -396,17 +418,23 @@ export function DefenderScreen({ room, view }: { room: RoomView; view: DefenderV
         </Bay>
 
         {/* RIGHT: HQ systems */}
-        <div className="flex min-h-0 flex-col gap-1.5 overflow-y-auto">
-          <PowerPanel ctx={ctx} />
-          <DoorsPanel ctx={ctx} />
-          {!showConsole && <ContainmentStandby ctx={ctx} />}
-          <TeamLog ctx={ctx} room={room} onLocate={locate} />
+        <div className="flex min-h-0 flex-col gap-1.5 overflow-y-auto max-lg:contents">
+          {/* Below lg these wrappers become grid cells (doors stay near the top); on desktop they vanish. */}
+          <div className="flex flex-col gap-1.5 max-lg:order-2 lg:contents">
+            <PowerPanel ctx={ctx} />
+            <DoorsPanel ctx={ctx} />
+          </div>
+          <div className="flex flex-col gap-1.5 max-lg:order-6 max-lg:h-[420px] md:max-lg:col-span-2 lg:contents">
+            {!showConsole && <ContainmentStandby ctx={ctx} />}
+            <TeamLog ctx={ctx} room={room} onLocate={locate} />
+          </div>
         </div>
       </div>
 
-      <TeamSignalBanner view={view} perspective="defenders" />
       <ThreatVignette view={view} reduced={reduced} />
       <PhaseAnnouncer phase={view.phase} />
+      <DefenderMoments view={view} t={t} hq={hq} spectator={spectator} />
+      {hintsOn && <CoachLayer role="defender" hints={hints} rootRef={rootRef} paused={help} />}
       {help && <HelpSheet onClose={() => setHelp(false)} />}
     </div>
   );

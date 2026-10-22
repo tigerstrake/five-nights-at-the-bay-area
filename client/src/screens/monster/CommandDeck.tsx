@@ -212,7 +212,7 @@ export function CommandDeck({
 
   return (
     <section className="mx-slab" data-testid="commands">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--mx-scar)] px-2.5 py-1.5">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--mx-scar)] px-2.5 py-1.5" data-coach-avoid>
         <span className="mx-slab-title">{prep ? 'Opening stance' : 'Commands'}</span>
         <div className="ml-auto flex min-w-0 flex-wrap items-center gap-1.5">
           <span className="text-[11px] text-[var(--mx-ash)]">Target door</span>
@@ -246,11 +246,11 @@ export function CommandDeck({
           </span>
         </div>
       </div>
-      <div className="grid grid-cols-[repeat(5,minmax(0,1fr))_6px_repeat(2,minmax(0,1fr))] gap-1.5 p-1.5">
+      <div className="grid grid-cols-[repeat(5,minmax(0,1fr))_6px_repeat(2,minmax(0,1fr))] gap-1.5 p-1.5 max-sm:grid-cols-3 sm:max-md:grid-cols-4">
         {stanceCards.map((c) => (
           <CommandCard key={c.id} {...c} />
         ))}
-        <span aria-hidden className="mx-1 w-px self-stretch bg-[var(--mx-scar)]" />
+        <span aria-hidden className="mx-1 w-px self-stretch bg-[var(--mx-scar)] max-md:hidden" />
         <CommandCard {...abilityCard('SABOTAGE')} />
         <CommandCard {...abilityCard('DECOY')} />
       </div>

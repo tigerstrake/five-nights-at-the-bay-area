@@ -204,3 +204,45 @@ body {
   animation-duration: 1ms !important;
   animation-iteration-count: 1 !important;
 }
+
+/* Coach marks (src/coach): a quiet ring around the control a hint is about. */
+.fnab-coach-ring {
+  border: 1px solid;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 0 14px -2px currentColor;
+  animation: fnab-coach-ring 1.8s ease-in-out infinite;
+}
+@keyframes fnab-coach-ring {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+/* Big beats (screens/shell/Moments): a band that slams in, holds, and fades. */
+.fnab-moment {
+  animation: fnab-moment 2.3s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+}
+.fnab-moment-calm {
+  animation: fnab-moment-calm 2.3s ease-out forwards;
+}
+.fnab-moment-flash {
+  animation: fnab-moment-flash 0.7s ease-out forwards;
+}
+@keyframes fnab-moment {
+  0% { opacity: 0; transform: scaleY(0.2); }
+  7% { opacity: 1; transform: scaleY(1.06); }
+  12% { transform: none; }
+  82% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes fnab-moment-calm {
+  0% { opacity: 0; }
+  10%, 82% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes fnab-moment-flash {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fnab-moment { animation-name: fnab-moment-calm; }
+  .fnab-moment-flash { display: none; }
+}

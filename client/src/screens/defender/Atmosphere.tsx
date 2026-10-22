@@ -59,7 +59,8 @@ export function PhaseAnnouncer({ phase }: { phase: DefenderView['phase'] }) {
 const TICKER_KINDS: GameEventKind[] = [
   'sighting', 'sensorPing', 'scan', 'decoyExposed', 'sabotage', 'cameraFailure', 'breachStart', 'doorJammed', 'doorBattered',
   'trapTriggered', 'powerLow', 'powerOut', 'powerRestored', 'struggle', 'freed', 'containmentBroken', 'repairDone', 'phase',
-  'connectionLost', 'connectionRestored',
+  // connectionLost is left out: the team-signal strip above the ticker already says it, with a countdown.
+  'connectionRestored',
 ];
 
 /** Single-line alert strip under the top bar: breach/hold status, else the newest notable event, else idle status. */
@@ -126,7 +127,7 @@ export function AlertTicker({ ctx, onLocate, onJump }: { ctx: RoomCtx; onLocate:
   return (
     <div
       className={clsx(
-        'flex h-7 shrink-0 items-center justify-center gap-3 overflow-hidden whitespace-nowrap border-b px-3 font-mono text-[11.5px]',
+        'flex h-7 shrink-0 items-center justify-center gap-3 overflow-hidden whitespace-nowrap border-b px-3 font-mono text-[11.5px] max-md:justify-start',
         tone === 'alert' && 'border-alert bg-alert-dim/70 text-[#ffd0d4]',
         tone === 'alert' && view.breach && !ctx.reduced && 'animate-pulse',
         tone === 'warn' && 'border-warn/60 bg-[#2c2008] text-[#f3d28d]',
@@ -134,6 +135,7 @@ export function AlertTicker({ ctx, onLocate, onJump }: { ctx: RoomCtx; onLocate:
         tone === 'idle' && 'border-edge bg-ink text-mute',
       )}
       data-testid="alert-ticker"
+      data-coach-safe
       role="status"
       aria-live="polite"
     >

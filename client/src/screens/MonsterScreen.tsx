@@ -17,6 +17,10 @@ import { LensPanel } from './monster/LensPanel';
 import { EmergencePanel, IntentStream, NightBar, SituationPanel } from './monster/SidePanels';
 import { BreachBanner, Legend, PositionPlate, TargetingBar, TrappedOverlay } from './monster/MapOverlays';
 import './monster/monster.css';
+import { MonsterMoments } from './shell/Moments';
+import { CoachLayer } from '../coach/Coach';
+import { monsterHints } from '../coach/rules';
+import { useCoachPrefs, useHintsOn } from '../coach/store';
 
 /** Reduced flashing (OS preference or the in-app setting), reactive. */
 const useCalm = useReduceFlashing;
@@ -265,9 +269,18 @@ export function MonsterScreen({ room, view }: { room: RoomView; view: MonsterVie
 
   const pendingInfo = pending && tool === 'sabotage' ? sit.sabotageTargets.get(pending.nodeId) : null;
 
+  // First-match coaching (see src/coach): hints tied to the creature's real situation.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const hintsOn = useHintsOn('monster');
+  const coachSeen = useCoachPrefs().seen;
+  const commanded =
+    STANCE_ORDER.some((s) => stamps[s]) || view.events.some((e) => e.kind === 'command' && e.text.startsWith('Command:'));
+  const hints = hintsOn
+    ? monsterHints({ view, t, hq, hopsToHq: sit.hopsToHq, watchedHere: sit.watchedHere, commanded, seen: new Set(coachSeen) })
+    : [];
+
   return (
-    <div className="mx relative flex h-full flex-col" data-calm={calm ? '1' : '0'} data-testid="monster-screen">
-      <TeamSignalBanner view={view} perspective="monster" />
+    <div ref={rootRef} className="mx relative flex h-full flex-col" data-calm={calm ? '1' : '0'} data-testid="monster-screen">
       <TopBar room={room} view={view} accent="monster">
         <div className="flex min-w-0 items-center gap-2">
           <Label>Prey</Label>
@@ -287,10 +300,11 @@ export function MonsterScreen({ room, view }: { room: RoomView; view: MonsterVie
           </Badge>
         </div>
       </TopBar>
+      <TeamSignalBanner view={view} perspective="monster" />
       <NightBar view={view} sit={sit} t={t} />
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 p-2 lg:grid-cols-[minmax(0,1fr)_minmax(320px,380px)] lg:grid-rows-[minmax(0,1fr)_auto] 2xl:grid-cols-[minmax(0,1fr)_440px]">
-        <section className="mx-slab relative min-h-[340px] overflow-hidden lg:col-start-1 lg:row-start-1">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 p-2 max-lg:auto-rows-max max-lg:overflow-y-auto lg:grid-cols-[minmax(0,1fr)_minmax(320px,380px)] lg:grid-rows-[minmax(0,1fr)_auto] 2xl:grid-cols-[minmax(0,1fr)_440px]">
+        <section className="mx-slab relative min-h-[340px] overflow-hidden max-lg:order-1 max-lg:h-[clamp(500px,105vw,700px)] lg:col-start-1 lg:row-start-1">
           <MapPanel
             hqId={view.hqId}
             cameraStatus={camStatusByNode}
@@ -332,12 +346,13 @@ export function MonsterScreen({ room, view }: { room: RoomView; view: MonsterVie
           )}
           <Legend prep={prep} />
           <BreachBanner view={view} hq={hq} />
+          <MonsterMoments view={view} t={t} hq={hq} hopsToHq={sit.hopsToHq} />
           {self.held && tool !== 'decoy' && (
             <TrappedOverlay view={view} t={t} retreatLeft={cd('RETREAT')} calm={calm} onStruggle={() => onStance('RETREAT')} />
           )}
         </section>
 
-        <aside className="flex min-h-0 flex-col gap-2 lg:col-start-2 lg:row-span-2 lg:row-start-1">
+        <aside className="flex min-h-0 flex-col gap-2 max-lg:order-3 md:max-lg:grid md:max-lg:grid-cols-2 lg:col-start-2 lg:row-span-2 lg:row-start-1">
           <LensPanel view={view} nodeId={lensNode} caption={lensCaption} />
           {prep ? (
             <EmergencePanel view={view} hq={hq} onPick={pickSpawn} onHover={setHoverSpawn} />
@@ -349,7 +364,7 @@ export function MonsterScreen({ room, view }: { room: RoomView; view: MonsterVie
           )}
         </aside>
 
-        <div className="lg:col-start-1 lg:row-start-2">
+        <div className="max-lg:order-2 lg:col-start-1 lg:row-start-2">
           <CommandDeck
             view={view}
             sit={sit}
@@ -365,6 +380,7 @@ export function MonsterScreen({ room, view }: { room: RoomView; view: MonsterVie
           />
         </div>
       </div>
+      {hintsOn && <CoachLayer role="monster" hints={hints} rootRef={rootRef} />}
     </div>
   );
 }

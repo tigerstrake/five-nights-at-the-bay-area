@@ -80,7 +80,7 @@ export function MonitorBank({
       }
       led={faults ? 'warn' : 'ok'}
       right={
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1" data-coach-avoid>
           {pageBtn('auto', 'Auto')}
           {Array.from({ length: pages }, (_, i) => pageBtn(i, String(i + 1)))}
           <button

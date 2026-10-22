@@ -5,6 +5,7 @@ import { audio } from '../audio';
 import { isReducedMotion, setFxReducedMotion } from '../fx';
 import { subscribeFxSettings } from '../fx/core/settings';
 import { useGame } from '../state/store';
+import { coach, useAnyHintsOn } from '../coach/store';
 
 /** Re-render whenever volume / mute change. */
 function useAudioSettings() {
@@ -174,6 +175,7 @@ export function SettingsMenu({
 }) {
   const { muted, volume } = useAudioSettings();
   const flash = useReduceFlashing();
+  const hints = useAnyHintsOn();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -257,6 +259,13 @@ export function SettingsMenu({
               label="Reduce flashing"
               hint="Softer static, no screen shake or strobes"
               testId="reduce-flashing"
+            />
+            <Switch
+              on={hints}
+              onChange={(v) => coach.setEnabled(v)}
+              label="Coaching hints"
+              hint={hints ? 'Short tips while you play. Each shows once.' : 'Turn on to see every tip again'}
+              testId="hints-toggle"
             />
           </div>
         </div>

@@ -75,7 +75,7 @@ export function LoadingScreen({ room }: { room: RoomView }) {
         <SettingsMenu />
       </header>
 
-      <main className="relative z-10 mx-auto grid min-h-0 w-full max-w-[1180px] flex-1 grid-cols-1 items-center gap-10 px-6 pb-6 lg:grid-cols-[minmax(0,1fr)_420px]">
+      <main className="relative z-10 mx-auto grid min-h-0 w-full max-w-[1180px] flex-1 grid-cols-1 items-center gap-10 px-6 pb-6 max-lg:auto-rows-max max-lg:content-center-safe max-lg:overflow-y-auto max-md:gap-6 max-md:px-4 lg:grid-cols-[minmax(0,1fr)_420px]">
         {/* Uplink checklist */}
         <section aria-label="Uplink status" className="motion-safe:animate-rise">
           <div className="font-mono text-[11px] uppercase tracking-[0.34em] text-dim">

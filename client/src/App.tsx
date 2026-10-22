@@ -13,6 +13,7 @@ import { ResultsScreen } from './screens/ResultsScreen';
 import { ReconnectBanner, ScreenGrain, Toasts, useReduceFlashing } from './ui/chrome';
 import { ScreenTransition } from './screens/shell/ScreenTransition';
 import { resetUplink, startUplink, useUplink } from './screens/shell/uplink';
+import { coach } from './coach/store';
 
 /** Longest the game screen may be held back for the uplink checks once the match is running. */
 const UPLINK_GATE_MAX_MS = 4000;
@@ -67,6 +68,24 @@ export function App() {
   useEffect(() => {
     prevCode.current = code;
   }, [code]);
+
+  // Coaching is automatic for a player's first matches in each role: count each finished match once.
+  const counted = useRef<string | null>(null);
+  const myRole = room?.players.find((p) => p.id === room.youId)?.role;
+  useEffect(() => {
+    if (stage !== 'results' || !result || !code || (myRole !== 'defender' && myRole !== 'monster')) return;
+    const key = `${code}:${result.endedAtT}:${result.reason}`;
+    if (counted.current === key) return;
+    counted.current = key;
+    try {
+      const k = 'fnab.coach.counted';
+      if (sessionStorage.getItem(k) === key) return; // results screen reloaded
+      sessionStorage.setItem(k, key);
+    } catch {
+      /* storage unavailable */
+    }
+    coach.matchFinished(myRole);
+  }, [stage, result, code, myRole]);
 
   // Tell the player when a dropped link comes back.
   const wasDown = useRef(false);

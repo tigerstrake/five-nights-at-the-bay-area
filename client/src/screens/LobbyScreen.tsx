@@ -14,6 +14,7 @@ import { RoleBriefing } from './shell/briefings';
 import { HowToPlay } from './shell/HowToPlay';
 import { nextDefenderSummary, scalingSummary } from './shell/difficulty';
 import { AiDifficultyControl } from './shell/AiSetup';
+import { SmallScreenNotice } from './shell/SmallScreen';
 
 const ROLE_INFO: Record<Role, { label: string; desc: string }> = {
   monster: { label: 'Monster', desc: 'Command the thing in the cameras. Breach the HQ before dawn.' },
@@ -66,7 +67,7 @@ function PlayerRow({ p, you, isHost }: { p: LobbyPlayer; you: boolean; isHost: b
     else setDraft(p.name);
   };
   return (
-    <li className={clsx('flex items-center gap-3 px-3 py-2.5', you && 'bg-panel-2/70')} data-testid={`player-${p.id}`}>
+    <li className={clsx('flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5', you && 'bg-panel-2/70')} data-testid={`player-${p.id}`}>
       <span title={p.connected ? 'Connected' : 'Signal lost — seat held for 60 s'}>
         <Dot tone={p.connected ? 'ok' : 'warn'} />
       </span>
@@ -93,8 +94,8 @@ function PlayerRow({ p, you, isHost }: { p: LobbyPlayer; you: boolean; isHost: b
             <span className={clsx('truncate text-[14px]', p.connected ? 'text-bright' : 'text-mute')}>{p.name}</span>
           )}
           {you && !editing && (
-            <button className="shrink-0 text-[11px] text-dim hover:text-text" onClick={() => setEditing(true)} title="Rename">
-              you · rename
+            <button className="shrink-0 text-[11px] text-dim underline decoration-edge-hi underline-offset-2 hover:text-text" onClick={() => setEditing(true)} title="Change your name">
+              rename
             </button>
           )}
           {p.isHost && <span className="shrink-0 border border-warn/50 px-1 font-mono text-[9px] uppercase tracking-[0.12em] text-warn">host</span>}
@@ -102,13 +103,9 @@ function PlayerRow({ p, you, isHost }: { p: LobbyPlayer; you: boolean; isHost: b
         </div>
         <div className="mt-0.5 flex items-center gap-3">
           <RoleChip role={p.role} />
-          {p.ai && <span className="font-mono text-[10px] capitalize text-mute">{p.ai.difficulty}</span>}
+          {p.ai && !isHost && <span className="font-mono text-[10px] capitalize text-mute">{p.ai.difficulty}</span>}
           {!p.connected && <span className="font-mono text-[10px] text-warn">signal lost</span>}
         </div>
-        {p.ai && isHost && <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          <AiDifficultyControl value={p.ai.difficulty} onChange={d => void lobby.setAiDifficulty(p.id, d)} testIdPrefix={`ai-difficulty-${p.id}`} />
-          <Button tone="ghost" size="sm" onClick={() => void lobby.removeAi(p.id)} data-testid={`ai-remove-${p.id}`} aria-label={`Remove ${p.name}`}>Remove</Button>
-        </div>}
       </div>
       {p.role !== 'spectator' ? (
         <span
@@ -121,6 +118,27 @@ function PlayerRow({ p, you, isHost }: { p: LobbyPlayer; you: boolean; isHost: b
         </span>
       ) : (
         <span className="shrink-0 font-mono text-[10px] text-dim">watching</span>
+      )}
+      {p.ai && isHost && (
+        <div className="flex basis-full items-center gap-2 pl-[18px]">
+          <AiDifficultyControl
+            value={p.ai.difficulty}
+            onChange={(d) => void lobby.setAiDifficulty(p.id, d)}
+            testIdPrefix={`ai-difficulty-${p.id}`}
+            className="min-w-0 flex-1 [&>button]:px-1 [&>button]:py-1 [&>button]:text-[10.5px]"
+          />
+          <Button
+            tone="ghost"
+            size="sm"
+            className="shrink-0"
+            onClick={() => void lobby.removeAi(p.id)}
+            data-testid={`ai-remove-${p.id}`}
+            aria-label={`Remove ${p.name}`}
+            title={`Remove ${p.name}`}
+          >
+            Remove
+          </Button>
+        </div>
       )}
     </li>
   );
@@ -161,7 +179,7 @@ export function LobbyScreen({ room }: { room: RoomView }) {
         className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-[0.07] grayscale"
         draggable={false}
       />
-      <header className="relative z-20 flex items-center justify-between gap-4 border-b border-edge bg-panel/85 px-5 py-2.5 backdrop-blur">
+      <header className="relative z-20 flex items-center justify-between gap-4 border-b border-edge bg-panel/85 px-5 py-2.5 backdrop-blur max-md:flex-wrap max-md:gap-2 max-md:px-3">
         <div className="flex items-center gap-4">
           <BrandMark />
           <span className="h-4 w-px bg-edge-hi" />
@@ -169,7 +187,7 @@ export function LobbyScreen({ room }: { room: RoomView }) {
         </div>
         <div className="flex items-center gap-3">
           <ConnectionBadge />
-          <Button tone="ghost" size="sm" onClick={() => setHelp(true)}>
+          <Button tone="ghost" size="sm" className="whitespace-nowrap" onClick={() => setHelp(true)}>
             How to play
           </Button>
           <SettingsMenu />
@@ -179,9 +197,19 @@ export function LobbyScreen({ room }: { room: RoomView }) {
         </div>
       </header>
 
-      <div className="relative grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-auto p-3 lg:grid-cols-[320px_minmax(0,1fr)_360px] lg:overflow-hidden">
+      <div className="relative grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-auto p-3 max-lg:auto-rows-max md:max-lg:grid-cols-2 lg:grid-cols-[320px_minmax(0,1fr)_360px] lg:overflow-hidden">
+        <SmallScreenNotice
+          className="sm:hidden"
+          action={
+            role !== 'spectator' ? (
+              <Button size="sm" tone="warn" onClick={() => void lobby.setRole('spectator')} data-testid="small-screen-spectate">
+                Watch as spectator
+              </Button>
+            ) : undefined
+          }
+        />
         {/* Left: room + operators + scaling */}
-        <div className="flex min-h-0 flex-col gap-3">
+        <div className="flex min-h-0 flex-col gap-3 max-lg:order-1">
           <section className="fnab-brackets border border-edge bg-panel/90 p-4" aria-label="Room code">
             <div className="text-[12px] text-mute">Room code</div>
             <div className="mt-1 font-mono text-[52px] font-semibold leading-none tracking-[0.28em] text-bright" data-testid="room-code">
@@ -215,15 +243,42 @@ export function LobbyScreen({ room }: { room: RoomView }) {
                 <PlayerRow key={p.id} p={p} you={p.id === room.youId} isHost={isHost} />
               ))}
             </ul>
-            {isHost && <div className="space-y-2 border-t border-edge p-3" data-testid="ai-controls">
-              <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-mute">Add AI players</div>
-              <AiDifficultyControl value={aiDifficulty} onChange={setAiDifficulty} testIdPrefix="ai-add-difficulty" />
-              <div className="flex gap-2">
-                <Button size="sm" tone="cyan" disabled={room.players.length >= DEFAULT_CONFIG.room.maxPlayers} onClick={() => void lobby.addAi('defender', aiDifficulty)} data-testid="ai-add-defender">+ Defender</Button>
-                <Button size="sm" tone="blood" disabled={monsters > 0 || room.players.length >= DEFAULT_CONFIG.room.maxPlayers} onClick={() => void lobby.addAi('monster', aiDifficulty)} data-testid="ai-add-monster">+ Monster</Button>
+            {isHost && (
+              <div className="space-y-2 border-t border-edge bg-ink/40 p-3" data-testid="ai-controls">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-[12px] text-text">Add an AI player</span>
+                  {room.players.length >= DEFAULT_CONFIG.room.maxPlayers && <span className="text-[11px] text-dim">Room is full</span>}
+                </div>
+                <AiDifficultyControl value={aiDifficulty} onChange={setAiDifficulty} testIdPrefix="ai-add-difficulty" />
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    size="sm"
+                    tone="cyan"
+                    disabled={room.players.length >= DEFAULT_CONFIG.room.maxPlayers}
+                    onClick={() => void lobby.addAi('defender', aiDifficulty)}
+                    data-testid="ai-add-defender"
+                    title="Add an AI defender to the control room"
+                  >
+                    + Defender
+                  </Button>
+                  <Button
+                    size="sm"
+                    tone="blood"
+                    disabled={monsters > 0 || room.players.length >= DEFAULT_CONFIG.room.maxPlayers}
+                    onClick={() => void lobby.addAi('monster', aiDifficulty)}
+                    data-testid="ai-add-monster"
+                    title={monsters > 0 ? 'There is already a monster' : 'Let an AI play the monster'}
+                  >
+                    + Monster
+                  </Button>
+                </div>
+                <p className="text-[11px] leading-snug text-dim">
+                  {monsters === 0
+                    ? 'The night needs a monster. Add an AI one, or wait for someone to take the role.'
+                    : 'AI players are always ready. A person who joins takes an AI seat.'}
+                </p>
               </div>
-              <p className="text-[11px] leading-snug text-dim">AI players ready up automatically. A human taking their role replaces them.</p>
-            </div>}
+            )}
             {room.players.length < 3 && !room.players.some(p => p.ai) && (
               <p className="px-3 py-3 text-[12px] leading-snug text-dim">
                 {monsters === 0
@@ -239,7 +294,7 @@ export function LobbyScreen({ room }: { room: RoomView }) {
                 The night scales with the team. {defenders <= 1 ? 'One defender plays at base settings.' : `Tuned for ${defenders} defenders.`}{' '}
                 <span className="text-text">{nextDefenderSummary(defenders)}</span>
               </p>
-              <dl className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-1">
+              <dl className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-1 lg:[@media(max-height:820px)]:hidden">
                 {scaling.map((l) => (
                   <div key={l.label} className="flex items-baseline justify-between gap-2 text-[11px]">
                     <dt className="truncate text-dim" title={l.label}>
@@ -261,7 +316,7 @@ export function LobbyScreen({ room }: { room: RoomView }) {
         </div>
 
         {/* Center: headquarters */}
-        <section className="flex min-h-0 flex-col border border-edge bg-panel/70" aria-label="Headquarters">
+        <section className="flex min-h-0 flex-col border border-edge bg-panel/70 max-lg:order-3 md:max-lg:col-span-2" aria-label="Headquarters">
           <header className="flex flex-wrap items-baseline justify-between gap-2 border-b border-edge px-4 py-3">
             <div>
               <h2 className="font-display text-[18px] font-extrabold text-bright">Choose headquarters</h2>
@@ -274,7 +329,7 @@ export function LobbyScreen({ room }: { room: RoomView }) {
               {spawnCount} places the monster can emerge
             </span>
           </header>
-          <div className="grid min-h-0 flex-1 auto-rows-fr grid-cols-1 gap-3 p-3 sm:grid-cols-2">
+          <div className="grid min-h-0 flex-1 auto-rows-fr grid-cols-1 gap-3 p-3 max-lg:auto-rows-[minmax(230px,auto)] sm:grid-cols-2">
             {NETWORK.headquarters.map((h) => (
               <HqCard
                 key={h.id}
@@ -288,7 +343,7 @@ export function LobbyScreen({ room }: { room: RoomView }) {
         </section>
 
         {/* Right: role, briefing, settings, ready */}
-        <div className="flex min-h-0 flex-col gap-3 lg:overflow-auto">
+        <div className="flex min-h-0 flex-col gap-3 max-lg:order-2 lg:overflow-auto">
           <Panel title="Your role" className="shrink-0">
             <div className="flex flex-col gap-1.5 p-2.5" role="radiogroup" aria-label="Role">
               {(Object.keys(ROLE_INFO) as Role[]).map((r) => {

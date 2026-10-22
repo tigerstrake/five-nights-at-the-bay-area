@@ -106,7 +106,7 @@ export function ResultsScreen({ room, result }: { room: RoomView; result: MatchR
     );
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-void" data-testid="results-screen" data-mood={copy.mood}>
+    <div className="flex h-full flex-col overflow-hidden bg-void max-lg:overflow-y-auto" data-testid="results-screen" data-mood={copy.mood}>
       {/* Hero */}
       <section className="relative shrink-0 overflow-hidden border-b border-edge pb-6" style={{ minHeight: 'clamp(250px, 36vh, 340px)' }}>
         {artOk && (
@@ -124,12 +124,12 @@ export function ResultsScreen({ room, result }: { room: RoomView; result: MatchR
         <div aria-hidden className="absolute inset-0" style={{ background: mood.glow }} />
         <div aria-hidden className="fnab-noise absolute inset-0 opacity-[0.06]" />
 
-        <header className="relative z-10 flex items-center justify-between px-6 py-3">
+        <header className="relative z-10 flex items-center justify-between px-6 py-3 max-md:px-4">
           <BrandMark />
           <SettingsMenu />
         </header>
-        <div className="relative z-10 flex flex-col px-6 lg:pl-[5vw]">
-          <div className="flex items-center gap-3 motion-safe:animate-rise">
+        <div className="relative z-10 flex flex-col px-6 max-md:px-4 lg:pl-[5vw]">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 motion-safe:animate-rise">
             <span
               className={clsx(
                 'border px-2 py-0.5 font-mono text-[11px] font-semibold uppercase tracking-[0.24em]',
@@ -191,7 +191,7 @@ export function ResultsScreen({ room, result }: { room: RoomView; result: MatchR
       </section>
 
       {/* Debrief */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-auto p-2 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_300px] lg:overflow-hidden">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-auto p-2 max-lg:flex-none max-lg:auto-rows-max max-lg:overflow-visible md:max-lg:grid-cols-2 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_300px] lg:overflow-hidden">
         <Panel
           title={perspective === 'monster' ? 'Your route, and what they saw' : 'The monster’s route, revealed'}
           right={
@@ -226,12 +226,12 @@ export function ResultsScreen({ room, result }: { room: RoomView; result: MatchR
               className="w-52 [&>button]:py-0.5 [&>button]:text-[10px]"
             />
           }
-          className="min-h-[300px]"
+          className="min-h-[300px] max-lg:max-h-[520px]"
           bodyClass="overflow-auto"
         >
           <TimelineList result={result} cursorT={replay.t} onSeek={replay.seek} all={allEvents} />
         </Panel>
-        <Panel title="Night report" bodyClass="overflow-auto">
+        <Panel title="Night report" bodyClass="overflow-auto" className="md:max-lg:col-span-2">
           <StatsBoard result={result} />
         </Panel>
       </div>

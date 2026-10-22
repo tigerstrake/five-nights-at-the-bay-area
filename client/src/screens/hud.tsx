@@ -139,37 +139,38 @@ export function TeamSignalBanner({ view, perspective }: { view: ViewBase; perspe
       : team === 'defenders'
         ? 'The night is paused. If no defender returns in time, the monster wins by forfeit.'
         : 'The night is paused.';
+  // An in-flow strip directly under the top bar: it pushes the console down instead of floating over the alert
+  // ticker, the phase strip or the map controls. (The night is paused while it shows, so the shift costs nothing.)
   return (
-    <div role="status" aria-live="polite" className="pointer-events-none absolute inset-x-0 top-14 z-40 flex justify-center px-3">
-      <div
+    <div
+      role="status"
+      aria-live="polite"
+      className={clsx(
+        'relative z-20 flex shrink-0 items-center justify-center gap-x-3 gap-y-0.5 overflow-hidden border-b px-3 py-1.5 max-md:flex-wrap',
+        monsterSide ? 'border-blood-hi/70 bg-[#1a070b]' : 'border-warn/60 bg-[#1f1608]',
+      )}
+      data-testid={team === 'defenders' ? 'defenders-signal-lost' : 'monster-signal-lost'}
+      data-paused={view.pausedForReconnect ? '1' : '0'}
+      data-coach-safe
+    >
+      <div aria-hidden className="fnab-noise pointer-events-none absolute inset-0 opacity-[0.1]" />
+      <span
+        className={clsx('relative h-2 w-2 shrink-0 rounded-full motion-safe:animate-blink', monsterSide ? 'bg-blood-hi' : 'bg-warn')}
+      />
+      <span
         className={clsx(
-          'relative flex max-w-full items-center gap-3 overflow-hidden border px-4 py-2 shadow-[0_10px_40px_rgba(0,0,0,0.65)]',
-          monsterSide ? 'border-blood-hi/70 bg-[#160709]/95' : 'border-warn/60 bg-[#191208]/95',
+          'relative min-w-0 font-mono text-[11px] uppercase tracking-[0.18em]',
+          monsterSide ? 'text-[#ffb3bf]' : 'text-[#f3d28d]',
         )}
-        data-testid={team === 'defenders' ? 'defenders-signal-lost' : 'monster-signal-lost'}
-        data-paused={view.pausedForReconnect ? '1' : '0'}
       >
-        <div aria-hidden className="fnab-noise absolute inset-0 opacity-[0.12]" />
-        <span
-          className={clsx('relative h-2 w-2 shrink-0 rounded-full motion-safe:animate-blink', monsterSide ? 'bg-blood-hi' : 'bg-warn')}
-        />
-        <div className="relative min-w-0">
-          <div
-            className={clsx(
-              'whitespace-nowrap font-mono text-[11px] uppercase tracking-[0.2em]',
-              monsterSide ? 'text-[#ffb3bf]' : 'text-[#f3d28d]',
-            )}
-          >
-            {title}
-            {left !== null && (
-              <span className="ml-2 tabular-nums text-bright" data-testid="signal-lost-countdown">
-                {left}s
-              </span>
-            )}
-          </div>
-          <div className="text-[11px] text-mute">{sub}</div>
-        </div>
-      </div>
+        {title}
+        {left !== null && (
+          <span className="ml-2 tabular-nums text-bright" data-testid="signal-lost-countdown">
+            {left}s
+          </span>
+        )}
+      </span>
+      <span className="relative min-w-0 text-[11.5px] text-mute">{sub}</span>
     </div>
   );
 }
@@ -197,10 +198,11 @@ export function TopBar({
   return (
     <header
       className={clsx(
-        'relative z-30 flex flex-nowrap items-center gap-x-3 border-b px-3 py-1.5 min-[1400px]:gap-x-5 [&>*]:shrink-0',
+        'relative z-30 flex flex-nowrap items-center gap-x-3 border-b px-3 py-1.5 max-lg:flex-wrap max-lg:gap-y-1 max-md:px-2 min-[1400px]:gap-x-5 [&>*]:shrink-0',
         monster ? 'border-blood/60 bg-[#0d0708]/95' : 'border-edge bg-panel/90',
       )}
       data-testid="top-bar"
+      data-coach-safe
     >
       <div className="flex items-center gap-2">
         <span
@@ -211,18 +213,21 @@ export function TopBar({
               : 'rounded-full bg-cyan shadow-[0_0_8px_rgba(59,198,214,0.7)]',
           )}
         />
-        <span className={clsx('font-mono text-[11px] uppercase tracking-[0.2em]', monster ? 'text-bone' : 'text-mute')}>
+        <span className={clsx('font-mono text-[11px] uppercase tracking-[0.2em] max-lg:hidden', monster ? 'text-bone' : 'text-mute')}>
           {title ?? (monster ? 'Entity Command' : 'Security Control')}
         </span>
         <span className="font-mono text-[11px] text-dim" title="Room code" data-testid="hud-room-code">
-          · {room.code}
+          <span className="max-lg:hidden">· </span>
+          {room.code}
         </span>
       </div>
       {spectator && <SpectatorBanner />}
       <PhaseBadge view={view} />
       <MatchClock view={view} accent={accent} />
       {/* Screen-specific readouts compress first (they clip rather than push the controls off-screen). */}
-      <div className="flex min-w-0 flex-1 shrink! items-center gap-3 overflow-hidden min-[1400px]:gap-5">{children}</div>
+      <div className="flex min-w-0 flex-1 shrink! items-center gap-3 overflow-hidden max-lg:order-last max-lg:basis-full min-[1400px]:gap-5">
+        {children}
+      </div>
       {right}
       <ConnectionBadge textClassName="hidden min-[1400px]:inline" />
       <SettingsMenu labelClassName="hidden min-[1400px]:inline" />

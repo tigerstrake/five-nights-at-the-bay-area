@@ -9,6 +9,7 @@ import { NETWORK } from '../lib/data';
 import { TitleSign } from './shell/Brand';
 import { HowToPlay } from './shell/HowToPlay';
 import { SoloSetup } from './shell/AiSetup';
+import { SmallScreenNotice } from './shell/SmallScreen';
 
 /** Server errors in the interface's own words: what happened, and what to do. */
 function explain(error: string, code: string): string {
@@ -65,26 +66,27 @@ export function TitleScreen() {
         }}
       />
 
-      <header className="relative z-20 flex items-center justify-between px-6 py-4">
-        <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-dim">
+      <header className="relative z-20 flex items-center justify-between px-6 py-4 max-sm:justify-end max-sm:px-4 max-sm:py-3">
+        <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-dim max-sm:hidden">
           <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-alert align-middle motion-safe:animate-blink" />
           REC · Caltrans D4 night shift
         </div>
         <div className="flex items-center gap-3">
           <ConnectionBadge />
-          <Button tone="ghost" size="sm" onClick={() => setHelp(true)} data-testid="how-to-play-open">
+          <Button tone="ghost" size="sm" className="whitespace-nowrap" onClick={() => setHelp(true)} data-testid="how-to-play-open">
             How to play
           </Button>
           <SettingsMenu />
         </div>
       </header>
 
-      <main className="relative z-10 flex min-h-0 flex-1 flex-col justify-center px-6 pb-16 lg:pl-[7vw]">
+      <main className="relative z-10 flex min-h-0 flex-1 flex-col justify-center-safe overflow-y-auto px-6 pb-16 max-md:justify-start max-md:overflow-y-auto max-md:px-4 max-md:pb-24 max-md:pt-2 lg:pl-[7vw]">
         <TitleSign className="mb-[min(32px,3.5vh)] motion-safe:animate-rise" />
         <p className="max-w-[440px] text-[15px] leading-relaxed text-text/85">
           {NETWORK.nodes.length} freeway cameras, one thing moving between them. Hold the control room until dawn, or be the thing on the
           shoulder that shouldn't be there.
         </p>
+        <SmallScreenNotice className="mt-4 max-w-[520px] sm:hidden" />
 
         <section
           className="mt-[min(32px,3.5vh)] w-full max-w-[520px] border border-edge bg-panel/85 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.5)] backdrop-blur"
@@ -145,9 +147,22 @@ export function TitleScreen() {
               </div>
             </div>
           </div>
-          <Button tone="cyan" size="lg" className="mt-4 w-full" disabled={!!busy || offline} onClick={() => setSolo(true)} data-testid="play-solo">
-            Play solo
-          </Button>
+          <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-3 border-t border-edge pt-4">
+            <div className="min-w-[180px] flex-1">
+              <div className="text-[13px] text-text">Nobody else awake?</div>
+              <div className="text-[12px] leading-snug text-dim">Play either side against AI players.</div>
+            </div>
+            <Button
+              tone="cyan"
+              size="lg"
+              className="max-sm:w-full"
+              disabled={!!busy || offline}
+              onClick={() => setSolo(true)}
+              data-testid="play-solo"
+            >
+              Play solo
+            </Button>
+          </div>
           {offline && <p className="mt-3 text-[12px] text-warn">Waiting for the game server. Buttons unlock when the link is up.</p>}
         </section>
 
@@ -165,7 +180,9 @@ export function TitleScreen() {
         <AudioUnlockPrompt />
       </div>
       <HowToPlay open={help} onClose={() => setHelp(false)} />
-      {solo && <SoloSetup busy={busy === 'solo'} disabled={offline} onStart={options => void goSolo(options)} onClose={() => setSolo(false)} />}
+      {solo && (
+        <SoloSetup busy={busy === 'solo'} disabled={offline} name={name} onStart={(options) => void goSolo(options)} onClose={() => setSolo(false)} />
+      )}
     </div>
   );
 }

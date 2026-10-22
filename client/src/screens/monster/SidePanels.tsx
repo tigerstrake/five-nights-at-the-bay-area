@@ -194,7 +194,7 @@ export function IntentStream({ view }: { view: MonsterView }) {
   const list = view.events.slice(-60).reverse();
   const intent = list.find((e) => classify(e) === 'intent');
   return (
-    <section className="mx-slab min-h-[120px] flex-1">
+    <section className="mx-slab min-h-[120px] flex-1 max-lg:h-[340px] max-lg:flex-none md:max-lg:col-span-2">
       <header className="mx-slab-head">
         <span className="mx-slab-title">Intent stream</span>
         <span className="mx-slab-aside">what the creature decides</span>
@@ -258,7 +258,7 @@ export function NightBar({ view, sit, t }: { view: MonsterView; sit: Situation; 
   const aggression = sit.cfg.monster.phaseAggression[view.phase];
   const speed = 1 / sit.cfg.monster.phaseSpeed[view.phase];
   return (
-    <div className="flex items-center gap-3 border-b border-[var(--mx-scar)] px-3 py-1.5">
+    <div className="flex items-center gap-3 border-b border-[var(--mx-scar)] px-3 py-1.5 max-md:flex-wrap max-md:gap-y-1" data-coach-safe data-testid="night-bar">
       <div className="flex shrink-0 items-baseline gap-2">
         <span className="mx-slab-title text-[var(--mx-vein)]">{PHASE_LABEL[view.phase]}</span>
         {view.phase !== 'preparation' && (
@@ -286,7 +286,7 @@ export function NightBar({ view, sit, t }: { view: MonsterView; sit: Situation; 
         <div className="absolute inset-y-0 left-0 bg-[#b8142a55]" style={{ width: pct(t) }} />
         <div className="absolute -inset-y-0.5 w-0.5 bg-[var(--mx-vein)] shadow-[0_0_6px_#ff3a4f]" style={{ left: pct(t) }} />
       </div>
-      <div className="max-w-[44%] shrink truncate text-[11px] text-[var(--mx-ash)]" title={phaseRule(view)}>
+      <div className="max-w-[44%] shrink truncate text-[11px] text-[var(--mx-ash)] max-md:order-last max-md:max-w-full max-md:basis-full max-md:whitespace-normal" title={phaseRule(view)}>
         {phaseRule(view)}
       </div>
     </div>
