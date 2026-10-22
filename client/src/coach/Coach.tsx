@@ -111,15 +111,19 @@ function place(root: HTMLElement, anchor: Element, card: HTMLElement, want: Hint
     top = ah > ch * 1.4 ? ay + 6 : ay + ah / 2 - ch / 2;
   }
   left = Math.max(EDGE, Math.min(W - cw - EDGE, left));
-  // Step clear of controls marked data-coach-avoid (e.g. the monster's door-target row above the command cards).
+  // Step clear of controls and moment banners. Recheck after each move: clearing the
+  // command row can push a hint into a banner that appears earlier in DOM order.
   if (side === 'top' || side === 'bottom') {
-    root.querySelectorAll('[data-coach-avoid]').forEach((el) => {
-      if (el === anchor || el.contains(anchor)) return;
+    const blockers = Array.from(root.querySelectorAll('[data-coach-avoid]')).flatMap((el) => {
+      if (el === anchor || el.contains(anchor)) return [];
       const r = el.getBoundingClientRect();
-      const b = { l: (r.left - rr.left) / z, t: (r.top - rr.top) / z, r: (r.right - rr.left) / z, b: (r.bottom - rr.top) / z };
-      if (r.height > 0 && overlaps({ l: left, t: top, r: left + cw, b: top + ch }, b))
-        top = side === 'top' ? Math.min(top, b.t - GAP - ch) : Math.max(top, b.b + GAP);
+      return r.height > 0 ? [{ l: (r.left - rr.left) / z, t: (r.top - rr.top) / z, r: (r.right - rr.left) / z, b: (r.bottom - rr.top) / z }] : [];
     });
+    for (let pass = 0; pass < blockers.length; pass++) {
+      const b = blockers.find((b) => overlaps({ l: left, t: top - GAP, r: left + cw, b: top + ch + GAP }, b));
+      if (!b) break;
+      top = side === 'top' ? b.t - GAP - ch : b.b + GAP;
+    }
   }
   top = Math.max(safeTop, Math.min(H - ch - EDGE, top));
   const arrow =

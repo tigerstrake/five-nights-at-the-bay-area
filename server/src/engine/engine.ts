@@ -691,7 +691,10 @@ function applyMonsterAction(ctx: EngineCtx, s: GameState, a: MonsterAction, rng:
     if (!MONSTER_COMMANDS.includes(a.command) || a.command === ('SABOTAGE' as string) || a.command === ('DECOY' as string)) return fail('Unknown command');
     if (a.approachId && !hq(ctx, s).approaches.some(x => x.id === a.approachId)) return fail('Unknown approach');
     if (m.held && a.command === 'RETREAT' && m.held.struggling) return ok;
-    if (!m.held && a.command === m.stance && (a.approachId ?? null) === m.targetApproachId) return ok;
+    // No target means keep doing this. An AI-picked door is also the current target during a breach.
+    const currentTarget = m.targetApproachId ?? s.breach?.approachId;
+    const startsStruggle = m.held && a.command === 'RETREAT';
+    if (!startsStruggle && a.command === m.stance && (!a.approachId || a.approachId === currentTarget)) return ok;
   }
   // One gate for stances, spawn selection and abilities; rejected actions never consume it.
   if (s.t - m.lastCommandAt < s.cfg.monster.globalCommandGapMs) return fail('Too fast — the beast needs a moment');

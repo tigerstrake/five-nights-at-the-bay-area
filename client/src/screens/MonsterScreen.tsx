@@ -77,6 +77,9 @@ export function MonsterScreen({ room, view }: { room: RoomView; view: MonsterVie
   const issue = useCallback(
     (s: MonsterStance, approachId?: string | null) => {
       const ap = approachId === undefined ? (s === 'HUNT' || s === 'FLANK' || s === 'ATTACK' ? doorPref : null) : approachId;
+      const currentTarget = self.targetApproachId ?? view.breach?.approachId;
+      const startsStruggle = self.held && s === 'RETREAT';
+      if (!startsStruggle && s === self.stance && (!ap || ap === currentTarget)) return;
       lastIssue.current = Date.now();
       force((x) => x + 1);
       void sendAction({ type: 'command', command: s, approachId: ap ?? undefined }).then((r) => {
@@ -86,7 +89,7 @@ export function MonsterScreen({ room, view }: { room: RoomView; view: MonsterVie
         } else lastIssue.current = 0;
       });
     },
-    [doorPref],
+    [doorPref, self.targetApproachId, self.stance, self.held, view.breach?.approachId],
   );
 
   const stanceBlocked = (s: MonsterStance) => {

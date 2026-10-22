@@ -115,6 +115,7 @@ function MomentBand({
         className={clsx('pointer-events-none inset-x-0 z-[37] flex justify-center', contained ? 'absolute top-[38%]' : 'fixed top-[40%]')}
         data-testid="moment"
         data-moment={m.id}
+        data-coach-avoid
       >
         <div
           className={clsx(
