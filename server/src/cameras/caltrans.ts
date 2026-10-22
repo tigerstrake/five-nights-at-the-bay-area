@@ -39,6 +39,12 @@ export interface CaltransConfig {
   streamBackoffMaxMs: number;
   /** Last-Modified older than this = frozen camera. */
   staleMs: number;
+  /** Caltrans' own snapshot cadence (5 min, each camera on its own phase). */
+  imageCadenceMs: number;
+  /** Probe this long after a camera's next frame is expected (the file appears ~15-35 s after its Last-Modified). */
+  phaseMarginMs: number;
+  /** Re-check interval while a camera's next frame is overdue (bounded to the window just after it was due). */
+  overdueRecheckMs: number;
   /** +- fraction of random spread applied to healthy re-check times. */
   jitter: number;
   /** Suggested client snapshot refresh interval (sent in the status). */
@@ -69,6 +75,9 @@ export const DEFAULT_CALTRANS_CONFIG: CaltransConfig = {
   streamBackoffBaseMs: 60_000,
   streamBackoffMaxMs: 900_000,
   staleMs: 15 * 60_000,
+  imageCadenceMs: 5 * 60_000,
+  phaseMarginMs: 40_000,
+  overdueRecheckMs: 60_000,
   jitter: 0.1,
   refreshMs: 60_000,
   breakerThreshold: 6,
@@ -453,7 +462,7 @@ export class CaltransCameraService implements CameraService {
     p.reason = null;
     if (kind === 'snapshot') {
       p.state = 'good';
-      p.nextAt = t + this.spread(this.cfg.intervalMs);
+      p.nextAt = this.nextSnapshotAt(cam, t);
     } else {
       // Streams that were verified playable at curation are trusted at once; others must prove it repeatedly.
       const need = cam.rec.verified.streamPlayable === true ? 1 : this.cfg.streamUpgradeSuccesses;
@@ -464,6 +473,24 @@ export class CaltransCameraService implements CameraService {
         p.nextAt = t + this.cfg.backoffBaseMs; // confirm soon
       }
     }
+  }
+
+  /**
+   * Phase-aligned snapshot schedule: each Caltrans camera publishes every 5 minutes on its own phase, so probe just
+   * after the next frame is due instead of at a random point (which left `imageAt` and the `?v=` URL up to a full
+   * interval behind the real frame). Same request budget: one probe per camera per frame. While a frame is overdue
+   * (Caltrans late) re-check a few times at `overdueRecheckMs`; long-stale cameras fall back to the normal interval
+   * until the stale rule flags them.
+   */
+  private nextSnapshotAt(cam: Cam, t: number): number {
+    const c = this.cfg;
+    const fallback = t + this.spread(c.intervalMs);
+    if (cam.imageAt === null) return fallback;
+    const expected = cam.imageAt + c.imageCadenceMs + c.phaseMarginMs * (1 + (this.random() * 2 - 1) * c.jitter);
+    const wait = expected - t;
+    if (wait > 2_000) return wait <= c.intervalMs * 1.5 ? expected : fallback;
+    // Overdue: the camera has not published its next frame yet.
+    return -wait < 3 * c.overdueRecheckMs ? t + c.overdueRecheckMs : fallback;
   }
 
   private applyFailure(cam: Cam, kind: Kind, f: { hard: boolean; transport: boolean; reason: string; last: string }): void {

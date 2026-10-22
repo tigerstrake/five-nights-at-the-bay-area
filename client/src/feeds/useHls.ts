@@ -1,96 +1,242 @@
 import { useEffect, useRef } from 'react';
 import type Hls from 'hls.js';
+import { DEFAULT_WATCHDOG, StallWatchdog, type PlaybackSample, type WatchAction } from './stallWatchdog';
+import { feedLog } from './feedDebug';
 
-const START_TIMEOUT_MS = 15_000;
-const STALL_TIMEOUT_MS = 12_000;
+const SAMPLE_MS = 500;
+/** Fatal hls.js errors tolerated (each answered with startLoad / recoverMediaError / reload) before giving up. */
+const MAX_FATAL = 4;
+
+export interface HlsState {
+  /** Frames are advancing right now: the only state in which the UI may say LIVE. */
+  advancing: boolean;
+  /** Video has played at least once since this source was (re)attached. */
+  started: boolean;
+  /** How long the picture has not advanced (ms, rounded to 500 ms; 0 while advancing). */
+  stalledMs: number;
+}
 
 export interface HlsCallbacks {
-  /** Video frames are actually advancing. Only then may the UI call the feed LIVE. */
-  onPlaying: () => void;
-  /** Unrecoverable (2 fatal errors, start timeout, long stall, unsupported): fall back to the snapshot. */
-  onFail: () => void;
+  onState: (s: HlsState) => void;
+  /** Gave up (start timeout, ladder exhausted, unsupported): fall back to the still and retry live later. */
+  onFail: (why: string) => void;
+}
+
+export interface HlsOptions {
+  cameraId: string;
+  variant: 'main' | 'thumb';
+}
+
+/** Live-edge settings for Caltrans/Wowza playlists: ~10 s segments, 3 per playlist (≈30 s window). */
+export const HLS_CONFIG = {
+  lowLatencyMode: false,
+  // Sit ~1.5 segments behind the newest segment: enough runway for one late playlist refresh without stalling,
+  // and well inside the 30 s window so the playhead never falls off the start of the playlist.
+  liveSyncDuration: 15,
+  liveMaxLatencyDuration: 28,
+  maxLiveSyncPlaybackRate: 1.1,
+  maxBufferLength: 20,
+  maxMaxBufferLength: 30,
+  backBufferLength: 6,
+  maxBufferHole: 0.5,
+  nudgeMaxRetry: 6,
+  manifestLoadingTimeOut: 8000,
+  manifestLoadingMaxRetry: 2,
+  manifestLoadingRetryDelay: 1000,
+  levelLoadingTimeOut: 8000,
+  levelLoadingMaxRetry: 6,
+  levelLoadingRetryDelay: 1000,
+  levelLoadingMaxRetryTimeout: 8000,
+  fragLoadingTimeOut: 15000,
+  fragLoadingMaxRetry: 4,
+  fragLoadingRetryDelay: 1000,
+  fragLoadingMaxRetryTimeout: 8000,
+} as const;
+
+function bufferedEndAt(v: HTMLVideoElement): { end: number | null; nextStart: number | null } {
+  const b = v.buffered;
+  const t = v.currentTime;
+  for (let i = 0; i < b.length; i++) {
+    if (b.start(i) <= t + 0.25 && b.end(i) >= t) return { end: b.end(i), nextStart: i + 1 < b.length ? b.start(i + 1) : null };
+    if (b.start(i) > t) return { end: null, nextStart: b.start(i) };
+  }
+  return { end: null, nextStart: null };
 }
 
 /**
- * hls.js (lazy-loaded) / native HLS player bound to a <video>. Tuned for a ~30 s behind-live traffic camera:
- * no low-latency mode, tiny buffer, short timeouts. Destroys everything when disabled or unmounted.
+ * Live HLS bound to a <video>: hls.js where MSE exists (it gives us live-sync, error events and a recovery API),
+ * native HLS otherwise (Safari without MSE). A stall watchdog samples real progress (currentTime / decoded frames)
+ * every 500 ms and walks a recovery ladder; the UI is told `advancing` so it never shows LIVE over a frozen frame.
+ * Everything is destroyed when disabled or unmounted.
  */
-export function useHls(url: string | null, enabled: boolean, cb: HlsCallbacks) {
+export function useHls(url: string | null, enabled: boolean, cb: HlsCallbacks, opts: HlsOptions) {
   const ref = useRef<HTMLVideoElement>(null);
   const cbRef = useRef(cb);
   cbRef.current = cb;
+  const { cameraId, variant } = opts;
 
   useEffect(() => {
     const video = ref.current;
     if (!video || !url || !enabled) return;
+    const log = (ev: string, detail?: string) => feedLog(cameraId, variant, ev, detail);
+    let HlsCtor: typeof Hls | null = null;
     let hls: Hls | null = null;
     let dead = false;
-    let fatalCount = 0;
-    let stall: ReturnType<typeof setTimeout> | null = null;
-    const fail = () => {
+    let fatal = 0;
+    let lastKey = '';
+    const wd = new StallWatchdog();
+    const emit = (s: HlsState) => {
+      const key = `${s.advancing}|${s.started}|${s.stalledMs}`;
+      if (key === lastKey || dead) return;
+      lastKey = key;
+      cbRef.current.onState(s);
+    };
+    const fail = (why: string) => {
       if (dead) return;
       dead = true;
-      cbRef.current.onFail();
+      log('fail', why);
+      emit({ advancing: false, started: false, stalledMs: 0 });
+      cbRef.current.onFail(why);
     };
-    const startTimer = setTimeout(fail, START_TIMEOUT_MS);
-    const onPlaying = () => {
-      clearTimeout(startTimer);
-      if (stall) clearTimeout(stall);
-      stall = null;
-      if (!dead) cbRef.current.onPlaying();
-    };
-    const onWaiting = () => {
-      if (!stall) stall = setTimeout(fail, STALL_TIMEOUT_MS);
-    };
-    video.addEventListener('playing', onPlaying);
-    video.addEventListener('waiting', onWaiting);
+    const play = () => void video.play().catch(() => undefined);
 
-    if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = url;
-      video.addEventListener('error', fail);
-      void video.play().catch(() => undefined);
-    } else {
-      void import('hls.js')
-        .then(({ default: HlsCtor }) => {
-          if (dead) return;
-          if (!HlsCtor.isSupported()) return fail();
-          hls = new HlsCtor({
-            lowLatencyMode: false,
-            maxBufferLength: 8,
-            maxMaxBufferLength: 12,
-            backBufferLength: 0,
-            manifestLoadingTimeOut: 8000,
-            manifestLoadingMaxRetry: 1,
-            levelLoadingTimeOut: 8000,
-            levelLoadingMaxRetry: 1,
-            fragLoadingTimeOut: 12000,
-            fragLoadingMaxRetry: 1,
-          });
-          hls.on(HlsCtor.Events.ERROR, (_e, data) => {
-            if (!data.fatal) return;
-            fatalCount++;
-            if (fatalCount >= 2) return fail();
-            if (data.type === HlsCtor.ErrorTypes.NETWORK_ERROR) hls?.startLoad();
-            else if (data.type === HlsCtor.ErrorTypes.MEDIA_ERROR) hls?.recoverMediaError();
-            else fail();
-          });
-          hls.loadSource(url);
-          hls.attachMedia(video);
-          void video.play().catch(() => undefined);
-        })
-        .catch(fail);
-    }
-    return () => {
-      dead = true;
-      clearTimeout(startTimer);
-      if (stall) clearTimeout(stall);
-      video.removeEventListener('playing', onPlaying);
-      video.removeEventListener('waiting', onWaiting);
-      video.removeEventListener('error', fail);
-      hls?.destroy();
+    const detach = () => {
+      if (hls) {
+        hls.destroy();
+        hls = null;
+      }
       video.removeAttribute('src');
       video.load();
     };
-  }, [url, enabled]);
+    const attach = () => {
+      if (HlsCtor) {
+        const h = new HlsCtor({ ...HLS_CONFIG });
+        hls = h;
+        h.on(HlsCtor.Events.ERROR, (_e, data) => {
+          if (h !== hls) return;
+          log(data.fatal ? 'hls-fatal' : 'hls-error', `${data.type}/${data.details}`);
+          if (!data.fatal) return;
+          fatal++;
+          if (fatal > MAX_FATAL) return fail(`hls.js fatal ${data.details}`);
+          if (data.type === HlsCtor!.ErrorTypes.NETWORK_ERROR) h.startLoad();
+          else if (data.type === HlsCtor!.ErrorTypes.MEDIA_ERROR) h.recoverMediaError();
+          else reload('fatal ' + data.details);
+        });
+        h.loadSource(url);
+        h.attachMedia(video);
+      } else {
+        video.src = url;
+      }
+      play();
+    };
+    const reload = (why: string) => {
+      log('reload', why);
+      fatal = 0;
+      detach();
+      attach();
+      wd.resetBaseline();
+    };
+    const onVideoError = () => {
+      // Native playback has no recovery API: reload, and let the watchdog give up if it keeps failing.
+      if (HlsCtor || dead) return;
+      fatal++;
+      log('video-error', String(video.error?.code ?? ''));
+      if (fatal > MAX_FATAL) fail('native video error');
+      else reload('native video error');
+    };
+    video.addEventListener('error', onVideoError);
+
+    const seekLive = (why: string) => {
+      const live = hls?.liveSyncPosition ?? (video.seekable.length ? video.seekable.end(video.seekable.length - 1) - DEFAULT_WATCHDOG.targetLatencyS : null);
+      if (live != null && Number.isFinite(live) && live > video.currentTime + 1) {
+        log('seek-live', `${why} ${video.currentTime.toFixed(1)}->${live.toFixed(1)}`);
+        video.currentTime = live;
+      }
+    };
+    const run = (a: WatchAction) => {
+      if (a === 'none') return;
+      log('watchdog', a);
+      switch (a) {
+        case 'play':
+          return play();
+        case 'nudge': {
+          const { nextStart } = bufferedEndAt(video);
+          if (nextStart !== null && nextStart > video.currentTime) video.currentTime = nextStart + 0.1; // hop a buffer hole
+          else seekLive('nudge');
+          hls?.startLoad(-1);
+          return play();
+        }
+        case 'seek-live':
+          return seekLive('latency');
+        case 'restart-load':
+          if (hls) {
+            hls.stopLoad();
+            hls.startLoad(-1);
+          } else seekLive('restart');
+          return play();
+        case 'recover-media':
+          if (hls) hls.recoverMediaError();
+          else reload('recover');
+          return play();
+        case 'reload-source':
+          return reload('watchdog');
+        case 'fail':
+          return fail('stalled');
+      }
+    };
+    const tick = () => {
+      if (dead) return;
+      const q = video.getVideoPlaybackQuality?.();
+      const { end } = bufferedEndAt(video);
+      const s: PlaybackSample = {
+        now: Date.now(),
+        currentTime: video.currentTime,
+        frames: q ? q.totalVideoFrames : null,
+        paused: video.paused,
+        readyState: video.readyState,
+        bufferedEnd: end,
+        seekableEnd: video.seekable.length ? video.seekable.end(video.seekable.length - 1) : null,
+        hidden: document.hidden,
+      };
+      const v = wd.sample(s);
+      run(v.action);
+      emit({ advancing: v.advancing, started: v.started, stalledMs: v.advancing ? 0 : Math.round(v.stalledMs / 500) * 500 });
+    };
+    const onVisible = () => {
+      if (document.hidden || dead) return;
+      // Browsers pause background video; coming back, jump to the live edge instead of replaying stale buffer.
+      wd.rebase(Date.now());
+      seekLive('visible');
+      play();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    const timer = setInterval(tick, SAMPLE_MS);
+
+    void import('hls.js')
+      .then(({ default: Ctor }) => {
+        if (dead) return;
+        if (Ctor.isSupported()) HlsCtor = Ctor;
+        else if (!video.canPlayType('application/vnd.apple.mpegurl')) return fail('HLS unsupported');
+        log('attach', HlsCtor ? 'hls.js' : 'native');
+        attach();
+      })
+      .catch(() => {
+        if (dead) return;
+        if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          log('attach', 'native');
+          attach();
+        } else fail('hls.js failed to load');
+      });
+
+    return () => {
+      dead = true;
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      video.removeEventListener('error', onVideoError);
+      const st = wd.stats;
+      if (st.stalls || st.actions.length) log('stats', `stalls=${st.stalls} recovered=${st.recoveries} actions=${st.actions.join(',')}`);
+      detach();
+    };
+  }, [url, enabled, cameraId, variant]);
   return ref;
 }

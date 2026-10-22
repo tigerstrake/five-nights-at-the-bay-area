@@ -261,7 +261,9 @@ it only reports which real imagery is trustworthy; the match runs identically on
   show real imagery (the rest SIMULATED). `snapshot` = stills only, HLS never probed. `simulation` = zero network (`SimulationCameraService`). Unknown value -> simulation.
 - **Independent of the game.** The service has its own timers, never touches the engine, and every probe is wrapped so a network failure becomes a per-camera status, never an exception.
   Fictional sabotage stays `CameraGameStatus` (engine); real availability is `CameraSourceStatus` (here). The two are separate fields and separate overlays.
-- **Polite scheduling.** Each camera/probe kind has its own `nextAt`; healthy cameras are re-checked every `CAMERA_CHECK_INTERVAL_MS` (300 s, +-10 % jitter). At most `CAMERA_CONCURRENCY`
+- **Polite scheduling.** Each camera/probe kind has its own `nextAt`; healthy cameras are re-checked every `CAMERA_CHECK_INTERVAL_MS` (300 s, +-10 % jitter). Snapshot
+  probes are **phase-aligned** to each camera's own 5-minute frame cadence (next probe = image time + 5 min + ~10 s; 60 s re-checks for at most 3 min while a frame is overdue), so `imageAt` and the `?v=` URL
+  follow real frames instead of lagging up to a full interval; same request budget. At most `CAMERA_CONCURRENCY`
   (3) requests in flight, >= 150 ms between starts (the scheduler starts one probe per 250 ms wake-up), 8 s timeout (`CAMERA_TIMEOUT_MS`). Failing probes back off exponentially
   (snapshots 30 s, 60 s, ... capped 10 min; streams 60 s ... capped 15 min). A **per-host circuit breaker** opens after 6 distinct cameras get no answer from a host (30 s doubling to 5 min;
   half-open = one trial request); any HTTP answer, even 404, proves the host is up (dead stream URLs answer 404 after ~8 s and must not trip it).
@@ -297,13 +299,29 @@ Env: `CAMERA_MODE`, `CAMERA_CHECK_INTERVAL_MS`, `CAMERA_TIMEOUT_MS`, `CAMERA_CON
 
 ### 7.4 Client (`client/src/feeds/CameraFeed.tsx`)
 
-- Snapshots: `SnapshotLayer` fetches the next frame off-DOM (`fetch` blob + `decode()`), runs the same pixel check on a 40x32 downscale (a "Temporarily Unavailable" card never replaces a good frame),
-  then **cross-fades** (800 ms) it over the current `<img crossOrigin="anonymous">`. Refresh every `refreshMs` (60 s) with a bucket-aligned `&r=` param so every client asks for the same URL; also reloads when the server
-  publishes a new `?v=`. Pauses while the tab is hidden or live video covers it. The age shown comes from the response `Last-Modified`.
-- Live: only the enlarged **main** feed uses hls.js (lazy `import('hls.js')`, no low-latency, 8 s buffer, short timeouts). Thumbnails stay on snapshots. The badge turns LIVE only once the video is actually `playing`.
-- Local fallback without waiting for the server: hls.js 2 fatal errors / 15 s no playback / 12 s stall -> snapshot; image fetch failures (2-3 tries) or a card/black frame -> **simulated**.
-- Badges (`data-testid="feed-source-badge"`, `data-source-mode`): **LIVE** (solid red, pulsing), **SNAPSHOT . 4m ago** (cyan; thumbnails show `4m`), **SIMULATED** (dashed amber outline; the FX layer also draws its own watermark),
+- **Stills** (`SnapshotLayer`): the next frame is fetched off-DOM (`fetch` blob + `decode()`), pixel-checked on a 40x32 downscale (a "Temporarily Unavailable" card never replaces a good frame)
+  and only shown if it is a *different* Caltrans frame (`Last-Modified` changed). A genuinely new frame is revealed with a 0.9 s top-to-bottom refresh wipe (cross-fade with reduced motion) and a
+  "NEW FRAME" marker; an identical refetch changes nothing. Polling follows each camera's own 5-minute phase (`freshness.ts#nextPollDelay`: image time + 5 min + 12 s, then every 20 s while overdue,
+  60 s for a late camera) instead of a blind 60 s timer; it resumes at once when the tab becomes visible or live video stops covering it. Local failures retry on their own after 60 s.
+- **Still labels** (`freshness.ts`): main **STILL** badge + "updated 2m ago · next ≈ 3m" (or "next frame due" / "camera slow to update"), a 1 px countdown bar through the 5-minute cycle, and the image's own
+  capture time ("FRAME 23:02:09") instead of a ticking clock (a running clock over a still read as frozen video). Thumbs: **STILL · 2m**. Nothing fabricates motion in real imagery.
+- **Live** (`useHls.ts`, `stallWatchdog.ts`): hls.js whenever MSE exists (Chrome 155 also reports native HLS, but its player gives no recovery hooks), native HLS otherwise. Live-edge settings for Wowza's
+  ~10 s x 3-segment playlists: `liveSyncDuration` 15 s, `liveMaxLatencyDuration` 28 s, `maxLiveSyncPlaybackRate` 1.1 (catch up smoothly instead of jumping). A watchdog samples `currentTime` and
+  `getVideoPlaybackQuality().totalVideoFrames` every 500 ms: **LIVE only while frames advance**; 2.5 s without progress -> **BUFFERING** (dotted amber, last real frame kept), 6 s -> the still is revealed
+  ("live video stalled · recovering"). Recovery ladder per stall: 3 s nudge (hop buffer hole / seek near live edge + `startLoad`), 6 s `stopLoad/startLoad`, 10 s `recoverMediaError`, then a full source
+  reload every 10 s from 15 s to 75 s (Wowza outages last 30-110 s and restart the media sequence), 90 s give up -> still with "live video dropped · retry in Ns" (backoff 30 s, 60 s, ... 5 min;
+  reset after 2 min of healthy playback). Hidden tabs never count as stalls; on return the player
+  jumps to the live edge. Up to 4 fatal hls.js errors are answered (startLoad / recoverMediaError / reload) before giving up.
+- **Where video plays**: the main monitor (and the monster lens) always tries live; the visible bank page gets a budget of **3 live thumbnails** (`liveBudget.ts`, first live-capable tiles in bank order,
+  excluding the main camera; `?liveThumbs=N` overrides 0..6). The default main camera is the first *live-capable* HQ approach (latched; only upgraded still -> live), and the AUTO bank puts live-capable
+  cameras first among equally ranked ones. Stills are never hidden.
+- The FX overlay distorts the element flagged `data-fx-source`: the video while it is the visible picture, otherwise the newest still (previously it always grabbed the first `<img>`, so glitch bands
+  showed a stale still over live video).
+- Local fallback without waiting for the server: image fetch failures (2-3 tries) or a card/black frame -> **simulated** (retried after 60 s).
+- Badges (`data-testid="feed-source-badge"`, `data-source-mode` live/snapshot/simulated/offline, plus `data-feed-state` live/buffering/connecting/still/simulated/offline on the badge and the feed root):
+  **LIVE** (solid red, pulsing), **BUFFERING** (dotted amber), **STILL** (cyan; a red ring marks a live-capable camera), **SIMULATED** (dashed amber outline; the FX layer also draws its own watermark),
   **OFFLINE** (grey, server-sent only). Main feeds of real cameras carry "Source: Caltrans CCTV". Badge colour/state never depends on `CameraGameStatus`.
+- Debug: with `?e2e` or in dev, `window.__fnabFeedLog` holds hls.js errors, watchdog actions and still arrivals.
 
 ### 7.5 Measured behaviour (2026-10-20, about 17:00-17:15 PDT, real network)
 
@@ -311,6 +329,29 @@ Env: `CAMERA_MODE`, `CAMERA_CHECK_INTERVAL_MS`, `CAMERA_TIMEOUT_MS`, `CAMERA_CON
   until its second success). Dead stream URLs answer after ~8 s, i.e. they hit the 8 s timeout: they are retried at 60 s / 120 s / ... only.
 - Outage rehearsal (`CAMERA_PROBE_ORIGIN=http://10.255.255.1:81 CAMERA_TIMEOUT_MS=3000`): 36/36 `simulated` ("host unreachable"), 15 requests in total before both breakers opened, SIMULATED badges everywhere,
   match kept ticking. With the browser itself blocked from Caltrans (server still says live/snapshot) the client demoted every feed to SIMULATED within about 8 s.
+
+### 7.7 Feed freshness: why feeds looked stuck, and what changed (measured 2026-10-20/21, 22:40-00:15 PDT, night)
+
+Method: headless **Google Chrome 155** (`channel: 'chrome'`; it also reports native HLS) as defender + a hiding monster, every `CameraFeed` sampled once a second (source mode, `<video>`
+`currentTime` / decoded frames, image content hash, badge), plus direct probes of all 36 JPEGs (HEAD, 60 s) and of every live playlist (10 s) for 10 min. Old code = HEAD served from a pristine copy,
+new code = HEAD + this change, same Caltrans, mostly at the same time. Raw data and screenshots were kept outside the repo.
+
+| Finding (evidence) | Old | New |
+|---|---|---|
+| Stills read as frozen video: 21-22 of 36 cameras have no usable stream; thumbnails were 100 % stills (7440/7440 thumb-seconds), longest time without a visual change 324 s, with a ticking clock and moving grain over the still | "SNAPSHOT · 2m ago", running clock | "STILL · updated 2m ago · next ≈ 3m", countdown bar, "FRAME 23:44:08", refresh wipe + NEW FRAME; 22 % of thumb-seconds real live video (3 live tiles) |
+| Default main monitor was a still for 3 of 4 HQs (first approach camera, e.g. `d4-t028n` for Stanford) | still | first live-capable approach (`d4-tv949`), live in 1-2 s |
+| Caltrans streams flap: 4 of 16 live streams stopped advancing for 90-110 s in 10 min (playlist requests time out, then the media sequence restarts at 1-2); other streams skipped a segment (20 s gaps) | - | - |
+| Real flap on the main feed (`d4-tv308`) | 11 s frozen picture still badged **LIVE**, then stuck on the still for the rest of the 50 s view | BUFFERING after 2.5 s, still after 6 s, ladder runs |
+| Injected 45 s outage (all stream requests hang), 5 cameras | LIVE badge over a frozen picture for **12 s** (5/5); 0/5 live again within 30 s after the source returned | BUFFERING after **2-3 s**; **4/5 live again 2-11 s** after the source returned (5th: its playlist kept failing) |
+| One native `<video>` error = no live for 60 s (`d4-tv121`: still for the whole 90 s view in the old build, live in 2 s in the new one, same minute) | 0 % live | 98 % live |
+| FX overlay glitch bands drew the (stale) still over live video | yes | flagged source (`data-fx-source`) |
+| Still polling: blind 60 s timer = ~5 requests per Caltrans frame; server `?v=` lagged the real frame by up to one probe interval | | phase-aligned on client and server (file appears 15-35 s after its Last-Modified) |
+
+No frozen camera was found: every curated JPEG advanced its `Last-Modified`/ETag/size in exact 5-minute steps (36/36). `d4-tv301` advertises a playable stream (probe passes) but every
+browser decode fails (`mediaSourceRequiresReset`; playlist says 320x240, segments are 352x240): it is shown as a labelled still with backoff retries.
+
+**Live thumbnail budget (3):** measured over 11 min with the main feed cycling: Chrome process-tree CPU 584 s vs 558 s with 0 live thumbs (+26 s CPU, i.e. ~4 % of one core), renderer task time
+122 s vs 113 s, video download ~3.0 Mbit/s vs 0.8 Mbit/s (each Caltrans stream is ~0.5-0.7 Mbit/s). Cheap enough for desktop; `?liveThumbs=0` turns it off.
 
 ### 7.6 Still true from the research
 

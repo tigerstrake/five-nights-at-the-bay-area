@@ -14,6 +14,7 @@ import { graph, hqById } from '../lib/data';
 import { useNow } from '../hooks/useNow';
 import { audio, type SfxName } from '../audio';
 import { isReducedMotion } from '../fx';
+import { isLiveCapable, liveFirst, preferLive } from '../feeds/liveBudget';
 import { Bay, CFG, DefenderStyles, FOCUS, THREAT_WORD, type RoomCtx } from './defender/common';
 import { MainFeed } from './defender/MainFeed';
 import { BANK_SIZE, MonitorBank, type BankPage } from './defender/MonitorBank';
@@ -55,8 +56,17 @@ export function DefenderScreen({ room, view }: { room: RoomView; view: DefenderV
   const camByNode = useMemo(() => new Map(view.cameras.map((c) => [c.nodeId, c])), [view.cameras]);
   const camById = useMemo(() => new Map(view.cameras.map((c) => [c.cameraId, c])), [view.cameras]);
   const camNo = useMemo(() => new Map(view.cameras.map((c, i) => [c.cameraId, i + 1])), [view.cameras]);
-  const approachCams = hq.approaches.map((a) => camByNode.get(a.fromNode)).filter(Boolean) as CameraView[];
-  const mainCam = (selectedCamera && camById.get(selectedCamera)) || approachCams[0] || view.cameras[0];
+  const sources = useGame((s) => s.cameraStatuses);
+  // Live-capable cameras first among equals (approaches, then equal hop distance): stills stay, just after them.
+  const approachCams = liveFirst(hq.approaches.map((a) => camByNode.get(a.fromNode)).filter(Boolean) as CameraView[], (c) => c.cameraId, () => 0, sources);
+  // Default main monitor (until the player picks one): a live-capable approach camera when there is one. Latched, and
+  // only ever upgraded still -> live, so it never flips back and forth as camera health changes.
+  const defaultMain = useRef<string | null>(null);
+  const preferred = preferLive(approachCams, (c) => c.cameraId, sources);
+  if (preferred && (!defaultMain.current || (!isLiveCapable(sources[defaultMain.current]) && isLiveCapable(sources[preferred.cameraId]))))
+    defaultMain.current = preferred.cameraId;
+  const mainCam =
+    (selectedCamera && camById.get(selectedCamera)) || (defaultMain.current ? camById.get(defaultMain.current) : undefined) || approachCams[0] || view.cameras[0];
 
   const alertNodes = useMemo(
     () => new Set(view.sightings.filter((s) => t - s.t < ALERT_MS && !s.flaggedFalse).map((s) => s.nodeId)),
@@ -71,11 +81,9 @@ export function DefenderScreen({ room, view }: { room: RoomView; view: DefenderV
     approachCams.forEach((c) => add(c.cameraId));
     [...view.sightings].reverse().forEach((s) => add(camByNode.get(s.nodeId)?.cameraId));
     view.cameras.filter((c) => c.status !== 'ok').forEach((c) => add(c.cameraId));
-    [...view.cameras]
-      .sort((a, b) => graph.hopsToHq(a.nodeId, view.hqId) - graph.hopsToHq(b.nodeId, view.hqId))
-      .forEach((c) => add(c.cameraId));
+    liveFirst(view.cameras, (c) => c.cameraId, (c) => graph.hopsToHq(c.nodeId, view.hqId), sources).forEach((c) => add(c.cameraId));
     return ids.map((id) => camById.get(id)!).filter(Boolean);
-  }, [view, approachCams, camByNode, camById, pinned]);
+  }, [view, approachCams, camByNode, camById, pinned, sources]);
   const pages = Math.ceil(view.cameras.length / BANK_SIZE);
   const pageCams = (p: BankPage) => (p === 'auto' ? autoBank : view.cameras.slice(p * BANK_SIZE, (p + 1) * BANK_SIZE));
   const bankCams = pageCams(page);

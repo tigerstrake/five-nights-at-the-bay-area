@@ -177,6 +177,33 @@ describe('status derivation', () => {
     expect(snaps).toBe(6); // 3 cameras x 2 sweeps, once each
   });
 
+  it('aligns snapshot probes to each camera\'s own 5-minute phase so imageAt / ?v= follow the real frames', async () => {
+    // Frame published 2 min ago -> the next one is due in 3 min: probe ~10 s after that, not a full interval later.
+    const { svc, ff, advance, clock } = setup(() => new Response('', { status: 404 }), { cameras: [C] });
+    let frameAt = T0 - 2 * MIN;
+    ff.set((u) => (u.endsWith('.jpg') ? jpegResponse(sceneJpeg(), new Date(frameAt).toUTCString()) : new Response('', { status: 404 })));
+    await svc.tick();
+    expect(svc.getStatus('c')!.imageAt).toBe(frameAt);
+    const v1 = svc.getStatus('c')!.snapshotUrl;
+    advance(3 * MIN);
+    await svc.tick();
+    expect(ff.calls.length).toBe(1); // not yet due
+    frameAt = T0 + 3 * MIN; // Caltrans publishes the next frame
+    advance(45_000);
+    await svc.tick();
+    expect(ff.calls.length).toBe(2);
+    expect(svc.getStatus('c')!.imageAt).toBe(frameAt);
+    expect(svc.getStatus('c')!.snapshotUrl).not.toBe(v1);
+    // Caltrans late: the same frame comes back -> a quick re-check, not a full 5-minute wait.
+    advance(5 * MIN);
+    await svc.tick();
+    expect(ff.calls.length).toBe(3);
+    advance(61_000);
+    await svc.tick();
+    expect(ff.calls.length).toBe(4);
+    expect(clock.t).toBeGreaterThan(T0);
+  });
+
   it('hard content failures (placeholder) downgrade at once and recover on the next good frame', async () => {
     const { svc, lm, ff, advance } = setup((u) => healthy(lm)(u));
     ff.set(healthy(lm));

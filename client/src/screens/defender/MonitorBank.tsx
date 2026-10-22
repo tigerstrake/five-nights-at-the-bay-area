@@ -3,6 +3,8 @@
 import clsx from 'clsx';
 import type { CameraView } from '@fnab/shared';
 import { CameraFeed } from '../../feeds/CameraFeed';
+import { liveThumbBudget, pickLiveThumbs } from '../../feeds/liveBudget';
+import { useGame } from '../../state/store';
 import { graph } from '../../lib/data';
 import { Bay, FOCUS, Kbd, P, camLabel, type RoomCtx } from './common';
 import { PinGlyph } from './MainFeed';
@@ -39,6 +41,14 @@ export function MonitorBank({
 }) {
   const { view } = ctx;
   const faults = view.cameras.filter((c) => c.status !== 'ok').length;
+  // A small budget of real live video on the visible page (the rest are labelled stills).
+  const sources = useGame((s) => s.cameraStatuses);
+  const liveThumbs = pickLiveThumbs(
+    cams.map((c) => c.cameraId),
+    sources,
+    mainId,
+    liveThumbBudget(),
+  );
   const pageBtn = (p: BankPage, label: string) => (
     <button
       key={String(p)}
@@ -102,6 +112,7 @@ export function MonitorBank({
             selected={c.cameraId === mainId}
             pinned={pinned.includes(c.cameraId)}
             alert={alertNodes.has(c.nodeId) || !!c.manifestation}
+            liveVideo={liveThumbs.has(c.cameraId)}
           />
         ))}
       </div>
@@ -116,6 +127,7 @@ function Thumb({
   selected,
   pinned,
   alert,
+  liveVideo,
 }: {
   ctx: RoomCtx;
   cam: CameraView;
@@ -123,6 +135,7 @@ function Thumb({
   selected: boolean;
   pinned: boolean;
   alert: boolean;
+  liveVideo: boolean;
 }) {
   const { view } = ctx;
   const no = ctx.camNo.get(cam.cameraId);
@@ -154,6 +167,7 @@ function Thumb({
           t0Epoch={view.t0Epoch}
           selected={selected}
           alert={alert}
+          liveVideo={liveVideo}
           className="absolute inset-0 h-full w-full"
         />
         <button

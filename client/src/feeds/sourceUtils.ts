@@ -1,24 +1,6 @@
 // Pure helpers for real-camera feeds (unit-tested; no DOM).
 
-/** "just now" / "4m ago" / "2h ago" for a snapshot's age. */
-export function ageLabel(ageMs: number): string {
-  const s = Math.max(0, Math.round(ageMs / 1000));
-  if (s < 45) return 'just now';
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  return h < 48 ? `${h}h ago` : `${Math.floor(h / 24)}d ago`;
-}
-
-/** Compact variant for thumbnails: "4m". */
-export function ageShort(ageMs: number): string {
-  const s = Math.max(0, Math.round(ageMs / 1000));
-  if (s < 45) return 'now';
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  return h < 48 ? `${h}h` : `${Math.floor(h / 24)}d`;
-}
+export { ageLabel, ageShort } from './freshness';
 
 /** Add a cache-busting param that is identical for every client within the same refresh bucket. */
 export function bustUrl(url: string, bucket: number): string {
