@@ -1,17 +1,19 @@
 # Five Nights at the Bay Area
 
-An asymmetric multiplayer horror game that runs in the browser, played on a graph of 36 real Caltrans freeway cameras around the San Francisco Bay Area. One player is the **Monster** and gives strategic orders to an AI creature that walks the freeways. Everyone else is a **Defender** in a shared CCTV control room, watching the feeds and spending one power budget on doors, sensors, traps and scans. Hold the headquarters until dawn, or trap the thing and hold it for 15 seconds.
+An asymmetric browser horror game, playable solo against AI or with friends, on a graph of 36 real Caltrans freeway cameras around the San Francisco Bay Area. The **Monster** gives strategic orders to a creature that walks the freeways. **Defenders** share a CCTV control room and one power budget for doors, sensors, traps and scans. Hold the headquarters until dawn, or trap the thing and hold it for 15 seconds.
 
 ![Defender control room with live Caltrans feeds](docs/screenshots/03-defender-control-room-live.jpg)
 
 ## Features
 
 - **Two roles with separate interfaces.** Defenders get a dense multi-monitor control room: main feed, 12-tile monitor bank, power bus, doors, containment, team log. The Monster gets a dark command deck: stances, targeted abilities, "through the lens" view, exposure readout and an intent stream. Spectators can watch the control room, with no monster secrets shown.
-- **Real cameras, honestly labelled.** The server health-checks the curated Caltrans cameras and shows LIVE (HLS video), SNAPSHOT (still with its age) or SIMULATED imagery. A dead camera or no internet at all never stops a match.
+- **Solo and mixed human/AI rooms.** Play either role against Novice, Competent or Expert opponents; add AI teammates. Hosts can add/remove AI seats and change their difficulty in the lobby.
+- **Real cameras, honestly labelled.** Live-first selection, a main HLS feed and up to three live bank tiles. A stall watchdog switches LIVE to BUFFERING and recovers playback; fallback STILL frames show their age and next update. A dead camera or no internet never stops a match.
 - **Monster AI.** Server-side tactical brain with A* pathfinding over travel time and camera exposure. The player picks the stance (HUNT, HIDE, FLANK, ATTACK, RETREAT) and abilities (SABOTAGE, DECOY); the AI chooses the route.
-- **Two maps.** A tactical SVG map (threat heat, door heat, sightings, routes) and a geographic MapLibre map on OpenFreeMap tiles.
-- **Camera FX and audio.** Canvas CCTV noise, tears, interference, monster compositing into each camera's frame, and breach, containment and signal-lost cinematics. All audio is procedural Web Audio, with master volume, mute and a reduce-flashing option.
-- **Multiplayer.** 4-letter rooms and invite links, host migration, reconnection within a grace period, forfeits, spectators and restart to lobby. The server is authoritative, and per-role views make information hiding a tested property.
+- **Two maps.** A schematic freeway transit map over the Natural Earth Bay shoreline, with sightings, routes and HQ gates; plus a geographic MapLibre map on OpenFreeMap tiles.
+- **Camera FX and audio.** CCTV interference and monster compositing tuned against real footage for scene lighting, shadows, occlusion and video motion. Breach and containment cinematics and procedural Web Audio have volume, mute and reduce-flashing settings.
+- **Coaching and readable alerts.** Contextual hints for the first two matches per role (toggle in Settings), plus big-moment banners for contact, traps, breaches and approaching dawn. Consoles stack and scroll on tablets/phones; phones also offer spectator guidance.
+- **Multiplayer.** 4-letter rooms and invite links, host migration, reconnection and closed-tab seat reclaim within a grace period, forfeits, spectators and restart to lobby. The authoritative server projects separate role views and sends view deltas to reduce bandwidth.
 
 ## Quick start
 
@@ -25,9 +27,13 @@ npm run dev
 - Client: http://localhost:5175 (Vite proxies `/api` and `/socket.io`)
 - Server: http://localhost:3001 (`/api/health`, `/api/cameras`, Socket.IO)
 
-**Solo with two tabs:** each tab is its own player (the session token lives in `sessionStorage`). In tab 1 create a room and stay Monster (the room creator is host and Monster by default). In tab 2 join with the 4-letter code and take Defender. A defender picks the headquarters, both tabs ready up, and the night starts after a 5 second countdown. No network is needed with `CAMERA_MODE=simulation npm run dev`.
+Choose **Play solo** on the title screen to play against AI. For offline camera imagery, run `CAMERA_MODE=simulation npm run dev`.
 
 ## How to play
+
+**Solo:** choose Play solo, your role, AI difficulty (Novice / Competent / Expert) and optional defender teammates. In the lobby pick an HQ, adjust AI seats if desired, and ready up; AI players are always ready.
+
+**With friends:** Create room makes you host and Monster by default. Share the 4-letter code or invite link; others join as Defenders. A defender or the host selects the HQ. Everyone readies up for a 5 second countdown. Separate tabs can also play separate seats; reopening the invite after closing a tab can reclaim its disconnected seat within the grace period without taking over a live one (`room:recover`).
 
 A night is 5 to 10 minutes (default 8) with a 20 second preparation, then three phases: Infiltration, Escalation, Final Assault. The monster is faster and breaches faster as the night goes on.
 
@@ -46,6 +52,8 @@ Rules and numbers: [docs/MECHANICS.md](docs/MECHANICS.md). The in-game "How to p
 
 ### Controls
 
+All actions have on-screen controls. On tablets/phones, scroll through the stacked panels; a tablet or computer is recommended for the dense consoles. Coaching cards can be dismissed or switched off in Settings.
+
 | Defender | |
 | --- | --- |
 | `1`-`9`, arrow keys | Show monitor on the main screen, move through the bank |
@@ -54,7 +62,7 @@ Rules and numbers: [docs/MECHANICS.md](docs/MECHANICS.md). The in-game "How to p
 | `Q` `W` `E` | Seal / open doors 1-3 |
 | `H` | Engage / disengage containment |
 | `I` `S` `T` `C` `L` | Map tool: inspect, sensor, trap, scan, lure |
-| `Esc`, `?` | Back to inspect, show the shortcut sheet |
+| `Esc`, `?` | Back to inspect / close help, toggle the shortcut sheet |
 
 | Monster | |
 | --- | --- |
@@ -62,7 +70,7 @@ Rules and numbers: [docs/MECHANICS.md](docs/MECHANICS.md). The in-game "How to p
 | `S`, `D` | SABOTAGE, DECOY (then click a target on the map, `Enter` to confirm) |
 | `0`-`3` | Target door: AI picks, or door 1-3 |
 | `Space` | While trapped: struggle (RETREAT) |
-| `Esc` | Cancel targeting |
+| `Esc` | Cancel pending target, otherwise return to move tool |
 
 <details><summary>More screenshots</summary>
 
@@ -77,15 +85,16 @@ Rules and numbers: [docs/MECHANICS.md](docs/MECHANICS.md). The in-game "How to p
 
 | Mode | Behaviour |
 | --- | --- |
-| `auto` (default) | Polite health checks. LIVE HLS where verified, else SNAPSHOT, else labelled SIMULATED. |
+| `auto` (default) | Polite health checks. Try verified HLS first, else STILL, else labelled SIMULATED. |
 | `live` | Like `auto`, but only cameras with a verified live stream show real imagery; the rest are SIMULATED. |
 | `snapshot` | Stills only; HLS is never probed. |
 | `simulation` | Fully offline. Every feed is the labelled procedural simulation and no external request is made. A full match is playable. |
 
 Badges show the real source state, never the fictional in-game sabotage:
 
-- **LIVE** - HLS video is actually playing (enlarged main feed only).
-- **SNAPSHOT** - a Caltrans still, with its age (`SNAP - 2m`). Thumbnails of live-capable cameras show `LIVE-SNAP`.
+- **LIVE** - HLS video frames are advancing on the main feed or a live bank tile.
+- **BUFFERING** - live video is connecting or stalled; recovery runs automatically, revealing the still after a prolonged stall.
+- **STILL** - a Caltrans snapshot, with frame age and update timing; live-capable cameras have a red ring. The API still calls this mode `snapshot`.
 - **SIMULATED** - dashed amber, a procedural stand-in. Never styled like live.
 
 Caltrans data notes, usage terms, measured availability and the classification heuristics are in [docs/CAMERAS.md](docs/CAMERAS.md). Ops view: `/api/cameras?detail=1` and `/api/health`.
@@ -104,6 +113,7 @@ All exist in the root `package.json`.
 | `npm run test:e2e` | Playwright end-to-end suite (own servers on 3101/5199 and 3102/5198) |
 | `npm run typecheck` | Typecheck shared, server and client |
 | `npm run balance` | Headless bot balance harness (see [docs/BALANCE.md](docs/BALANCE.md)) |
+| `npm run perf` | In-process room capacity harness (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#6-capacity)) |
 
 For e2e, run `npx playwright install chromium` once.
 
@@ -133,19 +143,19 @@ client (React/Vite) <-socket.io-> server/net -> rooms -> engine (pure, determini
 shared/  types, protocol, config (all balance numbers), graph, data
 ```
 
-npm workspaces: `shared` (types, config, graph, camera and network data), `server` (Express, Socket.IO, engine, AI, visibility, cameras, balance harness) and `client` (React, Vite, Tailwind, zustand, hls.js, MapLibre). The engine is pure and seeded; the server sends each player a projected view, never the full state. Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/CONTRACT.md](docs/CONTRACT.md), [server/src/ai/README.md](server/src/ai/README.md), [client/src/audio/README.md](client/src/audio/README.md).
+npm workspaces: `shared` (types, config, graph, camera and network data), `server` (Express, Socket.IO, engine, AI, visibility, cameras, balance/performance harnesses) and `client` (React, Vite, Tailwind, zustand, hls.js, MapLibre). The engine is pure and seeded; each player receives a role-projected view, with delta patches and periodic full checkpoints. Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/CONTRACT.md](docs/CONTRACT.md), [server/src/ai/README.md](server/src/ai/README.md), [client/src/audio/README.md](client/src/audio/README.md).
 
 ## Testing
 
-- **Unit/integration:** `npm test` ran 208 tests in 22 files, all passing (engine, visibility, pathfinding, rooms, AI, cameras, full-match simulation, audio, FX).
-- **End-to-end:** `npm run test:e2e` ran 21 Playwright tests in 9 spec files, all passing: lobby, monster AI, defense, information hiding on the wire, outcomes, reconnect, disconnect, simulation-only cameras and a camera-outage server. See [e2e/README.md](e2e/README.md).
+- **Unit/integration:** `npx vitest run` passed **368 tests in 34 files** on 2026-10-21, including solo AI, seat recovery, view deltas, coaching rules, feed recovery and map/FX logic.
+- **End-to-end inventory:** **24 Playwright tests in 10 spec files** under `e2e/*.spec.ts`, including solo play and closed-tab reclaim. Counted from source; not rerun for this refresh. Tests freeze match time with guarded `test:hold` hooks and use render-lite FX to avoid machine-speed dependencies. Slow-runner rehearsal: `CI=1 E2E_THROTTLE=4 E2E_WORKERS=2 npx playwright test`. See [e2e/README.md](e2e/README.md).
 - **Balance:** measured with scripted bots, not humans. See [docs/BALANCE.md](docs/BALANCE.md).
 
 Honest project status and known limitations: [docs/STATUS.md](docs/STATUS.md).
 
 ## Deployment
 
-One Node process serves the built client, the API and Socket.IO. **Match state is in memory, so run exactly one instance** (no autoscaling, no round-robin replicas). Put it behind HTTPS with WebSocket upgrade preserved. A multi-stage `Dockerfile`, `render.yaml` and `fly.toml` are included; the Docker image has not yet been built locally. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+One Node process serves the built client, API and Socket.IO. **Match state is in memory, so run exactly one instance**. The in-process capacity harness supports planning for **50 concurrent 4–5-player matches on 1 vCPU / 512 MB**, with about **13 kB/s per player** using deltas; actual WebSocket/TLS overhead and cloud performance remain unmeasured. Put it behind HTTPS with WebSocket upgrade preserved. A `Dockerfile`, `render.yaml` and `fly.toml` are included; the Docker image has not been built locally. Measurement details and the 100-room ceiling: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Documentation
 
@@ -154,7 +164,7 @@ One Node process serves the built client, the API and Socket.IO. **Match state i
 ## Credits and licensing
 
 - **Camera data:** Caltrans CWWP2 District 4 feed. Per the Caltrans Conditions of Use, website information is in the public domain unless otherwise indicated, with a note that some content (for example photographs) may be copyrighted. The data is free to use; we read it, link to it and display it, we do not archive or commit Caltrans images, and every real feed is labelled with its source. See [docs/CAMERAS.md](docs/CAMERAS.md) section 2 (not legal advice).
-- **Maps:** [OpenFreeMap](https://openfreemap.org) vector tiles, (c) OpenMapTiles, data (c) OpenStreetMap contributors, rendered with MapLibre GL.
+- **Maps:** tactical shoreline from Natural Earth 1:10m Land (public domain); geographic [OpenFreeMap](https://openfreemap.org) vector tiles, (c) OpenMapTiles, data (c) OpenStreetMap contributors, rendered with MapLibre GL.
 - **Fonts:** self-hosted through `@fontsource` (Big Shoulders Display, IBM Plex Mono, Inter, Overpass), all SIL Open Font License. No runtime CDN requests.
 - **Audio:** generated procedurally with Web Audio at runtime; no sample files.
 - **Art:** original AI-generated images in `client/public/assets`, made with Google Antigravity's image model. Simulated feeds are drawn procedurally.
@@ -166,7 +176,7 @@ One Node process serves the built client, the API and Socket.IO. **Match state i
 | | |
 | --- | --- |
 | ![Title](docs/screenshots/01-title.jpg) Title | ![Lobby](docs/screenshots/02-lobby-hq-select.jpg) Lobby and HQ selection |
-| ![Defender](docs/screenshots/03-defender-control-room-live.jpg) Defender control room, LIVE-SNAP feeds | ![Monster](docs/screenshots/04-monster-command.jpg) Monster command deck |
+| ![Defender](docs/screenshots/03-defender-control-room-live.jpg) Earlier control room (source badges and tactical map have since changed) | ![Monster](docs/screenshots/04-monster-command.jpg) Monster command deck |
 | ![Geo map](docs/screenshots/05-geographic-map.jpg) Geographic map | ![FX](docs/screenshots/06-monster-on-feed-fx-lab.jpg) Monster composited on a feed (FX lab, simulated feed) |
 | ![Containment](docs/screenshots/07-containment.jpg) Containment field | ![Breach](docs/screenshots/08-breach-cinematic.jpg) Breach cinematic |
 | ![Monster win](docs/screenshots/09-results-monster-win.jpg) Results, monster wins | ![Defender win](docs/screenshots/10-results-defender-win-route-reveal.jpg) Results, route revealed |

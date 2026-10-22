@@ -53,6 +53,18 @@ describe('defender coaching rules', () => {
     expect(h).toContain('d-prep-sensors');
   });
 
+  it('places preparation tips beside the whole tool dock, clear of the map above it', () => {
+    const prep = defView({ phase: 'preparation', t: 5_000 });
+    const trap = defenderHints(ctx(prep)).find((h) => h.id === 'd-prep-traps');
+    const sensors = defenderHints(ctx({
+      ...prep,
+      traps: [{ id: 'x', nodeId: hq.approaches[0]!.fromNode, live: true }] as DefenderView['traps'],
+    })).find((h) => h.id === 'd-prep-sensors');
+    for (const hint of [trap, sensors]) {
+      expect(hint).toMatchObject({ anchor: '[data-testid=map-tools]', side: 'left' });
+    }
+  });
+
   it('points at the door when a fresh sighting is on an approach, and drops it once the door is sealed', () => {
     const ap = hq.approaches[1]!;
     const sighting = { id: 1, nodeId: ap.fromNode, t: PREP + 29_000, confidence: 0.8, source: 'camera' as const, flaggedFalse: false };

@@ -144,12 +144,13 @@ export function defenderHints({ view: v, t, hq, mainNodeId, seen }: DefenderCoac
     });
   }
   if (prep && v.traps.length === 0) {
+    // Sit beside the whole dock: above an individual tool would obscure the map/HQ.
     out.push({
       id: 'd-prep-traps',
       title: 'Lay traps on its likely routes',
       body: 'Press {T}, then click nodes on the roads into your doors. The entity starts far away, so cover the approaches.',
-      anchor: '[data-testid=tool-trap]',
-      side: 'top',
+      anchor: '[data-testid=map-tools]',
+      side: 'left',
       tone: 'info',
     });
   }
@@ -158,8 +159,8 @@ export function defenderHints({ view: v, t, hq, mainNodeId, seen }: DefenderCoac
       id: 'd-prep-sensors',
       title: 'Add a motion sensor or two',
       body: 'Press {S} and click a node. Sensors ping when it passes nearby, even where no camera is watching.',
-      anchor: '[data-testid=tool-sensor]',
-      side: 'top',
+      anchor: '[data-testid=map-tools]',
+      side: 'left',
       tone: 'info',
     });
   }

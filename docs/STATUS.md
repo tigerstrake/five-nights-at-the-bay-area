@@ -1,74 +1,64 @@
 # Project status
 
-Snapshot of what is built, how each claim is verified, and what is known to be incomplete. Written 2026-10-20 against the current working tree.
+Updated 2026-10-21 after `a554abc..HEAD`. ✅ means implemented with automated coverage; ⚠️ means partial verification or a material caveat. Test names below identify coverage, not fresh Playwright results.
 
-Legend: ✅ implemented and verified by an automated test or a command run for this document. ⚠️ implemented with a caveat, or only partly verified. "Unverified" means it could not be confirmed here and is not claimed.
-
-**Fresh runs for this document:** `npx vitest run` gave 22 files / 208 tests passed. `E2E_WORKERS=3 npx playwright test` gave 21 passed (1.5 min) across 9 spec files. I did not run `npm run typecheck`, `npm run build` or a real-network camera session for this document.
+**Fresh verification:** `npx vitest run`: **368 tests / 34 files passed**; `npm run typecheck` and `npm run build`: passed (build warns about large chunks). **E2E inventory:** **24 tests / 10 spec files** under `e2e/*.spec.ts`, counted from source; not rerun here. Real-camera, visual and capacity evidence below comes from the recorded agent measurements, not a new network session.
 
 ## Milestones (spec section 17)
 
-| Milestone | Status | Where verified |
+| Milestone | Status | Evidence |
 | --- | --- | --- |
-| A. Functional foundation: frontend + backend, rooms, defender and monster UIs, node graph, server-authoritative movement, win/lose | ✅ | Vitest (engine, rooms, full-match simulation); e2e `lobby`, `outcomes` |
-| B. Real cameras: Caltrans adapter, discovery, curated set, snapshot/stream rendering, unavailable handling, geographic map | ⚠️ | Vitest `server/test/cameras.service.test.ts` and classifier tests; e2e `cameras`, `outage`. Real-network behaviour was measured by hand on 2026-10-20 and is recorded in `docs/CAMERAS.md` section 7.5 (not re-run here). Geographic map: manual only, no automated test. |
-| C. Strategic gameplay: AI commands, pathfinding, doors/power, surveillance tools, sabotage, traps, repairs, balance config | ✅ / ⚠️ | Vitest (engine, AI, pathfinding); e2e `monster-ai`, `defense`. Balance is measured with bots only (see limitations). |
-| D. Atmosphere: monster overlays, distortions, animations, sound, cinematics, visual design | ⚠️ | Vitest for audio graph plumbing and FX logic. Look, feel and loudness were checked by manual screenshots and a Chromium audio measurement (`client/src/audio/README.md`); no human listening/playtest is recorded. |
-| E. QA: sync, reconnection, camera-failure recovery, responsive UI, balance testing, automated tests, deployment instructions | ⚠️ | e2e `reconnect`, `disconnect`, `outage`, `visibility`; `docs/BALANCE.md`; `docs/DEPLOYMENT.md`. Responsive UI checked by manual screenshots at 1280x720 to 2560x1440 only. Docker image never built. |
+| A. Functional foundation: rooms, role UIs, graph, authoritative simulation, outcomes | ✅ | Engine/rooms/full-match Vitest; e2e `lobby`, `outcomes`. Solo entry, either human role, AI seats and three difficulties: `rooms/solo.test.ts`, e2e `solo`. |
+| B. Real cameras and maps | ⚠️ | Adapter/classifier, freshness and stall-watchdog unit tests; e2e `cameras`, `outage`. Live-first selection, three live bank tiles, BUFFERING recovery and honest STILL timing measured in `CAMERAS.md` §7.7. Tactical transit map uses the Natural Earth shoreline (schematic tests); geographic map remains manually checked. |
+| C. Strategic gameplay: AI, pathfinding, tools, doors/power, sabotage, balance | ✅ / ⚠️ | Engine/AI/pathfinding Vitest; e2e `monster-ai`, `defense`, `solo`. AI players use role-limited observations; balance evidence is bots only (`BALANCE.md`). |
+| D. Atmosphere and onboarding | ⚠️ | Audio/FX/coaching unit tests; contextual first-match hints and big-moment banners. Monster grading, shadows, occlusion and motion tuned on real Caltrans stills/HLS; daytime compositing only partly verified. |
+| E. QA, recovery, responsive UI, capacity and deployment | ⚠️ | Seat recovery, view-delta, transport and cleanup unit tests; e2e `reconnect`, `disconnect`, `visibility`. Tablet/phone panels stack and scroll; Chromium/manual checks only. Speed-independent e2e uses `test:hold`, render-lite and a recorded 4× CPU-throttled rehearsal. Capacity measured in-process; Docker unbuilt. |
 
 ## Required scenarios (spec section 18)
 
-| Scenario | Status | Verified by |
+| Scenario | Status | Coverage |
 | --- | --- | --- |
-| Two players join the same match from separate browsers | ✅ | e2e `lobby.spec.ts` (separate browser contexts, code and invite link) |
-| One player is the monster | ✅ | e2e `lobby.spec.ts` (creator is host and the only monster) |
-| Others join as defenders | ✅ | e2e `lobby.spec.ts` |
-| Defenders select a headquarters | ✅ | e2e `lobby.spec.ts` |
-| Monster issues a high-level command | ✅ | e2e `monster-ai.spec.ts` (stances, global gap, cooldowns, validation) |
-| AI moves it through connected nodes | ✅ | e2e `monster-ai.spec.ts` (live and revealed route follow graph edges); Vitest pathfinding |
-| Defenders see sightings, never the exact position | ✅ | e2e `visibility.spec.ts` (every socket frame inspected); Vitest visibility tests |
-| Monster can sabotage a fictional camera | ✅ | e2e `defense.spec.ts` |
-| Defenders can repair it | ✅ | e2e `defense.spec.ts` |
-| Defenders can activate a trap | ✅ | e2e `defense.spec.ts` (trap, containment, 15 s capture) |
-| Power consumption and cooldowns behave | ✅ | e2e `defense.spec.ts` (door drain, scan/lure cooldowns, outage and recovery); Vitest engine |
-| Both sides can win | ✅ | e2e `outcomes.spec.ts` (breach and timer), `defense.spec.ts` (capture), `disconnect.spec.ts` (forfeits) |
-| All participants get synchronized results | ✅ | e2e `outcomes.spec.ts` (same result, winner and reason on every screen) |
-| Game works if external cameras become unavailable | ✅ | e2e `outage.spec.ts` (probes to a closed port; match completes) |
-| Complete match in simulation mode with no external access | ✅ | e2e `cameras.spec.ts` (`CAMERA_MODE=simulation`, `*.dot.ca.gov` blocked, no requests) |
-| Automated tests for state transitions, visibility, pathfinding, victory | ✅ | 208 Vitest tests plus 21 e2e tests |
+| Two players join from separate browsers | ✅ | e2e `lobby` (separate browser contexts, code and invite link) |
+| One player is the monster; others defend | ✅ | e2e `lobby`; `solo` also covers human/AI seats |
+| Defenders select HQ | ✅ | e2e `lobby`; `solo` covers host choice with AI defenders |
+| Monster issues a high-level command | ✅ | e2e `monster-ai` (stances, command gap, cooldowns, validation) |
+| AI follows connected nodes | ✅ | e2e `monster-ai`, `solo`; pathfinding unit tests |
+| Defenders see sightings, never exact hidden position | ✅ | e2e `visibility` (socket frames); visibility and delta-transport unit tests |
+| Monster sabotages a fictional camera; defenders repair it | ✅ | e2e `defense` |
+| Defenders trap and contain the monster | ✅ | e2e `defense` (capture, expiry and interrupted containment) |
+| Power and cooldowns behave | ✅ | e2e `defense`; engine unit tests |
+| Both sides can win | ✅ | e2e `outcomes`, `defense`, `disconnect` (breach, dawn, capture, forfeits) |
+| All participants get synchronized results | ✅ | e2e `outcomes` |
+| External camera loss does not stop play | ✅ | e2e `outage`; watchdog unit tests cover stalled playback recovery |
+| Full simulation match with Caltrans blocked | ✅ | e2e `cameras` |
+| State transitions, visibility, pathfinding and victory have automated tests | ✅ | 368 passing Vitest tests; 24 Playwright tests defined |
 
-## Known limitations and incomplete items
+Additional regression coverage: e2e `reconnect` covers reload/socket recovery, closed-tab seat reclaim (`room:recover`, never taking a live seat) and restart into a second match. Delta views preserve role projections, with full checkpoints on rebind/resync and every 30 seconds.
 
-**Balance and gameplay**
-- Balance was measured with scripted bots (32,000 games), not human players. Overall monster wins are 50.8% and the HQ and defender-count bands are met, but not every one of the 16 HQ x defender-count cells: the joint cells range from about 42% to 59% (`docs/BALANCE.md`). The families used for the final correction are not an untouched holdout.
-- Capture success per containment engagement is about 12% (11.6%) after the struggle fix. Early traps usually buy time rather than end the night.
-- Bot skill matters a lot: against expert defenders the monster wins about 10%, against novices about 83% (mixed policies). Whether human strategies are equally strong is unknown; no human playtest data exists.
-- Parity is claimed only for 1 to 4 defenders and 8-minute nights with a 20 s preparation.
-- Human feel (pacing, fairness, readability of the monster UI) has not been reviewed by playtesters.
+## Known limitations
 
-**Cameras**
-- HLS live availability is partial and flaps. At the last documented check, 14 of 36 curated cameras had playable streams (19 list one); one run saw 15 and some streams moved between 200 and 404. Expect SNAPSHOT for the rest.
-- After a server start, all cameras begin SIMULATED until their first probe completes. `docs/CAMERAS.md` measured about 25 s for full classification; slow or failing networks can leave some cameras SIMULATED for up to a couple of minutes (dead streams answer after the 8 s timeout and retry at 60 s, 120 s, ...).
-- Caltrans images may carry third-party copyright; none are committed. The game depends on the Caltrans CORS and hotlink behaviour observed on 2026-10-20, which can change.
+**Cameras and rendering**
 
-**Platform and deployment**
-- Room and match state is in memory: single instance only, and a server restart (including `tsx watch` reloads in dev) ends all active matches.
-- The Docker image has not been built locally or in CI (`docs/DEPLOYMENT.md` section 6). Render and Fly configs are written but not deployed or tested. A CI workflow exists in `.github/workflows/ci.yml`; its run history is unverified.
-- No `LICENSE` file is in the repository yet.
-- Rate limits and hardening were tested with unit and e2e tests, not under real internet load.
+- Live availability is partial and flaps; published URLs or successful probes do not guarantee browser decoding. `d4-tv301` never decoded in the recorded browser check: its playlist advertises 320×240 while segments are 352×240. It falls back to a labelled still with backoff retries (`CAMERAS.md` §7.7).
+- Stills update roughly every five minutes. Cameras start SIMULATED until probed, and upstream outages/CORS changes can delay or prevent real imagery. The watchdog recovers stalls but cannot make the upstream service reliable.
+- The first closeup draw has a reported ~200 ms hitch. Daytime monster compositing is only partially verified; most real-footage tuning was at night.
+- Geographic mode lacks automated visual coverage.
 
-**Client**
-- Headless, software-rendered Chromium can freeze when opening the geographic map while live video plays. Not reproduced on a GPU browser here; unverified for real users. The geographic map has no automated test.
-- Reported but not confirmed by me: monster route lists show the spawn node twice. Not investigated for this document, so treat as unverified.
-- Audio was tuned by measurement in Chromium and by ear on one machine only. File-based audio overrides are supported, but the shipped build uses synthesis only.
-- Browsers and devices tested: Chromium only (Playwright and screenshots). Firefox, Safari and touch/mobile layouts are unverified.
+**Balance and playtesting**
 
-**Test infrastructure**
-- During the e2e run the Vite dev proxy printed repeated `ws proxy socket error: write EPIPE` lines when contexts closed. All 21 tests still passed; this looks like teardown noise but is unexplained.
-- `docs/BALANCE.md` cites "21 files, 204 tests"; the current count is 22 files, 208 tests. The balance numbers themselves were not re-run for this document.
+- Balance was measured with scripted bots (32,000 games), not human players: 50.8% overall monster wins, but individual HQ × defender-count cells range roughly 42–59%. The final correction families were not an untouched holdout (`BALANCE.md`).
+- Capture success per containment engagement is ~12% (11.6%); early traps usually buy time. Bot skill strongly affects outcomes (~10% monster wins against expert defenders, ~83% against novices).
+- Parity is measured only for 1–4 defenders, eight-minute nights and 20-second preparation. Human pacing, fairness and strategy have no recorded playtest data.
 
-## Where to look
+**Platform and operations**
 
-- Rules and numbers: `docs/MECHANICS.md`. Balance evidence: `docs/BALANCE.md` and `server/src/balance/results.json`.
-- Camera research and measured behaviour: `docs/CAMERAS.md`.
-- Test inventory: `e2e/README.md`.
+- One in-memory instance only; server restarts lose all rooms and matches. View deltas reduce traffic about 11×. The in-process harness supports planning for 50 concurrent 4–5-player matches on 1 vCPU / 512 MB (~13 kB/s per player); 100 matches is a planning ceiling. WebSocket framing/TLS/kernel costs and real cloud/internet load were not measured (`DEPLOYMENT.md` §6).
+- The Docker image has not been built locally; Render/Fly configurations exist but have not been deployment-verified. CI run history is unverified.
+- Browser verification is Chromium only: no Firefox/Safari verification or physical touch-device validation. Responsive tablet/phone layouts are implemented, but the dense consoles are best on a tablet/computer; phones offer spectator guidance.
+- Audio checks were limited to Chromium measurement and listening on one machine. No repository `LICENSE` file has been added.
+
+## Evidence
+
+- Rules: `MECHANICS.md`; balance: `BALANCE.md`, `server/src/balance/results.json`.
+- Cameras: `CAMERAS.md`; capacity/deployment: `DEPLOYMENT.md`, `server/src/perf/after.json`.
+- E2E hooks, render-lite and throttled rehearsal instructions: `../e2e/README.md`.
