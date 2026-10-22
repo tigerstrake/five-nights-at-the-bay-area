@@ -2,6 +2,7 @@
 import type { HqId, NetworkData } from '@fnab/shared';
 import { graph, NETWORK } from '../lib/data';
 import type { MapLayers } from './layers';
+import { pointAlong } from './schematic';
 
 type Hq = NetworkData['headquarters'][number];
 type Approach = Hq['approaches'][number];
@@ -17,15 +18,16 @@ export function pos(id: string | null | undefined): XY {
 
 export const edgeKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 
-/** Base tactical extent (nodes + HQs) with padding. */
+/**
+ * Base tactical extent (nodes + HQs) with room for the outermost labels: the west trunk (San Rafael,
+ * Octavia, Cañada Rd) and the east edge (Benicia, Fremont, San Jose) label outward.
+ */
 export const BASE_BOX = (() => {
   const xs = [...NETWORK.nodes.map((n) => n.tactical.x), ...NETWORK.headquarters.map((h) => h.tactical.x)];
   const ys = [...NETWORK.nodes.map((n) => n.tactical.y), ...NETWORK.headquarters.map((h) => h.tactical.y)];
-  const PAD_X = 46;
-  const PAD_Y = 40;
-  const minX = Math.min(...xs) - PAD_X;
-  const minY = Math.min(...ys) - PAD_Y;
-  return { x: minX, y: minY, w: Math.max(...xs) + PAD_X - minX, h: Math.max(...ys) + PAD_Y - minY };
+  const minX = Math.min(...xs) - 94;
+  const minY = Math.min(...ys) - 26;
+  return { x: minX, y: minY, w: Math.max(...xs) + 100 - minX, h: Math.max(...ys) + 38 - minY };
 })();
 
 /** Short approach name: "Bayfront Approach (SR-84)" → "Bayfront". */
@@ -39,7 +41,7 @@ export function approachShort(ap: Approach): string {
  * `u` = map units per screen pixel; the ring radius is in pixels so the layout reads at any zoom.
  */
 const doorCache = new Map<string, Map<string, XY & { angle: number }>>();
-export function doorLayout(hqId: string, u: number, radiusPx = 30): Map<string, XY & { angle: number }> {
+export function doorLayout(hqId: string, u: number, radiusPx = 15): Map<string, XY & { angle: number }> {
   const key = `${hqId}@${u.toFixed(3)}`;
   const hit = doorCache.get(key);
   if (hit) return hit;
@@ -52,7 +54,7 @@ export function doorLayout(hqId: string, u: number, radiusPx = 30): Map<string, 
       return { id: ap.id, a: Math.atan2(p.y - h.tactical.y, p.x - h.tactical.x), len: Math.hypot(p.x - h.tactical.x, p.y - h.tactical.y) };
     })
     .sort((x, y) => x.a - y.a);
-  const SEP = (62 * Math.PI) / 180;
+  const SEP = (46 * Math.PI) / 180;
   for (let it = 0; it < 60; it++) {
     for (let i = 1; i < items.length; i++) {
       const d = items[i]!.a - items[i - 1]!.a;
@@ -64,21 +66,12 @@ export function doorLayout(hqId: string, u: number, radiusPx = 30): Map<string, 
     }
   }
   for (const it of items) {
-    const r = Math.min(radiusPx * u, it.len * 0.55);
+    const r = Math.min(radiusPx * u, it.len * 0.62);
     out.set(it.id, { x: h.tactical.x + Math.cos(it.a) * r, y: h.tactical.y + Math.sin(it.a) * r, angle: it.a });
   }
   if (doorCache.size > 64) doorCache.clear();
   doorCache.set(key, out);
   return out;
-}
-
-/** Legacy helper: a point on the HQ → approach-node spoke. */
-export function doorPoint(h: Hq, ap: Approach, along = 0.4, maxDist = 52): XY {
-  const p = pos(ap.fromNode);
-  const dx = p.x - h.tactical.x, dy = p.y - h.tactical.y;
-  const len = Math.hypot(dx, dy) || 1;
-  const d = Math.min(maxDist, len * along);
-  return { x: h.tactical.x + (dx / len) * d, y: h.tactical.y + (dy / len) * d };
 }
 
 /** Compact HQ names for small viewports. */
@@ -115,7 +108,7 @@ function zonePath(h: Hq, r: number): string {
   return 'M' + hp.map((q) => `${q.x.toFixed(1)},${q.y.toFixed(1)}`).join('L') + 'Z';
 }
 
-export const HQ_ZONES = new Map<HqId, string>(NETWORK.headquarters.map((h) => [h.id as HqId, zonePath(h, 26)]));
+export const HQ_ZONES = new Map<HqId, string>(NETWORK.headquarters.map((h) => [h.id as HqId, zonePath(h, 24)]));
 
 /** Every route name that touches a node (for tooltips). */
 export const NODE_ROUTES = new Map<string, string[]>(
@@ -126,13 +119,19 @@ export const NODE_ROUTES = new Map<string, string[]>(
   }),
 );
 
+/** Monster position on the tactical map: interpolated along the drawn corridor while moving. */
 export function monsterXY(m: NonNullable<MapLayers['monster']>): XY | null {
-  if (m.moving) {
-    const a = pos(m.moving.from);
-    const b = pos(m.moving.to);
-    return { x: a.x + (b.x - a.x) * m.moving.progress, y: a.y + (b.y - a.y) * m.moving.progress };
-  }
+  if (m.moving) return projectAlong(m.moving.from, m.moving.to, m.moving.progress);
   return m.nodeId ? pos(m.nodeId) : null;
+}
+
+/** A point `p` (0..1) of the way from one node to the next, following the corridor geometry. */
+export function projectAlong(from: string, to: string | null, p: number): XY {
+  if (!to) return pos(from);
+  const q = pointAlong(from, to, p);
+  if (q) return { x: q.x, y: q.y };
+  const a = pos(from), b = pos(to);
+  return { x: a.x + (b.x - a.x) * p, y: a.y + (b.y - a.y) * p };
 }
 
 /** Shortest node paths from `start` to each approach node of `hqId`. */

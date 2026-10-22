@@ -1,0 +1,156 @@
+{
+  "$comment": "Shoreline warp controls for build-shore.mjs. anchors: real point (lat/lon) -> tactical point, shaping the warp where no camera node constrains it. water/land: hand strokes (tactical polylines, radius r) stamped into the raster to open straits / keep land. onWater: bridge camera nodes that sit mid-span.",
+  "eps": 1.1,
+  "guard": {
+    "road": 9,
+    "node": 11,
+    "hq": 24
+  },
+  "minIsland": 120,
+  "minPond": 2500,
+  "onWater": [
+    "n-rsr-bridge",
+    "n-bay-bridge-east",
+    "n-bay-bridge-west",
+    "n-sm-bridge",
+    "n-dumbarton"
+  ],
+  "anchors": [
+    {
+      "name": "Ocean Beach",
+      "lat": 37.765,
+      "lon": -122.512,
+      "x": 135,
+      "y": 540
+    },
+    {
+      "name": "Point Bonita",
+      "lat": 37.828,
+      "lon": -122.535,
+      "x": 140,
+      "y": 430
+    },
+    {
+      "name": "Lime Point",
+      "lat": 37.8255,
+      "lon": -122.4785,
+      "x": 205,
+      "y": 428
+    },
+    {
+      "name": "Fort Point",
+      "lat": 37.8105,
+      "lon": -122.4772,
+      "x": 205,
+      "y": 458
+    },
+    {
+      "name": "Half Moon Bay",
+      "lat": 37.5,
+      "lon": -122.48,
+      "x": 160,
+      "y": 860
+    },
+    {
+      "name": "Pacifica",
+      "lat": 37.63,
+      "lon": -122.5,
+      "x": 150,
+      "y": 700
+    },
+    {
+      "name": "Alviso",
+      "lat": 37.43,
+      "lon": -121.97,
+      "x": 660,
+      "y": 880
+    },
+    {
+      "name": "Suisun Bay east",
+      "lat": 38.07,
+      "lon": -121.95,
+      "x": 930,
+      "y": 140
+    },
+    {
+      "name": "South Bay lobe SW",
+      "lat": 37.455,
+      "lon": -122.105,
+      "x": 560,
+      "y": 872
+    },
+    {
+      "name": "Ravenswood",
+      "lat": 37.492,
+      "lon": -122.125,
+      "x": 578,
+      "y": 832
+    },
+    {
+      "name": "Alameda Point",
+      "lat": 37.785,
+      "lon": -122.33,
+      "x": 520,
+      "y": 520
+    },
+    {
+      "name": "Oakland airport",
+      "lat": 37.715,
+      "lon": -122.22,
+      "x": 575,
+      "y": 610
+    },
+    {
+      "name": "Hunters Point",
+      "lat": 37.73,
+      "lon": -122.37,
+      "x": 320,
+      "y": 640
+    },
+    {
+      "name": "Yerba Buena Island",
+      "lat": 37.809,
+      "lon": -122.366,
+      "x": 378,
+      "y": 446
+    },
+    {
+      "name": "Treasure Island",
+      "lat": 37.825,
+      "lon": -122.371,
+      "x": 372,
+      "y": 398
+    },
+    {
+      "name": "Bay Bridge toll plaza",
+      "lat": 37.8225,
+      "lon": -122.318,
+      "x": 512,
+      "y": 428
+    },
+    {
+      "name": "Emeryville shore",
+      "lat": 37.842,
+      "lon": -122.302,
+      "x": 528,
+      "y": 378
+    }
+  ],
+  "water": [
+    {
+      "name": "Golden Gate",
+      "r": 9,
+      "pts": [
+        [
+          90,
+          445
+        ],
+        [
+          250,
+          445
+        ]
+      ]
+    }
+  ],
+  "land": []
+}

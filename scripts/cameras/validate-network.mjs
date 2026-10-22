@@ -19,7 +19,7 @@ export const LIMITS = {
   minSpawnHqHops: 5,
   minTacticalSpacing: 40, // node-node, in tactical units (0..1000)
   minHqNodeSpacing: 40,
-  minEdgeNodeClearance: 18, // an edge's straight line must not pass within this of a non-endpoint node
+  minEdgeNodeClearance: 18, // an edge's drawn corridor (see below) must not pass within this of a non-endpoint node
   spawnsMin: 4, spawnsMax: 8,
   approachesPerHq: 3,
   minDisjointPaths: 2,
@@ -142,12 +142,35 @@ function segDist(p, a, b) {
   const t = l2 === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * vx + (p.y - a.y) * vy) / l2));
   return Math.hypot(p.x - (a.x + t * vx), p.y - (a.y + t * vy));
 }
+// The tactical map draws each edge as an octilinear corridor routed by client/src/map/corridors.json (the
+// same rule as client/src/map/schematic.ts#corridorCorners), so clearance is measured on that polyline.
+// Without the file (or for edges it does not list) the corridor is the default straight-then-45° route.
+let corridorHints = {};
+try {
+  corridorHints = JSON.parse(await readFile(resolve(ROOT, 'client/src/map/corridors.json'), 'utf8')).hints ?? {};
+} catch {
+  /* no client checkout: default routing */
+}
+function corridorCorners(a, b, hint) {
+  if (Array.isArray(hint)) return [a, ...hint.map(([x, y]) => ({ x, y })), b];
+  const dx = b.x - a.x, dy = b.y - a.y, adx = Math.abs(dx), ady = Math.abs(dy), d = Math.min(adx, ady);
+  const sx = Math.sign(dx), sy = Math.sign(dy);
+  if (d < 0.5 || Math.abs(adx - ady) < 0.5) return [a, b];
+  if (hint === 'd') return [a, { x: a.x + sx * d, y: a.y + sy * d }, b];
+  if (hint === 'm') {
+    const ex = adx > ady ? ((adx - d) / 2) * sx : 0, ey = ady > adx ? ((ady - d) / 2) * sy : 0;
+    return [a, { x: a.x + ex, y: a.y + ey }, { x: b.x - ex, y: b.y - ey }, b];
+  }
+  return [a, { x: b.x - sx * d, y: b.y - sy * d }, b];
+}
 for (const e of edges) {
   const A = nodeById.get(e.a), B = nodeById.get(e.b);
   if (!A || !B) continue;
+  const pts = corridorCorners(A.tactical, B.tactical, corridorHints[e.id]);
   for (const n of nodes) {
     if (n.id === e.a || n.id === e.b) continue;
-    const d = segDist(n.tactical, A.tactical, B.tactical);
+    let d = Infinity;
+    for (let i = 0; i < pts.length - 1; i++) d = Math.min(d, segDist(n.tactical, pts[i], pts[i + 1]));
     if (d < LIMITS.minEdgeNodeClearance) err(`edge ${e.id} passes ${d.toFixed(0)} from node ${n.id} (< ${LIMITS.minEdgeNodeClearance})`);
   }
 }

@@ -6,6 +6,7 @@
 import type { StyleSpecification, LayerSpecification, ExpressionSpecification } from 'maplibre-gl';
 import type { MapTheme } from './layers';
 import { PALETTES, SEM } from './theme';
+import { ROUTE_KEYS } from './schematic';
 
 export const OFM_TILEJSON = 'https://tiles.openfreemap.org/planet';
 export const OFM_GLYPHS = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
@@ -49,9 +50,9 @@ interface GeoPalette {
 
 export const GEO_PALETTES: Record<MapTheme, GeoPalette> = {
   defender: {
-    bg: '#0c1014',
-    water: '#030507',
-    coast: 'rgba(91, 205, 220, 0.26)',
+    bg: '#11181d',
+    water: '#03070a',
+    coast: 'rgba(122, 182, 198, 0.36)',
     landuse: '#0f1418',
     park: '#0c1312',
     building: '#12181c',
@@ -64,9 +65,9 @@ export const GEO_PALETTES: Record<MapTheme, GeoPalette> = {
     waterName: 'rgba(91, 205, 220, 0.35)',
   },
   monster: {
-    bg: '#100b0a',
-    water: '#030101',
-    coast: 'rgba(214, 196, 166, 0.3)',
+    bg: '#150f0c',
+    water: '#040101',
+    coast: 'rgba(214, 192, 162, 0.32)',
     landuse: '#140e0d',
     park: '#120d0b',
     building: '#181110',
@@ -219,6 +220,8 @@ function gameLayers(t: MapTheme): LayerSpecification[] {
     P.cam.none,
   ];
   const covColor = t === 'monster' ? '#e8d8bf' : '#3ec4a0';
+  const tone = ['match', ['get', 'rk'], ...ROUTE_KEYS.flatMap((k) => [k, P.route[k]!]), P.street] as unknown as ExpressionSpecification;
+  const width = ['match', ['get', 'cls'], 'interstate', 3.4, 'us', 3.4, 'state', 2.6, 1.5] as unknown as ExpressionSpecification;
   return [
     {
       id: 'g-heat',
@@ -279,53 +282,35 @@ function gameLayers(t: MapTheme): LayerSpecification[] {
         'circle-stroke-opacity': t === 'monster' ? 0 : 0.45,
       },
     },
-    // edges
+    // edges: one tone per route (as on the tactical map); bridges hollow, tunnels dashed
     {
       id: 'g-edge-road',
       type: 'line',
       source: 'g-edges',
       filter: ['match', ['get', 'kind'], ['freeway', 'surface'], true, false],
-      layout: { 'line-cap': 'round' },
-      paint: {
-        'line-color': t === 'monster' ? '#6a5452' : '#55666f',
-        'line-width': ['match', ['get', 'kind'], 'surface', 1.4, 2.2],
-        'line-opacity': 0.95,
-      },
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': tone, 'line-width': width, 'line-opacity': 0.95 },
     },
     {
       id: 'g-edge-tunnel',
       type: 'line',
       source: 'g-edges',
       filter: ['==', ['get', 'kind'], 'tunnel'],
-      paint: { 'line-color': P.tunnel, 'line-width': 2.2, 'line-dasharray': [1, 2] },
-    },
-    {
-      id: 'g-edge-bridge-glow',
-      type: 'line',
-      source: 'g-edges',
-      filter: ['==', ['get', 'kind'], 'bridge'],
-      paint: { 'line-color': P.bridge, 'line-width': 11, 'line-opacity': 0.12, 'line-blur': 3 },
+      paint: { 'line-color': tone, 'line-width': width, 'line-dasharray': [1.4, 1.1] },
     },
     {
       id: 'g-edge-bridge-casing',
       type: 'line',
       source: 'g-edges',
       filter: ['==', ['get', 'kind'], 'bridge'],
-      paint: { 'line-color': P.bridge, 'line-width': 5, 'line-opacity': 0.8 },
+      paint: { 'line-color': tone, 'line-width': ['+', width, 3.2] as unknown as ExpressionSpecification },
     },
     {
       id: 'g-edge-bridge-deck',
       type: 'line',
       source: 'g-edges',
       filter: ['==', ['get', 'kind'], 'bridge'],
-      paint: { 'line-color': P.bridgeDeck, 'line-width': 2.6 },
-    },
-    {
-      id: 'g-edge-bridge-center',
-      type: 'line',
-      source: 'g-edges',
-      filter: ['==', ['get', 'kind'], 'bridge'],
-      paint: { 'line-color': P.bridge, 'line-width': 0.8, 'line-opacity': 0.6, 'line-dasharray': [4, 4] },
+      paint: { 'line-color': GEO_PALETTES[t].water, 'line-width': ['-', width, 0.9] as unknown as ExpressionSpecification },
     },
     {
       id: 'g-edge-hit',
@@ -370,14 +355,14 @@ function gameLayers(t: MapTheme): LayerSpecification[] {
       type: 'line',
       source: 'g-path',
       layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': P.route, 'line-opacity': 0.2, 'line-width': 9, 'line-blur': 2 },
+      paint: { 'line-color': P.path, 'line-opacity': 0.2, 'line-width': 9, 'line-blur': 2 },
     },
     {
       id: 'g-path',
       type: 'line',
       source: 'g-path',
       layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': P.route, 'line-width': 2.4, 'line-dasharray': [3, 1.6] },
+      paint: { 'line-color': P.path, 'line-width': 2.4, 'line-dasharray': [3, 1.6] },
     },
     {
       id: 'g-spokes',

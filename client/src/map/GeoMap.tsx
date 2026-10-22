@@ -15,6 +15,7 @@ import { graph, NETWORK } from '../lib/data';
 import { useGame } from '../state/store';
 import { approachShort, attackPathsFrom, HQ_BY_ID, HQ_SHORT, hopsToHq, NODE_BY_ID, type XY } from './derive';
 import { buildStyle, type GameSource } from './geoStyle';
+import { CORRIDORS, nodeLabel } from './schematic';
 import { resolveTheme, SENSOR_RADIUS_HOPS, type MapInset, type MapLayers, type MapProps, type MapTheme } from './layers';
 import { PALETTES, SEM } from './theme';
 import { NodeTooltip } from './TacticalMap';
@@ -51,8 +52,13 @@ const MAX_BOUNDS: [LngLat, LngLat] = [
 
 setWorkerUrl(workerUrl);
 
+// Edges carry their route identity so the geographic mode draws each freeway in the same tone as the
+// tactical map (route key → palette match expression in geoStyle.ts).
 const EDGES_FC = fc(
-  NETWORK.edges.map((e) => ln([ll(e.a), ll(e.b)], { id: e.id, kind: e.kind, route: e.route, km: e.lengthKm })),
+  NETWORK.edges.map((e) => {
+    const c = CORRIDORS.get(e.id);
+    return ln([ll(e.a), ll(e.b)], { id: e.id, kind: e.kind, route: e.route, km: e.lengthKm, rk: c?.route.key ?? '', cls: c?.route.cls ?? 'street' });
+  }),
 );
 
 /** Rounded hull around an HQ and its approach nodes in a local metric frame (≈1.3 km margin). */
@@ -496,7 +502,8 @@ export default function GeoMap(props: MapProps) {
       for (const n of NETWORK.nodes) {
         const el = document.createElement('div');
         el.className = 'fm-geo-label';
-        el.textContent = n.name;
+        el.textContent = nodeLabel(n.id).text;
+        el.title = n.name;
         L.set(n.id, { el, m: new Marker({ element: el, anchor: 'bottom', offset: [0, -11] }).setLngLat(ll(n.id)).addTo(map) });
       }
   }, []);

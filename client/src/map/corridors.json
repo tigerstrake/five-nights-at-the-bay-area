@@ -1,0 +1,26 @@
+{
+  "$comment": "Tactical-map corridor routing (display only). Each edge is drawn octilinearly (0/45/90 degrees) from a to b: 's' = straight run first, then the 45-degree leg into b; 'd' = 45-degree leg first; 'm' = straight / diagonal / straight with the diagonal centred; an array = explicit waypoints. Edges not listed use 's'. Read by client/src/map/schematic.ts and scripts/cameras/validate-network.mjs.",
+  "radius": 16,
+  "hints": {
+    "e-sr37--san-rafael": "d",
+    "e-vallejo--benicia": "s",
+    "e-benicia--walnut-creek": "d",
+    "e-san-pablo--carquinez": "s",
+    "e-caldecott--walnut-creek": "s",
+    "e-walnut-creek--fremont-84": "s",
+    "e-oak-880--hayward-238": "s",
+    "e-hayward-238--fremont-84": "s",
+    "e-fremont-84--sj-880-101": "d",
+    "e-280-canada--el-camino-emb": "d",
+    "e-us101-alemany--hillsdale": "d",
+    "e-280-canada--sj-i280": [
+      [265, 865],
+      [375, 975]
+    ],
+    "e-el-camino-emb--sj-alameda": "s",
+    "e-embarcadero-101--sj-880-101": "s",
+    "e-univ-84--willow-101": "s",
+    "e-willow-101--embarcadero-101": "s",
+    "e-embarcadero-101--el-camino-emb": "s"
+  }
+}

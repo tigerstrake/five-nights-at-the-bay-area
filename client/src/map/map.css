@@ -16,10 +16,19 @@
 }
 .fm-root .fm-region {
   font-family: var(--fm-display);
-  font-weight: 600;
+  font-weight: 700;
 }
 .fm-root .fm-water {
   font-style: italic;
+}
+/* Route shields and HQ names use Overpass, the open descendant of Highway Gothic (Caltrans signage). */
+.fm-root .fm-shield {
+  font-family: var(--fm-display);
+  font-weight: 800;
+}
+.fm-root .fm-hq-label {
+  font-family: var(--fm-display);
+  font-weight: 800;
 }
 .fm-root [data-node]:focus {
   outline: none;
@@ -261,6 +270,13 @@
   color: #b9a898;
   background: rgba(10, 5, 5, 0.92);
   border-color: rgba(110, 70, 66, 0.5);
+}
+.fm-legend-credit {
+  margin-top: 5px;
+  max-width: 190px;
+  font-size: 9.5px;
+  line-height: 1.35;
+  opacity: 0.6;
 }
 .fm-legend-row {
   display: flex;

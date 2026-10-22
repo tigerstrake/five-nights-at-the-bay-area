@@ -179,9 +179,13 @@ All boxes keep out of the bottom timestamp bar. 1-3 boxes per camera. For any ca
   Dumbarton Bridge (SR-84), US-101 / I-280 / El Camino Real / Sand Hill Road on the Peninsula, and I-880 / I-280 into San Jose. `lengthKm` = great-circle x 1.2.
   Long edges (e.g. 60 km I-680 Walnut Creek -> Fremont, 45 km I-280) exist because we are limited to ~36 cameras; a travel-time model should clamp or scale by `lengthKm`.
 - Degree: 2:16, 3:16, 4:4 nodes. No node above 4. Graph is connected, has **no cut edge and no articulation node**.
-- **`tactical` coordinates**: 0..1000 on both axes, **x east, y increasing southward (screen coordinates), so north is at the top**. Hand-placed to keep the Bay recognizable:
-  Marin / North Bay top-left, Carquinez-Benicia top-right, the Golden Gate / SF peninsula down the left, Bay Bridge across the middle, Oakland / East Bay on the right,
-  Peninsula and San Jose at the bottom. Minimum node spacing is 61 units; no edge passes within 18 units of a non-endpoint node; HQs do not overlap nodes.
+- **`tactical` coordinates** (display only; the engine never reads them): 0..1000 on both axes, **x east, y increasing southward (screen coordinates), so north is at the top**.
+  Owned by the map module since the schematic redesign: a "freeway transit map" layout (Marin trunk on the west, I-80 / I-880 down the East Bay shore,
+  SF and Oakland HQs inside their approach triangles, the Peninsula's US-101 / El Camino / I-280 running to San Jose). Each edge is drawn as an
+  octilinear corridor routed by `client/src/map/corridors.json`; the coastline is Natural Earth 1:10m land (public domain) warped onto this layout by
+  `client/src/map/tools/build-shore.mjs`. Minimum node spacing is 55 units; no drawn corridor passes within 18 units of a non-endpoint node
+  (`validate-network.mjs` routes the corridors the same way); HQs do not overlap nodes. After moving nodes, re-run
+  `npx tsx client/src/map/tools/build-shore.mjs` (a client test fails while the shoreline is stale).
 
 ### Headquarters (not graph nodes)
 
