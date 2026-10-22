@@ -1,23 +1,24 @@
+# Render Blueprint: one free web service serving the client and the Socket.IO game server on one URL.
+# Match state is in memory, so keep exactly one instance.
 services:
   - type: web
-    name: fnab
-    runtime: docker
-    dockerfilePath: ./Dockerfile
-    plan: starter
+    name: five-nights-bay-area
+    runtime: node
+    plan: free
+    region: oregon
     numInstances: 1
+    # NODE_ENV stays unset during the build so devDependencies (vite, tailwind, typescript) are installed;
+    # `npm start` sets NODE_ENV=production for the server process.
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
     healthCheckPath: /api/health
+    autoDeploy: true
     envVars:
-      - key: NODE_ENV
-        value: production
-      - key: PORT
-        value: "10000"
+      - key: NODE_VERSION
+        value: "24"
       - key: CAMERA_MODE
         value: auto
-      - key: CAMERA_CHECK_INTERVAL_MS
-        value: "300000"
-      - key: CAMERA_TIMEOUT_MS
-        value: "8000"
-      - key: CAMERA_CONCURRENCY
-        value: "3"
-      - key: CAMERA_REFRESH_MS
-        value: "60000"
+      # Render's load balancer reaches the service from its private network; trusting it lets per-player
+      # rate limits use the real client address from X-Forwarded-For. Peers outside this range are never trusted.
+      - key: TRUST_PROXY
+        value: 10.0.0.0/8
