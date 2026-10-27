@@ -4,8 +4,10 @@
 //   "Unavailable" : 13.4-13.5 KB, mean 239, std 57, white fraction 0.93
 //   black / blank : mean 11 std 1 (black) · 2.7 KB, 99% white (overexposed/blank)
 import { decode as decodeJpeg } from 'jpeg-js';
+import { measureFrameLight, type FrameLight } from '@fnab/shared';
 
 export interface PixelMetrics {
+  light?: FrameLight;
   width: number;
   height: number;
   /** Mean luminance 0..255 over the image excluding the burned-in timestamp bar. */
@@ -111,7 +113,7 @@ export function analyzeJpeg(bytes: Uint8Array): PixelMetrics | null {
     }
   }
   const hf = count ? diff / count : 0;
-  return { width: w, height: h, mean, std, hf, hfRatio: hf / Math.max(std, 1), whiteFrac: white / n, blackFrac: black / n };
+  return { light: measureFrameLight(data, w, h), width: w, height: h, mean, std, hf, hfRatio: hf / Math.max(std, 1), whiteFrac: white / n, blackFrac: black / n };
 }
 
 /** Classify decoded pixels. Returns the failure kind, or null when the frame looks like a real picture. */

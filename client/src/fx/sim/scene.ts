@@ -1,5 +1,6 @@
 // Renders a SimLayout as a low-resolution night CCTV picture: a baked static layer (sky, road,
 // structures, lamp pools) plus per-frame traffic, lamp flicker, sensor noise and macroblocking.
+import type { TimeOfDay } from '@fnab/shared';
 import { ctx2d, getGrainTiles, makeCanvas, tileFill } from '../core/noise';
 import { clamp, mulberry32, rand01, range } from '../core/rng';
 import type { PlacementRegion } from '../index';
@@ -51,6 +52,15 @@ function drawGlow(ctx: CanvasRenderingContext2D, name: Parameters<typeof glow>[0
 
 export class SimScene {
   readonly L: SimLayout;
+  private timeOfDay: TimeOfDay = 'night';
+
+  setTimeOfDay(value: TimeOfDay) {
+    if (this.timeOfDay === value) return;
+    this.timeOfDay = value;
+    this.image = null;
+    this.staticLayer = null;
+  }
+
   W = 0;
   H = 0;
   private staticLayer: HTMLCanvasElement | null = null;
@@ -148,6 +158,8 @@ export class SimScene {
       ctx.fillRect(0, 0, W, H);
       return c;
     }
+
+    if (this.timeOfDay !== 'night') return this.buildDaylight();
 
     // sky with sodium skyglow at the horizon
     const sky = ctx.createLinearGradient(0, 0, 0, hyP + 2);
@@ -351,6 +363,53 @@ export class SimScene {
       g.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, W, H);
+    }
+    return c;
+  }
+
+  /** Separate daylight palette: bright asphalt and sky, no baked night lights. */
+  private buildDaylight(): HTMLCanvasElement {
+    const { W, H, L } = this;
+    const dusk = this.timeOfDay === 'dusk';
+    const c = makeCanvas(W, H);
+    const ctx = ctx2d(c);
+    const horizon = L.hy * H;
+    const sky = ctx.createLinearGradient(0, 0, 0, horizon);
+    sky.addColorStop(0, dusk ? '#414f75' : '#6dadd2');
+    sky.addColorStop(1, dusk ? '#e5a16e' : '#d1e0e1');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = dusk ? '#44484d' : '#688074';
+    ctx.beginPath(); ctx.moveTo(0, horizon);
+    L.hills.forEach((h, i) => ctx.lineTo(i * W / (L.hills.length - 1), horizon - h * H * 0.075));
+    ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.fill();
+    ctx.fillStyle = L.kind === 'bridge' ? (dusk ? '#5b667b' : '#7dabb9') : (dusk ? '#52544c' : '#7b8867');
+    ctx.fillRect(0, horizon, W, H - horizon);
+    ctx.fillStyle = dusk ? '#58555a' : '#777d80';
+    this.quad(ctx, L.edgeL - 0.3, L.edgeR + 0.3, 0.6, L.zMax); ctx.fill();
+    ctx.fillStyle = dusk ? '#beb3a0' : '#e4e3d6';
+    for (const lane of L.lanes) for (let z = 0.8; z < L.zMax; z += 4) {
+      this.quad(ctx, lane.X + 0.48, lane.X + 0.52, z, z + 1.3); ctx.fill();
+    }
+    for (const x of [L.edgeL + 0.35, L.edgeR - 0.35]) {
+      this.quad(ctx, x, x + 0.05, 0.6, L.zMax); ctx.fill();
+    }
+    ctx.fillStyle = dusk ? '#77716a' : '#b1b1a7';
+    this.wall(ctx, L.median, 0.6, L.zMax, 0, 0.32); ctx.fill();
+    for (const [edge, present] of [[L.edgeL - 0.3, L.soundWall.left], [L.edgeR + 0.3, L.soundWall.right]] as const) {
+      if (present) { this.wall(ctx, edge, 0.6, L.zMax, 0, L.soundWall.h); ctx.fill(); }
+    }
+    if (L.towers) this.drawTowers(ctx);
+    if (L.overpass) this.drawOverpass(ctx);
+    if (L.portal) this.drawPortal(ctx, mulberry32(L.seed));
+    if (L.gantry) this.drawGantry(ctx, mulberry32(L.seed));
+    if (dusk) {
+      const x = W * 0.72, y = horizon - H * 0.035;
+      const glare = ctx.createRadialGradient(x, y, 1, x, y, W * 0.36);
+      glare.addColorStop(0, 'rgba(255,228,163,0.9)');
+      glare.addColorStop(0.1, 'rgba(255,186,102,0.45)');
+      glare.addColorStop(1, 'rgba(255,174,90,0)');
+      ctx.fillStyle = glare; ctx.fillRect(0, 0, W, H);
     }
     return c;
   }
@@ -671,6 +730,7 @@ export class SimScene {
   private drawDynamic(ctx: CanvasRenderingContext2D, t: number) {
     const L = this.L;
     ctx.globalCompositeOperation = 'lighter';
+    if (this.timeOfDay !== 'day') {
     // lamp heads (one may buzz/flicker)
     for (let i = 0; i < L.lamps.length; i++) {
       const lamp = L.lamps[i];
@@ -718,6 +778,7 @@ export class SimScene {
         drawGlow(ctx, green ? 'led' : 'red', this.px(lane.X, L.gantry.z), this.py(L.gantry.z, L.gantry.h + 0.4), Math.max(1.2, this.unit(L.gantry.z) * 0.3), 0.9);
       }
     }
+    }
     // traffic
     ctx.globalAlpha = 1;
     const zMin = 0.75;
@@ -735,7 +796,7 @@ export class SimScene {
     cars.sort((a, b) => b.z - a.z); // far to near
     for (const c of cars) this.drawVehicle(ctx, c.z, c.lane, c.truck, c.j, t);
     // overpass traffic (crossing horizontally)
-    if (L.overpass) {
+    if (L.overpass && this.timeOfDay !== 'day') {
       const o = L.overpass;
       const y = this.py(o.z, o.h + 0.5);
       for (let j = 0; j < 4; j++) {
@@ -759,6 +820,16 @@ export class SimScene {
     const yG = this.py(z, 0);
     const xC = this.px(lane.X, z);
     const lh = truck ? 0.4 : 0.28;
+    if (this.timeOfDay === 'day') {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = Math.max(0.4, fog);
+      ctx.fillStyle = ['#b9c3c7', '#314757', '#864c43', '#d2c8b5'][j % 4];
+      ctx.fillRect(xC - u * 0.4, yG - u * (truck ? 1.2 : 0.6), Math.max(1, u * 0.8), Math.max(1, u * (truck ? 1.2 : 0.6)));
+      ctx.fillStyle = '#344854';
+      ctx.fillRect(xC - u * 0.27, yG - u * 0.56, u * 0.54, u * 0.2);
+      ctx.globalAlpha = 1;
+      return;
+    }
     // body (dark occluder), only meaningful up close
     if (z < 14) {
       ctx.globalCompositeOperation = 'source-over';

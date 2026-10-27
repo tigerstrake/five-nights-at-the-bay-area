@@ -83,6 +83,7 @@ export function MainFeed({ ctx, cam, pinned, onPin }: { ctx: RoomCtx; cam: Camer
           status={cam.status}
           interference={cam.interference}
           manifestation={cam.manifestation}
+          alert={!!fresh || held}
           repairProgress={cam.repairProgress}
           t0Epoch={view.t0Epoch}
           className="h-full w-full"

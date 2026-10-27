@@ -90,8 +90,8 @@ export function onSimImagesLoaded(fn: () => void): () => void {
 }
 
 /** Deterministic image choice for a scene; prefers images whose first tag matches the scene kind. */
-export function simImageFor(tags: string[], kind: string, seed: number): SimImage | null {
-  if (!images.length || !fxAssetsEnabled()) return null;
+export function simImageFor(tags: string[], kind: string, seed: number, timeOfDay: 'day' | 'dusk' | 'night' = 'night'): SimImage | null {
+  if (timeOfDay !== 'night' || !images.length || !fxAssetsEnabled()) return null;
   const want = new Set(tags.map((t) => t.toLowerCase()));
   let pool = images.filter((i) => i.tags[0] === kind);
   if (!pool.length) pool = images.filter((i) => i.tags.some((t) => want.has(t)));

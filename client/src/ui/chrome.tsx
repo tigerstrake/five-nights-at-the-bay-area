@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import { DEFAULT_CONFIG } from '@fnab/shared';
 import { audio } from '../audio';
 import { isReducedMotion, setFxReducedMotion } from '../fx';
+import { useMotionSetting, setMotionSetting } from '../feeds/motion';
 import { subscribeFxSettings } from '../fx/core/settings';
 import { useGame } from '../state/store';
 import { coach, useAnyHintsOn } from '../coach/store';
@@ -176,6 +177,7 @@ export function SettingsMenu({
   const { muted, volume } = useAudioSettings();
   const flash = useReduceFlashing();
   const hints = useAnyHintsOn();
+  const motion = useMotionSetting();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -259,6 +261,13 @@ export function SettingsMenu({
               label="Reduce flashing"
               hint="Softer static, no screen shake or strobes"
               testId="reduce-flashing"
+            />
+            <Switch
+              on={motion}
+              onChange={setMotionSetting}
+              label="Simulated motion for stills"
+              hint="Main monitor only; real frames return during sightings"
+              testId="simulated-motion-setting"
             />
             <Switch
               on={hints}

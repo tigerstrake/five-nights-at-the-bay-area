@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { CAMERAS, timeOfDayAt, type TimeOfDay } from '@fnab/shared';
 import { ctx2d } from '../core/noise';
 import { addFxTask } from '../core/scheduler';
 import { FX_FONT_MONO } from '../core/fonts';
@@ -12,6 +13,9 @@ export interface SimulatedFeedProps {
   tags: string[];
   variant: 'thumb' | 'main';
   className?: string;
+  timeOfDay?: TimeOfDay;
+  /** Animated replacement for an optional real still: always procedural, never a bundled photo. */
+  proceduralOnly?: boolean;
   /**
    * Draw the persistent "SIMULATED FEED" stamp (default true). Only pass false when the host draws its own
    * equally unmistakable simulated label on top (e.g. CameraFeed thumbnails), so small tiles carry one label.
@@ -23,7 +27,7 @@ const FPS = { thumb: 10, main: 15 } as const; // CCTV-ish cadence
 const RES = { thumb: 240, main: 480 } as const; // internal width: deliberately low-res
 
 /** Procedural CCTV-style scene used when no real imagery is available. Always labelled SIMULATED. */
-export function SimulatedFeed({ cameraId, seed, tags, variant, className, stamp = true }: SimulatedFeedProps) {
+export function SimulatedFeed({ cameraId, seed, tags, variant, className, stamp = true, timeOfDay, proceduralOnly = false }: SimulatedFeedProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const tagKey = tags.join(',');
@@ -34,6 +38,10 @@ export function SimulatedFeed({ cameraId, seed, tags, variant, className, stamp 
     if (!root || !canvas) return;
     const scene = new SimScene(getSimLayout(cameraId, seed, tags));
     const ctx = ctx2d(canvas);
+    const camera = CAMERAS.find(c => c.id === cameraId);
+    const currentTimeOfDay = () => timeOfDay ?? timeOfDayAt(Date.now(), camera?.lat, camera?.lon);
+    let lighting = currentTimeOfDay();
+    scene.setTimeOfDay(lighting);
     let disposed = false;
     let simImg: ReturnType<typeof simImageFor> = null;
     const publishPlacement = () => {
@@ -56,7 +64,7 @@ export function SimulatedFeed({ cameraId, seed, tags, variant, className, stamp 
     };
     loadSimImages().then(() => {
       if (disposed) return;
-      simImg = simImageFor(tags, scene.L.kind, scene.L.seed);
+      simImg = proceduralOnly ? null : simImageFor(tags, scene.L.kind, scene.L.seed, lighting);
       if (simImg) scene.setImage(simImg.img);
       publishPlacement();
     });
@@ -79,6 +87,14 @@ export function SimulatedFeed({ cameraId, seed, tags, variant, className, stamp 
       el: root,
       fps: () => FPS[variant],
       render: () => {
+        const next = currentTimeOfDay();
+        if (next !== lighting) {
+          lighting = next;
+          scene.setTimeOfDay(lighting);
+          simImg = proceduralOnly ? null : simImageFor(tags, scene.L.kind, scene.L.seed, lighting);
+          scene.setImage(simImg?.img ?? null);
+          publishPlacement();
+        }
         if (scene.W > 0) scene.render(ctx, Date.now());
       },
     });
@@ -88,7 +104,7 @@ export function SimulatedFeed({ cameraId, seed, tags, variant, className, stamp 
       ro.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cameraId, seed, tagKey, variant]);
+  }, [cameraId, seed, tagKey, variant, timeOfDay, proceduralOnly]);
 
   const main = variant === 'main';
   return (

@@ -7,6 +7,7 @@
 // keeps running across errors (bounded retries, then the parent re-arms) and resumes immediately when the tab
 // becomes visible again or when the still is re-activated after live video stops.
 import { useEffect, useRef, useState } from 'react';
+import { frameConsistency, measureFrameLight, timeOfDayAt } from '@fnab/shared';
 import { bustUrl, looksUnavailable } from './sourceUtils';
 import { nextPollDelay } from './freshness';
 import { serverNow } from '../state/store';
@@ -40,6 +41,10 @@ export interface SnapshotFrameInfo {
 export interface SnapshotLayerProps {
   /** Snapshot URL from the camera service (carries `?v=<image timestamp>`; changes when the server saw a new frame). */
   url: string;
+  servedFrame?: 'current' | 'history';
+  imageAt?: number | null;
+  lat?: number;
+  lon?: number;
   /** Fallback poll interval when the image time is unknown. */
   refreshMs: number;
   /** False while live video is covering the still (no polling, bandwidth saved). */
@@ -53,7 +58,7 @@ export interface SnapshotLayerProps {
   fxSource: boolean;
   onFrame: (info: SnapshotFrameInfo) => void;
   /** Local failure: the source cannot supply a usable picture -> parent falls back to the simulation. */
-  onFail: (why: 'card' | 'black' | 'error') => void;
+  onFail: (why: 'card' | 'black' | 'error' | 'time-mismatch') => void;
 }
 
 function FadeImg({ src, alt, wipe, top }: { src: string; alt: string; wipe: boolean; top: boolean }) {
@@ -117,7 +122,7 @@ export function SnapshotLayer(p: SnapshotLayerProps) {
       }, ms);
     };
     const scheduleNext = () => {
-      if (!p.active) return;
+      if (!p.active || p.servedFrame === 'history') return;
       schedule(nextPollDelay(st.imageAt, serverNow(), p.refreshMs));
     };
 
@@ -170,10 +175,15 @@ export function SnapshotLayer(p: SnapshotLayerProps) {
         c.width = 40;
         c.height = 32;
         const g = c.getContext('2d', { willReadFrequently: true });
-        let bad: 'card' | 'black' | null = null;
+        let bad: 'card' | 'black' | 'time-mismatch' | null = null;
         if (g) {
           g.drawImage(img, 0, 0, c.width, c.height);
-          bad = looksUnavailable(g.getImageData(0, 0, c.width, c.height).data, c.width, c.height);
+          const pixels = g.getImageData(0, 0, c.width, c.height).data;
+          bad = looksUnavailable(pixels, c.width, c.height);
+          const light = measureFrameLight(pixels, c.width, c.height);
+          const tod = timeOfDayAt(serverNow(), p.lat, p.lon);
+          if (frameConsistency(light, tod, at, serverNow()).timeMismatch ||
+              (p.servedFrame === 'history' && (at === null || at !== p.imageAt))) bad = 'time-mismatch';
         }
         c.width = c.height = 0;
         if (cancelled || bad) {
@@ -228,7 +238,7 @@ export function SnapshotLayer(p: SnapshotLayerProps) {
     else if (p.active && !alreadyShown) void load(bustUrl(p.url, Math.floor(serverNow() / BUCKET_MS)));
     else scheduleNext();
     const onVisible = () => {
-      if (document.hidden || cancelled || !p.active) return;
+      if (document.hidden || cancelled || !p.active || p.servedFrame === 'history') return;
       if (!timer || nextPollDelay(st.imageAt, serverNow(), p.refreshMs) <= 2_000) void load(bustUrl(p.url, Math.floor(serverNow() / BUCKET_MS)));
     };
     document.addEventListener('visibilitychange', onVisible);
@@ -239,7 +249,7 @@ export function SnapshotLayer(p: SnapshotLayerProps) {
       if (timer) clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [p.url, p.refreshMs, p.active, p.cameraId, p.variant]);
+  }, [p.url, p.refreshMs, p.active, p.cameraId, p.variant, p.servedFrame, p.imageAt, p.lat, p.lon]);
 
   // Revoke everything on unmount.
   useEffect(() => {

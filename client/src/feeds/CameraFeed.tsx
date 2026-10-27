@@ -5,7 +5,8 @@
 // of a ticking clock, and a visible refresh wipe when a new frame arrives. Nothing here fabricates motion.
 import { useCallback, useEffect, useState } from 'react';
 import clsx from 'clsx';
-import type { CameraGameStatus, CameraSourceMode, ManifestationState } from '@fnab/shared';
+import { timeOfDayAt, type CameraGameStatus, type CameraSourceMode, type ManifestationState } from '@fnab/shared';
+import { motionForFrame, useMotionSetting } from './motion';
 import { FeedFxOverlay, SimulatedFeed, getSimulatedPlacement, isReducedMotion, type FeedFxParams, type FeedSourceMode } from '../fx';
 import { useGame, serverNow } from '../state/store';
 import { cameraRecord, cameraSeed, graph } from '../lib/data';
@@ -60,6 +61,10 @@ export function CameraFeed(p: CameraFeedProps) {
   const [newFrameAt, setNewFrameAt] = useState<number | null>(null);
   const now = useNow(1000); // keeps the OSD clock, still age and countdown ticking
   const reduced = isReducedMotion();
+  const motionEnabled = useMotionSetting();
+  const [motionRequested, setMotionRequested] = useState(true);
+  const timeOfDay = timeOfDayAt(serverNow(), rec?.lat, rec?.lon);
+  useEffect(() => { setFrameAt(null); setNewFrameAt(null); }, [p.cameraId, source?.snapshotUrl]);
 
   // A new server verdict (mode / stream / newer still) earns a fresh local attempt.
   useEffect(() => {
@@ -100,7 +105,13 @@ export function CameraFeed(p: CameraFeedProps) {
   else if (livePlaying) mode = 'live';
   else if (snapUrl || holdingVideo) mode = 'snapshot';
   else mode = 'simulated';
+  const stillOnly = serverMode === 'snapshot' && !source?.streamUrl && !!snapUrl;
+  const sighting = !!p.manifestation || !!p.alert;
+  const simulatedMotion = motionForFrame(!thumb, stillOnly, motionEnabled, motionRequested, sighting);
+  if (simulatedMotion) mode = 'simulated';
   const showSim = mode === 'simulated';
+  // A sighting resets the choice: the real image remains selected after the sighting ends.
+  useEffect(() => { if (sighting) setMotionRequested(false); }, [sighting]);
   const feedState: FeedState =
     mode === 'offline'
       ? 'offline'
@@ -174,7 +185,7 @@ export function CameraFeed(p: CameraFeedProps) {
       : liveCapable && streamDown && !thumb
         ? `live video dropped · retry in ${retryIn}s`
         : null;
-  const still = feedState === 'still' || feedState === 'connecting' ? stillLabels(fresh, p.variant, liveNote) : null;
+  const still = feedState === 'still' || feedState === 'connecting' ? stillLabels(fresh, p.variant, liveNote, source?.servedFrame) : null;
   const newFrame = newFrameAt !== null && now - newFrameAt < NEW_FRAME_MS && (feedState === 'still' || feedState === 'connecting');
   const badgeTitle =
     feedState === 'live'
@@ -220,7 +231,7 @@ export function CameraFeed(p: CameraFeedProps) {
                 ? 'SIMULATED'
                 : 'OFFLINE'}
         {/* countdown to the next Caltrans frame: the still's refresh cycle made visible */}
-        {still && fresh.state !== 'unknown' && (
+        {still && source?.servedFrame !== 'history' && fresh.state !== 'unknown' && (
           <span
             aria-hidden
             data-testid="still-countdown"
@@ -274,21 +285,30 @@ export function CameraFeed(p: CameraFeedProps) {
           tags={rec?.tags ?? node?.tags ?? []}
           variant={p.variant}
           stamp={!thumb}
+          timeOfDay={timeOfDay}
+          proceduralOnly={simulatedMotion}
         />
       )}
       {snapUrl && (
+        <div className="absolute inset-0" style={{ opacity: simulatedMotion ? 0 : 1, transition: sighting || reduced ? 'none' : 'opacity 800ms ease-in-out' }}>
         <SnapshotLayer
+          key={`${p.cameraId}:${source?.servedFrame}`}
           url={snapUrl}
+          servedFrame={source?.servedFrame}
+          imageAt={source?.imageAt}
+          lat={rec?.lat}
+          lon={rec?.lon}
           refreshMs={source?.refreshMs ?? DEFAULT_REFRESH_MS}
           active={!livePlaying}
           alt={rec?.name ?? p.cameraId}
           wipe={!reduced}
           cameraId={p.cameraId}
           variant={p.variant}
-          fxSource={!videoVisible}
+          fxSource={!videoVisible && !simulatedMotion}
           onFrame={onFrame}
           onFail={onSnapFail}
         />
+        </div>
       )}
       {wantsStream && (
         <video
@@ -305,6 +325,19 @@ export function CameraFeed(p: CameraFeedProps) {
       {/* offline: FeedFxOverlay draws its own CAMERA OFFLINE card */}
       <FeedFxOverlay params={params} />
 
+      {!thumb && stillOnly && motionEnabled && (
+        <button type="button" data-testid="simulated-motion-toggle" aria-pressed={simulatedMotion}
+          disabled={sighting} onClick={e => { e.stopPropagation(); setMotionRequested(v => !v); }}
+          className="absolute bottom-8 left-2 z-10 border border-warn/70 bg-black/80 px-2 py-1 font-mono text-[10px] text-warn disabled:opacity-60"
+          title={sighting ? 'Real frame shown during a sighting' : 'Switch between this camera’s real still and labelled procedural motion'}>
+          SIMULATED MOTION · {simulatedMotion ? 'ON · SHOW REAL STILL' : 'OFF'}
+        </button>
+      )}
+      {!thumb && showSim && !simulatedMotion && source?.simulatedReason && (
+        <div data-testid="feed-simulated-reason" className="pointer-events-none absolute left-2 top-12 max-w-[80%] bg-black/75 px-1 font-mono text-[10px] text-warn">
+          {source.simulatedReason}
+        </div>
+      )}
       {/* OSD */}
       <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-1 bg-gradient-to-b from-black/70 to-transparent px-1.5 pb-3 pt-1">
         <div

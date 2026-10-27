@@ -59,6 +59,7 @@ export function normalizeFeedRecord(rec) {
     inServiceRaw: str(c.inService),
     imageDescription: str(img.imageDescription),
     imageUrl: url(st.currentImageURL),
+    referenceImageUrls: Array.from({ length: 12 }, (_, i) => url(st[`referenceImage${i + 1}`])).filter(Boolean),
     imageUpdateFrequencyMin: num(st.currentImageUpdateFrequency),
     streamUrl: url(img.streamingVideoURL),
     recordedAt: epoch ? new Date(epoch * 1000).toISOString() : null,

@@ -4,3 +4,5 @@ export * from './graph';
 export * from './protocol';
 export * from './data';
 export * from './rng';
+export * from './sun';
+export * from './frameLight';

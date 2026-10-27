@@ -12,9 +12,10 @@
 //   live      HLS playlist + segment verified AND a good snapshot (thumbnails/fallback need the snapshot)
 //   snapshot  good snapshot (and no verified stream, or mode=snapshot)
 //   simulated anything else (labelled fallback); `reason` says why. `offline` is never emitted by this service.
-import type { CameraRecord, CameraSourceStatus } from '@fnab/shared';
+import { frameConsistency, frameTimeOfDay, timeOfDayAt, MAX_FRAME_AGE_MS, type CameraRecord, type CameraSourceStatus } from '@fnab/shared';
+import { D4_STATUS_URL, publishedHistory, trustedHistoryUrls } from './history';
 import type { CameraDiagnostics, CameraHealth, CameraMode, CameraService, ProbeDiagnostics } from './types';
-import { MAX_IMAGE_BYTES, classifySnapshot, looksLikeTsSegment, parsePlaylist, type SnapshotVerdict } from './classify';
+import { MAX_IMAGE_BYTES, classifySnapshot, looksLikeTsSegment, parsePlaylist } from './classify';
 
 export interface CaltransConfig {
   /** Healthy re-check cadence per camera and per probe kind. */
@@ -74,7 +75,7 @@ export const DEFAULT_CALTRANS_CONFIG: CaltransConfig = {
   backoffMaxMs: 600_000,
   streamBackoffBaseMs: 60_000,
   streamBackoffMaxMs: 900_000,
-  staleMs: 15 * 60_000,
+  staleMs: MAX_FRAME_AGE_MS,
   imageCadenceMs: 5 * 60_000,
   phaseMarginMs: 40_000,
   overdueRecheckMs: 60_000,
@@ -120,6 +121,10 @@ interface Cam {
   snap: Probe;
   stream: Probe | null;
   imageAt: number | null;
+  selectedUrl: string | null;
+  timeMismatch: boolean;
+  mismatchReason: string | null;
+  servedFrame: 'current' | 'history';
   lastOkSnapAt: number | null;
   published: CameraSourceStatus;
   sig: string;
@@ -164,6 +169,10 @@ export class CaltransCameraService implements CameraService {
   private lastStartAt = 0;
   private lastCheckAt: number | null = null;
   private checks = 0;
+  private metadata: { until: number; value: Promise<unknown> } | null = null;
+  private requestGate: Promise<void> = Promise.resolve();
+  private nextRequestAt = 0;
+  private manualTick = false;
 
   constructor(private readonly opts: CaltransServiceOptions) {
     this.mode = opts.mode;
@@ -181,6 +190,10 @@ export class CaltransCameraService implements CameraService {
         snap: newProbe(t),
         stream: listed ? newProbe(t) : null,
         imageAt: null,
+        selectedUrl: rec.imageUrl,
+        timeMismatch: false,
+        mismatchReason: null,
+        servedFrame: 'current',
         lastOkSnapAt: null,
         published: null as never,
         sig: '',
@@ -273,6 +286,7 @@ export class CaltransCameraService implements CameraService {
    * The background loop only calls `pump()`; tests call this with an injected clock.
    */
   async tick(): Promise<void> {
+    this.manualTick = true;
     for (let guard = 0; guard < 10_000; guard++) {
       const started = this.pump(true);
       if (!started && this.running.size === 0) break;
@@ -280,6 +294,7 @@ export class CaltransCameraService implements CameraService {
     }
     await Promise.allSettled([...this.running]);
     this.flushNotify();
+    this.manualTick = false;
   }
 
   private schedulePump(delay: number): void {
@@ -359,27 +374,71 @@ export class CaltransCameraService implements CameraService {
 
   // ───────────────────────────────────── probes ─────────────────────────────────────
 
-  private async runSnapshot(cam: Cam): Promise<void> {
-    const url = cam.rec.imageUrl!;
+  private async snapshot(url: string, cam: Cam) {
     const res = await this.get(url, { binary: true });
-    const verdict: SnapshotVerdict = classifySnapshot({
-      status: res.status,
-      contentType: res.headers?.get('content-type') ?? null,
-      body: res.body,
-      lastModified: res.headers?.get('last-modified') ?? null,
-      serverDate: res.headers?.get('date') ?? null,
-      now: this.now(),
-      staleMs: this.cfg.staleMs,
-      error: res.error,
+    const verdict = classifySnapshot({
+      status: res.status, contentType: res.headers?.get('content-type') ?? null,
+      body: res.body, lastModified: res.headers?.get('last-modified') ?? null,
+      serverDate: res.headers?.get('date') ?? null, now: this.now(),
+      // Consistency uses OUR clock; cached response Date must not make an old frame look fresh.
+      staleMs: Infinity, error: res.error,
     });
-    this.noteHost(this.hostOf(url), verdict.ok ? false : verdict.transport, cam.rec.id);
-    if (verdict.ok) {
-      cam.imageAt = verdict.imageAt ?? this.now();
-      cam.lastOkSnapAt = this.now();
-      this.applySuccess(cam, 'snapshot', `ok ${verdict.bytes} B`);
-    } else {
-      this.applyFailure(cam, 'snapshot', { hard: verdict.hard, transport: verdict.transport, reason: verdict.reason, last: verdict.kind });
+    this.noteHost(this.hostOf(url), !verdict.ok && verdict.transport, cam.rec.id);
+    return verdict;
+  }
+
+  private async historyUrls(cam: Cam): Promise<string[]> {
+    if (cam.rec.referenceImageUrls) return trustedHistoryUrls(cam.rec.referenceImageUrls, cam.rec);
+    // One shared, bounded metadata fetch per cadence, including failed attempts. Only on mismatch.
+    if (!this.metadata || this.metadata.until <= this.now()) {
+      this.metadata = { until: this.now() + this.cfg.intervalMs, value: (async () => {
+        const res = await this.get(D4_STATUS_URL, { text: true, maxBytes: 4_000_000 });
+        this.noteHost(this.hostOf(D4_STATUS_URL), res.status === null, cam.rec.id);
+        if (res.status !== 200) return null;
+        try { return JSON.parse(res.text ?? ''); } catch { return null; }
+      })() };
     }
+    return trustedHistoryUrls(publishedHistory(await this.metadata.value, cam.rec), cam.rec);
+  }
+
+  private async runSnapshot(cam: Cam): Promise<void> {
+    const verdict = await this.snapshot(cam.rec.imageUrl!, cam);
+    if (!verdict.ok) {
+      this.applyFailure(cam, 'snapshot', { hard: verdict.hard, transport: verdict.transport, reason: verdict.reason, last: verdict.kind });
+      return;
+    }
+    const now = this.now();
+    const tod = timeOfDayAt(now, cam.rec.lat, cam.rec.lon);
+    const light = verdict.metrics!.light!;
+    const check = frameConsistency(light, tod, verdict.imageAt, now, this.cfg.staleMs);
+    cam.timeMismatch = check.timeMismatch;
+    cam.mismatchReason = check.reason;
+    cam.imageAt = verdict.imageAt;
+    cam.selectedUrl = cam.rec.imageUrl;
+    cam.servedFrame = 'current';
+    if (check.timeMismatch) {
+      // Probe sequentially inside the existing scheduler slot. All GETs share pacing, deadlines and breaker.
+      let best: { url: string; at: number } | null = null;
+      for (const url of await this.historyUrls(cam)) {
+        const h = await this.snapshot(url, cam);
+        if (!h.ok || h.imageAt === null || h.imageAt > this.now() || !h.metrics?.light) continue;
+        const hc = frameConsistency(h.metrics.light, timeOfDayAt(this.now(), cam.rec.lat, cam.rec.lon), h.imageAt, this.now(), this.cfg.staleMs);
+        // History must positively match, not merely be ambiguous. Capture time is mandatory.
+        if (!hc.timeMismatch && frameTimeOfDay(h.metrics.light) === tod && (!best || h.imageAt > best.at)) best = { url, at: h.imageAt };
+      }
+      if (!best) {
+        this.applyFailure(cam, 'snapshot', { hard: true, transport: false,
+          reason: `${check.reason}; simulated ${tod} view`, last: 'time-mismatch' });
+        return;
+      }
+      cam.imageAt = best.at;
+      cam.selectedUrl = best.url;
+      cam.servedFrame = 'history';
+    }
+    cam.lastOkSnapAt = this.now();
+    this.applySuccess(cam, 'snapshot', `ok ${verdict.bytes} B${cam.servedFrame === 'history' ? ' (recent frame)' : ''}`);
+    // History recovery must retry the CURRENT frame at the regular cadence, never at a history slot's old phase.
+    if (cam.servedFrame === 'history') cam.snap.nextAt = this.now() + this.spread(this.cfg.intervalMs);
   }
 
   private async runStream(cam: Cam): Promise<void> {
@@ -418,6 +477,18 @@ export class CaltransCameraService implements CameraService {
 
   /** One GET with timeout. Never throws. */
   private async get(url: string, o: { binary?: boolean; text?: boolean; range?: string; maxBytes?: number }): Promise<RawResponse> {
+    // Serialise request starts (including history and nested HLS requests), not response bodies.
+    const gate = this.requestGate.then(async () => {
+      if (!this.manualTick) {
+        const wait = this.nextRequestAt - Date.now();
+        if (wait > 0) await new Promise(resolve => setTimeout(resolve, wait));
+        this.nextRequestAt = Date.now() + this.cfg.minGapMs;
+      }
+    });
+    this.requestGate = gate.catch(() => undefined);
+    await gate;
+    const host = this.hosts.get(this.hostOf(url) ?? '');
+    if (host && host.openUntil > this.now()) return { status: null, headers: null, body: null, error: 'host breaker open' };
     const ctl = new AbortController();
     this.aborts.add(ctl);
     const timer = setTimeout(() => ctl.abort(new Error('timeout')), this.cfg.timeoutMs);
@@ -427,13 +498,13 @@ export class CaltransCameraService implements CameraService {
       if (o.range) headers.range = `bytes=${o.range}`;
       const res = await this.fetchImpl()(target, { signal: ctl.signal, headers, redirect: 'follow' });
       if (o.text) {
-        const body = await readLimited(res, this.cfg.maxPlaylistBytes + 1);
-        if (body.byteLength > this.cfg.maxPlaylistBytes) {
+        const body = await readLimited(res, (o.maxBytes ?? this.cfg.maxPlaylistBytes) + 1);
+        if (body.byteLength > (o.maxBytes ?? this.cfg.maxPlaylistBytes)) {
           ctl.abort();
           return { status: null, headers: res.headers, body: null, error: 'playlist exceeds byte limit' };
         }
         const text = new TextDecoder().decode(body);
-        if (text.split(/\r\n|\r|\n/).length > this.cfg.maxPlaylistLines)
+        if (!o.maxBytes && text.split(/\r\n|\r|\n/).length > this.cfg.maxPlaylistLines)
           return { status: null, headers: res.headers, body: null, error: 'playlist exceeds line limit' };
         return { status: res.status, headers: res.headers, body: null, text, error: null };
       }
@@ -573,10 +644,10 @@ export class CaltransCameraService implements CameraService {
 
   private derive(cam: Cam): CameraSourceStatus {
     const rec = cam.rec;
-    const base = { cameraId: rec.id, lastUpdated: cam.snap.lastCheckAt ?? cam.stream?.lastCheckAt ?? this.now(), refreshMs: this.cfg.refreshMs };
+    const base = { timeOfDay: timeOfDayAt(this.now(), rec.lat, rec.lon), timeMismatch: cam.timeMismatch, servedFrame: cam.servedFrame, frameAgeMs: cam.imageAt === null ? null : Math.max(0, this.now() - cam.imageAt), cameraId: rec.id, lastUpdated: cam.snap.lastCheckAt ?? cam.stream?.lastCheckAt ?? this.now(), refreshMs: this.cfg.refreshMs };
     const snapGood = cam.snap.state === 'good' && !!rec.imageUrl;
-    const streamGood = !!cam.stream && cam.stream.state === 'good';
-    const snapUrl = snapGood ? stamp(rec.imageUrl!, cam.imageAt ?? cam.lastOkSnapAt ?? this.now()) : null;
+    const streamGood = !cam.timeMismatch && !!cam.stream && cam.stream.state === 'good';
+    const snapUrl = snapGood ? stamp(cam.selectedUrl!, cam.imageAt ?? cam.lastOkSnapAt ?? this.now()) : null;
     if (snapGood && streamGood) {
       return { ...base, mode: 'live', snapshotUrl: snapUrl, streamUrl: rec.streamUrl, error: null, imageAt: cam.imageAt, reason: 'HLS stream verified playable; snapshot good' };
     }
@@ -586,7 +657,7 @@ export class CaltransCameraService implements CameraService {
     }
     if (snapGood) {
       const why = this.mode === 'snapshot' ? 'snapshot mode' : cam.stream ? (cam.stream.reason ?? 'stream not yet verified') : 'no stream published';
-      return { ...base, mode: 'snapshot', snapshotUrl: snapUrl, streamUrl: null, error: null, imageAt: cam.imageAt, reason: `snapshot good (${why})` };
+      return { ...base, mode: 'snapshot', snapshotUrl: snapUrl, streamUrl: null, error: null, imageAt: cam.imageAt, reason: cam.servedFrame === 'history' ? 'recent matching Caltrans frame (current frame mismatches time of day)' : `snapshot good (${why})` };
     }
     const never = cam.snap.state === 'unknown';
     return {
@@ -596,16 +667,17 @@ export class CaltransCameraService implements CameraService {
       streamUrl: null,
       error: cam.snap.last && !never ? cam.snap.last : null,
       imageAt: null,
+      simulatedReason: never ? null : cam.snap.reason,
       reason: never ? 'checking Caltrans source…' : (cam.snap.reason ?? 'source unavailable'),
     };
   }
 
   private signature(s: CameraSourceStatus): string {
-    return [s.mode, s.snapshotUrl, s.streamUrl, s.reason, s.imageAt].join('|');
+    return [s.mode, s.snapshotUrl, s.streamUrl, s.reason, s.imageAt, s.timeOfDay, s.timeMismatch, s.servedFrame].join('|');
   }
 
   private withLive(c: Cam): CameraSourceStatus {
-    return { ...c.published, lastUpdated: c.snap.lastCheckAt ?? c.stream?.lastCheckAt ?? c.published.lastUpdated };
+    return { ...this.derive(c), lastUpdated: c.snap.lastCheckAt ?? c.stream?.lastCheckAt ?? c.published.lastUpdated };
   }
 
   private refresh(cam: Cam): void {

@@ -73,8 +73,13 @@ export interface StillLabels {
  * Labels for a real Caltrans still. `liveNote` explains why a live-capable camera is showing a still right now
  * ("live video reconnecting", "pick for live video").
  */
-export function stillLabels(f: StillFreshness, variant: 'main' | 'thumb', liveNote?: string | null): StillLabels {
+export function stillLabels(f: StillFreshness, variant: 'main' | 'thumb', liveNote?: string | null, servedFrame?: 'current' | 'history'): StillLabels {
   const age = f.ageMs === null ? null : variant === 'main' ? ageLabel(f.ageMs) : ageShort(f.ageMs);
+  if (servedFrame === 'history') {
+    const label = f.ageMs === null ? 'capture time unknown' : ageLabel(f.ageMs);
+    return { badge: `STILL · ${label} (recent frame)`, detail: variant === 'main' ? 'Recent Caltrans frame · current still mismatches time of day' : null,
+      title: `Caltrans CCTV still image (not video), captured ${label}. Recent frame from this camera; current still mismatches time of day.` };
+  }
   const next =
     f.state === 'fresh' && f.nextInMs !== null
       ? `next ${nextLabel(f.nextInMs)}`

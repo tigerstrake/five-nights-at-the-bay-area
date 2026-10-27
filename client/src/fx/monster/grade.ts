@@ -136,21 +136,7 @@ function percentiles(a: Float32Array, n: number, max: number, qs: number[]): num
 /** analysis width: native for 320 px stills (sharpness needs native pixels), half-ish for 655 px video */
 const GRID_W = 320;
 
-/** Solar elevation (degrees) at a lat/lon for an epoch time (NOAA approximation, ±0.5°). Bay Area by default. */
-export function sunElevationDeg(epochMs: number, lat = 37.8, lon = -122.3): number {
-  const d = new Date(epochMs);
-  const start = Date.UTC(d.getUTCFullYear(), 0, 1);
-  const doy = (epochMs - start) / 86400000;
-  const hrs = d.getUTCHours() + d.getUTCMinutes() / 60 + d.getUTCSeconds() / 3600;
-  const g = ((2 * Math.PI) / 365) * (doy - 1 + (hrs - 12) / 24);
-  const decl = 0.006918 - 0.399912 * Math.cos(g) + 0.070257 * Math.sin(g) - 0.006758 * Math.cos(2 * g) + 0.000907 * Math.sin(2 * g) - 0.002697 * Math.cos(3 * g) + 0.00148 * Math.sin(3 * g);
-  const eqt = 229.18 * (0.000075 + 0.001868 * Math.cos(g) - 0.032077 * Math.sin(g) - 0.014615 * Math.cos(2 * g) - 0.040849 * Math.sin(2 * g));
-  const tst = hrs * 60 + eqt + 4 * lon; // true solar time, minutes
-  const ha = ((tst / 4 - 180) * Math.PI) / 180;
-  const la = (lat * Math.PI) / 180;
-  const cosZ = Math.sin(la) * Math.sin(decl) + Math.cos(la) * Math.cos(decl) * Math.cos(ha);
-  return 90 - (Math.acos(clamp(cosZ, -1, 1)) * 180) / Math.PI;
-}
+export { sunElevationDeg } from '@fnab/shared';
 const GRID_W_VIDEO = 160;
 const MOTION_W = 80;
 /** Probes across ALL overlays are spaced at least this far apart, so 13 feeds never sample in the same frame. */

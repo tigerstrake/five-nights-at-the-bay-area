@@ -28,6 +28,8 @@ export interface CameraRecord {
   lon: number;
   imageUrl: string | null;
   streamUrl: string | null;
+  /** Published recent frames for this camera only (referenceImage1..12). */
+  referenceImageUrls?: string[];
   imageUpdateFrequencyMin: number | null;
   inService: boolean;
   verified: {
@@ -464,6 +466,12 @@ export interface RoomView {
 export type CameraSourceMode = 'live' | 'snapshot' | 'simulated' | 'offline';
 
 export interface CameraSourceStatus {
+  timeOfDay?: import('./sun').TimeOfDay;
+  /** Current still is wrong for the sun position or frozen, even when a matching history frame is served. */
+  timeMismatch?: boolean;
+  servedFrame?: 'current' | 'history';
+  frameAgeMs?: number | null;
+  simulatedReason?: string | null;
   cameraId: string;
   mode: CameraSourceMode;
   snapshotUrl: string | null;
