@@ -273,7 +273,7 @@ it only reports which real imagery is trustworthy; the match runs identically on
   half-open = one trial request); any HTTP answer, even 404, proves the host is up (dead stream URLs answer 404 after ~8 s and must not trip it).
 - **Snapshot classification** (`classify.ts`): HTTP 2xx, `image/*`, JPEG magic, 1 KB..1.5 MB, decodable (pure-JS `jpeg-js`, <= 4 MP), then pixel metrics over the frame minus the bottom 10 % timestamp bar:
   *placeholder* (13.0-14.1 KB body with >= 50 % near-white pixels, or >= 85 % white with std >= 25), *blank* (>= 90 % white), *black* (>= 90 % dark or mean < 14 and std < 12), *uniform* (std < 8),
-  *snow* (high-frequency energy / std > 0.65 and > 20), *stale* (Last-Modified older than 15 min against the response `Date`). Calibrated on 36 curated frames + 6 placeholders + 8 small/odd frames
+  *snow* (high-frequency energy / std > 0.65 and > 20), *frozen* (Last-Modified older than 30 min against the server wall clock; see §7.8). Pixel rejection thresholds were calibrated on 36 curated frames + 6 placeholders + 8 small/odd frames
   (real frames: mean 44-161, std 15-86, hf/std 0.04-0.47; placeholder: mean 239, std 57, 93 % white; "no video": mean 11, std 1).
 - **HLS probe**: playlist must be `#EXTM3U`, master -> first variant, media playlist with >= 1 segment and no `#EXT-X-ENDLIST`, then a `Range: bytes=0-187` GET of the last segment must start with the TS sync byte `0x47`
   (a server that ignores Range costs 188 bytes, the body is cancelled). Probed for **every camera with a published stream URL**: curated `streamPlayable` cameras are trusted after 1 success, the others
@@ -318,7 +318,7 @@ Env: `CAMERA_MODE`, `CAMERA_CHECK_INTERVAL_MS`, `CAMERA_TIMEOUT_MS`, `CAMERA_CON
   jumps to the live edge. Up to 4 fatal hls.js errors are answered (startLoad / recoverMediaError / reload) before giving up.
 - **Where video plays**: the main monitor (and the monster lens) always tries live; the visible bank page gets a budget of **3 live thumbnails** (`liveBudget.ts`, first live-capable tiles in bank order,
   excluding the main camera; `?liveThumbs=N` overrides 0..6). The default main camera is the first *live-capable* HQ approach (latched; only upgraded still -> live), and the AUTO bank puts live-capable
-  cameras first among equally ranked ones. Stills are never hidden.
+  cameras first among equally ranked ones. Thumbnails retain real stills; the main monitor may show explicitly labelled procedural motion (§7.8).
 - The FX overlay distorts the element flagged `data-fx-source`: the video while it is the visible picture, otherwise the newest still (previously it always grabbed the first `<img>`, so glitch bands
   showed a stale still over live video).
 - Local fallback without waiting for the server: image fetch failures (2-3 tries) or a card/black frame -> **simulated** (retried after 60 s).
@@ -326,6 +326,34 @@ Env: `CAMERA_MODE`, `CAMERA_CHECK_INTERVAL_MS`, `CAMERA_TIMEOUT_MS`, `CAMERA_CON
   **LIVE** (solid red, pulsing), **BUFFERING** (dotted amber), **STILL** (cyan; a red ring marks a live-capable camera), **SIMULATED** (dashed amber outline; the FX layer also draws its own watermark),
   **OFFLINE** (grey, server-sent only). Main feeds of real cameras carry "Source: Caltrans CCTV". Badge colour/state never depends on `CameraGameStatus`.
 - Debug: with `?e2e` or in dev, `window.__fnabFeedLog` holds hls.js errors, watchdog actions and still arrivals.
+
+### 7.8 Time-of-day consistency, recent frames and optional motion
+
+The shared, dependency-free `sun.ts` supplies the NOAA solar-elevation approximation to both the adapter and the monster compositor (the old client export remains compatible). The location is the selected camera's own latitude/longitude and the clock is real wall time, independent of match time.
+
+| Signal | Conservative decision |
+|---|---|
+| Sun elevation | **Day** above +6°, **night** below −6°, **dusk** throughout the band between them |
+| Clear daylight pixels | Mean luminance >95/255, upper 35% mean >125/255, upper-region HSV saturation <0.65, isolated bright-point share <0.1% |
+| Clear night pixels | Mean <65/255, upper-region mean <45/255, upper-region saturation <0.8, isolated bright-point share ≥0.02% |
+| Point-light evidence | Luminance >210/255 with the four neighbours three pixels away averaging <100/255 |
+| Frozen frame | Known capture time more than **30 minutes** old, measured against our wall clock; a cached HTTP `Date` cannot make it fresh |
+
+The bottom 10% timestamp strip is excluded. Pixels outside both confident categories are ambiguous (`dusk`), so twilight, dark tunnels, saturated skies and bright floodlit roads do not produce a lighting-mismatch flag. Only a confidently opposite day/night result outside the sun's twilight band, or an expired capture time, sets `timeMismatch`. The 30-minute window tolerates several missed five-minute updates. These new thresholds are tested with synthetic RGBA scenes and JPEG round trips; they have **not** been validated against new live Caltrans imagery in this change.
+
+Only after the **current** frame mismatches does the adapter inspect that camera's published `imageData.static.referenceImage1` through `referenceImage12` URLs (recent `UpdateAgo` frames, not an archive). Discovery/curation preserve optional `referenceImageUrls`; existing curated records use a shared, bounded (4 MB) District 4 status-JSON fetch cached for one check cadence, including failed attempts. The local gitignored `d4-all.json` is normalized and contains no reference fields, so the adapter does not invent filenames from it. Runtime metadata must match both `caltransIndex` and `currentImageURL`; URLs are deduplicated, capped at 12 and restricted to the current image's origin.
+
+History GETs run sequentially inside the existing camera scheduler slot and share its global concurrency cap, minimum request spacing, per-request timeout and host breaker. Unrecovered cameras retain exponential snapshot backoff. Every candidate passes the ordinary JPEG content checks, requires its own valid `Last-Modified`, must be at most 30 minutes old with no future capture time, and must positively match current lighting. The newest qualifying capture wins, regardless of reference-slot order. The current image is retried at the normal cadence after history recovery. No image bytes are retained on the server and no other camera's imagery is substituted.
+
+`CameraSourceStatus` adds optional `timeOfDay`, `timeMismatch`, `servedFrame: 'current' | 'history'`, `frameAgeMs`, and `simulatedReason`. `timeOfDay` is current local lighting; `frameAgeMs` is the selected real capture's age when known. `timeMismatch` continues to describe the rejected current still when history is served. A history recovery is reported as `snapshot`, with its own URL and `imageAt`; an unverified/mismatched stream is not promoted through that recovery. All existing fields remain compatible.
+
+Recent imagery carries **STILL · 25m ago (recent frame)**, its capture time, and an explanation that the current frame mismatches. Its badge has no next-frame countdown. The client validates the returned capture against the server-selected timestamp and keeps the decoded history blob until another server selection, because a rolling reference URL can change underneath it. Expired images fall back to simulation even between probes. Without a matching real frame the adapter sends `simulated` and an explanation such as “real feed shows daylight; simulated night view”.
+
+Simulation uses **current** local lighting: daylight sky/road/lanes with moving vehicle bodies and no headlight streams; dusk adds a warm horizon and low-sun glare; night alone may select bundled night stills. The existing prominent **SIMULATED FEED** watermark is unchanged.
+
+Settings adds **Simulated motion for stills**, persisted locally and default ON. An eligible still-only **main** monitor offers a **SIMULATED MOTION** toggle and crossfades its real still to animated procedural imagery, labelled SIMULATED; one click restores the real still. Thumbnails and live-capable streams retain their normal behavior. A manifestation, a fresh sighting or a held-monster alert immediately restores the real frame without fading and leaves it selected afterward. Disabling the setting always restores the real still.
+
+Cross-boundary additions are limited to shared solar/pixel utilities and optional source/record fields, the Settings switch in `ui/chrome.tsx`, the sighting alert prop in defender `MainFeed.tsx`, and preservation of published reference URLs in discovery/curation. Existing data-testid contracts are retained.
 
 ### 7.5 Measured behaviour (2026-10-20, about 17:00-17:15 PDT, real network)
 

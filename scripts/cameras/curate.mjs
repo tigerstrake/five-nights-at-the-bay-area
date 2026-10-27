@@ -100,6 +100,7 @@ async function main() {
       lat: src.lat,
       lon: src.lon,
       imageUrl: src.imageUrl,
+      ...(src.referenceImageUrls?.length ? { referenceImageUrls: src.referenceImageUrls } : {}),
       streamUrl: src.streamUrl,
       imageUpdateFrequencyMin: src.imageUpdateFrequencyMin,
       inService: src.inService,

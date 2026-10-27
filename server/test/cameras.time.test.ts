@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { encode } from 'jpeg-js';
 import { CAMERAS, frameTimeOfDay } from '@fnab/shared';
 import { lightPixels } from '../../shared/test/frameFixtures';
@@ -79,5 +79,61 @@ describe('adapter real-frame selection', () => {
     await expect(svc.tick()).resolves.toBeUndefined();
     expect(svc.getStatus(camera.id)!.mode).toBe('simulated');
     expect(f.calls).toHaveLength(2);
+  });
+
+  it('expires selected history between probes, including while a transport failure is tolerated', async () => {
+    let now = NOW;
+    const f = fakeFetch(u => u === camera.imageUrl ? jpegResponse(day, lm(1)) : jpegResponse(night, lm(29)));
+    const svc = new CaltransCameraService({ cameras: [{ ...camera, referenceImageUrls: ['https://cams.test/recent.jpg'] }],
+      mode: 'snapshot', fetch: f.fetch, now: () => now, log: () => {}, config: { minGapMs: 0, jitter: 0 } });
+    await svc.tick();
+    expect(svc.getStatus(camera.id)!.mode).toBe('snapshot');
+    now += MIN;
+    expect(svc.getStatus(camera.id)!.mode).toBe('snapshot'); // exactly 30 minutes
+    now++;
+    expect(svc.getStatus(camera.id)).toMatchObject({ mode: 'simulated', timeMismatch: true,
+      simulatedReason: expect.stringContaining('frozen'), snapshotUrl: null });
+    f.set(() => new Response('', { status: 503 }));
+    now += 5 * MIN;
+    await svc.tick();
+    expect(svc.getStatus(camera.id)!.mode).toBe('simulated');
+  });
+
+  it('keeps mismatch retries behind snapshot backoff and times out unavailable history', async () => {
+    let now = NOW;
+    const f = fakeFetch((u, init) => u === camera.imageUrl ? jpegResponse(day, lm(1)) :
+      new Promise<Response>((_, reject) => init?.signal?.addEventListener('abort', () => reject(new Error('aborted')))));
+    const svc = new CaltransCameraService({ cameras: [{ ...camera, referenceImageUrls: ['https://cams.test/timeout.jpg'] }],
+      mode: 'snapshot', fetch: f.fetch, now: () => now, log: () => {}, config: { minGapMs: 0, jitter: 0, timeoutMs: 5 } });
+    await svc.tick();
+    expect(svc.getStatus(camera.id)!.mode).toBe('simulated');
+    expect(f.calls).toHaveLength(2);
+    await svc.tick();
+    expect(f.calls).toHaveLength(2);
+    now += 30_000;
+    await svc.tick();
+    expect(f.calls).toHaveLength(4);
+    expect(svc.getDiagnostics()[0]!.snapshot.nextCheckAt).toBe(now + 60_000);
+  });
+
+  it('paces history requests and stops queued work when the service stops', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    const starts: number[] = [];
+    const f = fakeFetch(u => {
+      starts.push(Date.now());
+      return u === camera.imageUrl ? jpegResponse(day, lm(1)) : jpegResponse(night, lm(2));
+    });
+    const svc = new CaltransCameraService({ cameras: [{ ...camera, referenceImageUrls: ['https://cams.test/1.jpg', 'https://cams.test/2.jpg'] }],
+      mode: 'snapshot', fetch: f.fetch, log: () => {}, config: { minGapMs: 150, pumpMs: 25, jitter: 0 } });
+    try {
+      await svc.start();
+      await vi.advanceTimersByTimeAsync(160);
+      expect(starts).toHaveLength(2);
+      expect(starts[1]! - starts[0]!).toBeGreaterThanOrEqual(150);
+      svc.stop();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(starts).toHaveLength(2);
+    } finally { svc.stop(); vi.useRealTimers(); }
   });
 });

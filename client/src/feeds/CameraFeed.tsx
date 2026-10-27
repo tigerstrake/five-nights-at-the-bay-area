@@ -5,7 +5,7 @@
 // of a ticking clock, and a visible refresh wipe when a new frame arrives. Nothing here fabricates motion.
 import { useCallback, useEffect, useState } from 'react';
 import clsx from 'clsx';
-import { timeOfDayAt, type CameraGameStatus, type CameraSourceMode, type ManifestationState } from '@fnab/shared';
+import { MAX_FRAME_AGE_MS, timeOfDayAt, type CameraGameStatus, type CameraSourceMode, type ManifestationState } from '@fnab/shared';
 import { motionForFrame, useMotionSetting } from './motion';
 import { FeedFxOverlay, SimulatedFeed, getSimulatedPlacement, isReducedMotion, type FeedFxParams, type FeedSourceMode } from '../fx';
 import { useGame, serverNow } from '../state/store';
@@ -87,7 +87,9 @@ export function CameraFeed(p: CameraFeedProps) {
   // What the SERVER says is trustworthy (runtime-verified, see server/src/cameras); local failures only demote:
   // live -> still -> simulated. Simulated is never styled like live.
   const serverMode: CameraSourceMode = source?.mode ?? 'simulated';
-  const realOffered = serverMode === 'live' || serverMode === 'snapshot';
+  const knownImageAt = frameAt ?? source?.imageAt;
+  const expiredStill = knownImageAt != null && serverNow() - knownImageAt > MAX_FRAME_AGE_MS;
+  const realOffered = !expiredStill && (serverMode === 'live' || serverMode === 'snapshot');
   const snapUrl = realOffered && !failedImage ? (source?.snapshotUrl ?? null) : null;
   const liveCapable = serverMode === 'live' && !!source?.streamUrl;
   const streamDown = downUntil !== null;
@@ -195,7 +197,7 @@ export function CameraFeed(p: CameraFeedProps) {
         : still
           ? `${still.title}${liveCapable && thumb && !p.liveVideo ? ' This camera has live video: pick it for the main monitor.' : ''}`
           : feedState === 'simulated'
-            ? `SIMULATED footage, not a real camera${source?.reason ? `: ${source.reason}` : ''}`
+            ? simulatedMotion ? 'SIMULATED procedural motion. Use the toggle to show this camera’s real Caltrans still.' : `SIMULATED footage, not a real camera${source?.reason ? `: ${source.reason}` : ''}`
             : `Real camera offline${source?.reason ? `: ${source.reason}` : ''}`;
   const badge = (
     <span className="flex shrink-0 flex-col items-end gap-px">

@@ -12,7 +12,7 @@
 //   live      HLS playlist + segment verified AND a good snapshot (thumbnails/fallback need the snapshot)
 //   snapshot  good snapshot (and no verified stream, or mode=snapshot)
 //   simulated anything else (labelled fallback); `reason` says why. `offline` is never emitted by this service.
-import { frameConsistency, frameTimeOfDay, timeOfDayAt, MAX_FRAME_AGE_MS, type CameraRecord, type CameraSourceStatus } from '@fnab/shared';
+import { frameConsistency, frameTimeOfDay, timeOfDayAt, MAX_FRAME_AGE_MS, type FrameLight, type CameraRecord, type CameraSourceStatus } from '@fnab/shared';
 import { D4_STATUS_URL, publishedHistory, trustedHistoryUrls } from './history';
 import type { CameraDiagnostics, CameraHealth, CameraMode, CameraService, ProbeDiagnostics } from './types';
 import { MAX_IMAGE_BYTES, classifySnapshot, looksLikeTsSegment, parsePlaylist } from './classify';
@@ -123,7 +123,7 @@ interface Cam {
   imageAt: number | null;
   selectedUrl: string | null;
   timeMismatch: boolean;
-  mismatchReason: string | null;
+  selectedLight: FrameLight | null;
   servedFrame: 'current' | 'history';
   lastOkSnapAt: number | null;
   published: CameraSourceStatus;
@@ -165,6 +165,7 @@ export class CaltransCameraService implements CameraService {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private notifyTimer: ReturnType<typeof setTimeout> | null = null;
   private started = false;
+  private stopped = false;
   private dirty = false;
   private lastStartAt = 0;
   private lastCheckAt: number | null = null;
@@ -192,7 +193,7 @@ export class CaltransCameraService implements CameraService {
         imageAt: null,
         selectedUrl: rec.imageUrl,
         timeMismatch: false,
-        mismatchReason: null,
+        selectedLight: null,
         servedFrame: 'current',
         lastOkSnapAt: null,
         published: null as never,
@@ -214,11 +215,13 @@ export class CaltransCameraService implements CameraService {
   async start(): Promise<void> {
     if (this.started) return;
     this.started = true;
+    this.stopped = false;
     this.schedulePump(0);
   }
 
   stop(): void {
     this.started = false;
+    this.stopped = true;
     if (this.timer) clearTimeout(this.timer);
     if (this.notifyTimer) clearTimeout(this.notifyTimer);
     this.timer = this.notifyTimer = null;
@@ -287,6 +290,7 @@ export class CaltransCameraService implements CameraService {
    */
   async tick(): Promise<void> {
     this.manualTick = true;
+    this.stopped = false;
     for (let guard = 0; guard < 10_000; guard++) {
       const started = this.pump(true);
       if (!started && this.running.size === 0) break;
@@ -314,6 +318,7 @@ export class CaltransCameraService implements CameraService {
 
   /** Start due probes. Returns the number started. The background loop starts one per wake-up (spacing). */
   private pump(ignoreGap: boolean): number {
+    for (const cam of this.cams.values()) this.refresh(cam);
     let started = 0;
     while (this.running.size < this.cfg.concurrency) {
       const t = this.now();
@@ -412,19 +417,20 @@ export class CaltransCameraService implements CameraService {
     const light = verdict.metrics!.light!;
     const check = frameConsistency(light, tod, verdict.imageAt, now, this.cfg.staleMs);
     cam.timeMismatch = check.timeMismatch;
-    cam.mismatchReason = check.reason;
+    cam.selectedLight = light;
     cam.imageAt = verdict.imageAt;
     cam.selectedUrl = cam.rec.imageUrl;
     cam.servedFrame = 'current';
     if (check.timeMismatch) {
       // Probe sequentially inside the existing scheduler slot. All GETs share pacing, deadlines and breaker.
-      let best: { url: string; at: number } | null = null;
+      let best: { url: string; at: number; light: FrameLight } | null = null;
       for (const url of await this.historyUrls(cam)) {
+        if (this.stopped) break;
         const h = await this.snapshot(url, cam);
         if (!h.ok || h.imageAt === null || h.imageAt > this.now() || !h.metrics?.light) continue;
         const hc = frameConsistency(h.metrics.light, timeOfDayAt(this.now(), cam.rec.lat, cam.rec.lon), h.imageAt, this.now(), this.cfg.staleMs);
         // History must positively match, not merely be ambiguous. Capture time is mandatory.
-        if (!hc.timeMismatch && frameTimeOfDay(h.metrics.light) === tod && (!best || h.imageAt > best.at)) best = { url, at: h.imageAt };
+        if (!hc.timeMismatch && frameTimeOfDay(h.metrics.light) === timeOfDayAt(this.now(), cam.rec.lat, cam.rec.lon) && (!best || h.imageAt > best.at)) best = { url, at: h.imageAt, light: h.metrics.light };
       }
       if (!best) {
         this.applyFailure(cam, 'snapshot', { hard: true, transport: false,
@@ -432,6 +438,7 @@ export class CaltransCameraService implements CameraService {
         return;
       }
       cam.imageAt = best.at;
+      cam.selectedLight = best.light;
       cam.selectedUrl = best.url;
       cam.servedFrame = 'history';
     }
@@ -487,6 +494,7 @@ export class CaltransCameraService implements CameraService {
     });
     this.requestGate = gate.catch(() => undefined);
     await gate;
+    if (this.stopped) return { status: null, headers: null, body: null, error: 'service stopped' };
     const host = this.hosts.get(this.hostOf(url) ?? '');
     if (host && host.openUntil > this.now()) return { status: null, headers: null, body: null, error: 'host breaker open' };
     const ctl = new AbortController();
@@ -494,7 +502,7 @@ export class CaltransCameraService implements CameraService {
     const timer = setTimeout(() => ctl.abort(new Error('timeout')), this.cfg.timeoutMs);
     try {
       const target = this.cfg.probeOrigin ? this.cfg.probeOrigin.replace(/\/$/, '') + new URL(url).pathname + new URL(url).search : url;
-      const headers: Record<string, string> = { accept: o.text ? 'application/vnd.apple.mpegurl,*/*' : 'image/jpeg,*/*', 'user-agent': 'FiveNightsAtTheBayArea/0.1 (camera health check; polite, 5-min cadence)' };
+      const headers: Record<string, string> = { accept: o.text ? (o.maxBytes ? 'application/json' : 'application/vnd.apple.mpegurl,*/*') : 'image/jpeg,*/*', 'user-agent': 'FiveNightsAtTheBayArea/0.1 (camera health check; polite, 5-min cadence)' };
       if (o.range) headers.range = `bytes=${o.range}`;
       const res = await this.fetchImpl()(target, { signal: ctl.signal, headers, redirect: 'follow' });
       if (o.text) {
@@ -644,9 +652,19 @@ export class CaltransCameraService implements CameraService {
 
   private derive(cam: Cam): CameraSourceStatus {
     const rec = cam.rec;
-    const base = { timeOfDay: timeOfDayAt(this.now(), rec.lat, rec.lon), timeMismatch: cam.timeMismatch, servedFrame: cam.servedFrame, frameAgeMs: cam.imageAt === null ? null : Math.max(0, this.now() - cam.imageAt), cameraId: rec.id, lastUpdated: cam.snap.lastCheckAt ?? cam.stream?.lastCheckAt ?? this.now(), refreshMs: this.cfg.refreshMs };
-    const snapGood = cam.snap.state === 'good' && !!rec.imageUrl;
-    const streamGood = !cam.timeMismatch && !!cam.stream && cam.stream.state === 'good';
+    const now = this.now();
+    const timeOfDay = timeOfDayAt(now, rec.lat, rec.lon);
+    const selectedCheck = cam.selectedLight ? frameConsistency(cam.selectedLight, timeOfDay, cam.imageAt, now, this.cfg.staleMs) : null;
+    const base = {
+      cameraId: rec.id, timeOfDay,
+      timeMismatch: cam.timeMismatch || !!selectedCheck?.timeMismatch,
+      servedFrame: cam.servedFrame,
+      frameAgeMs: cam.imageAt === null ? null : Math.max(0, now - cam.imageAt),
+      lastUpdated: cam.snap.lastCheckAt ?? cam.stream?.lastCheckAt ?? now,
+      refreshMs: this.cfg.refreshMs,
+    };
+    const snapGood = cam.snap.state === 'good' && !!rec.imageUrl && !selectedCheck?.timeMismatch;
+    const streamGood = !base.timeMismatch && !!cam.stream && cam.stream.state === 'good';
     const snapUrl = snapGood ? stamp(cam.selectedUrl!, cam.imageAt ?? cam.lastOkSnapAt ?? this.now()) : null;
     if (snapGood && streamGood) {
       return { ...base, mode: 'live', snapshotUrl: snapUrl, streamUrl: rec.streamUrl, error: null, imageAt: cam.imageAt, reason: 'HLS stream verified playable; snapshot good' };
@@ -660,6 +678,7 @@ export class CaltransCameraService implements CameraService {
       return { ...base, mode: 'snapshot', snapshotUrl: snapUrl, streamUrl: null, error: null, imageAt: cam.imageAt, reason: cam.servedFrame === 'history' ? 'recent matching Caltrans frame (current frame mismatches time of day)' : `snapshot good (${why})` };
     }
     const never = cam.snap.state === 'unknown';
+    const reason = selectedCheck?.timeMismatch ? `${selectedCheck.reason}; simulated ${timeOfDay} view` : cam.snap.reason;
     return {
       ...base,
       mode: 'simulated',
@@ -667,8 +686,8 @@ export class CaltransCameraService implements CameraService {
       streamUrl: null,
       error: cam.snap.last && !never ? cam.snap.last : null,
       imageAt: null,
-      simulatedReason: never ? null : cam.snap.reason,
-      reason: never ? 'checking Caltrans source…' : (cam.snap.reason ?? 'source unavailable'),
+      simulatedReason: never ? null : reason,
+      reason: never ? 'checking Caltrans source…' : (reason ?? 'source unavailable'),
     };
   }
 

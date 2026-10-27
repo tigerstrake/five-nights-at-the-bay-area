@@ -7,7 +7,7 @@
 // keeps running across errors (bounded retries, then the parent re-arms) and resumes immediately when the tab
 // becomes visible again or when the still is re-activated after live video stops.
 import { useEffect, useRef, useState } from 'react';
-import { frameConsistency, measureFrameLight, timeOfDayAt } from '@fnab/shared';
+import { MAX_FRAME_AGE_MS, frameConsistency, measureFrameLight, timeOfDayAt } from '@fnab/shared';
 import { bustUrl, looksUnavailable } from './sourceUtils';
 import { nextPollDelay } from './freshness';
 import { serverNow } from '../state/store';
@@ -159,6 +159,11 @@ export function SnapshotLayer(p: SnapshotLayerProps) {
         const lm = res.headers.get('last-modified') ?? '';
         const parsed = lm ? Date.parse(lm) : NaN;
         const at = Number.isFinite(parsed) ? parsed : null;
+        if (at !== null && serverNow() - at > MAX_FRAME_AGE_MS) {
+          void res.body?.cancel().catch(() => undefined);
+          cb.current.onFail('time-mismatch');
+          return;
+        }
         if (lm && lm === st.shownLm) {
           // Same Caltrans frame as on screen: nothing to show, just wait for the next one.
           void res.body?.cancel().catch(() => undefined);
